@@ -31,11 +31,13 @@ export const IntegrationsView: React.FC = () => {
   // Form State for Config Modal
   const [tagInput, setTagInput] = useState('');
   const [apiKeyInput, setApiKeyInput] = useState('');
+  const [configWarning, setConfigWarning] = useState<string | null>(null);
 
-  const openConfigModal = (int: Integration) => {
+  const openConfigModal = (int: Integration, warning?: string) => {
     setActiveConfigIntegration(int);
     setTagInput(int.tagAfiliado || '');
     setApiKeyInput(int.apiKey || '');
+    setConfigWarning(warning || null);
   };
 
   const handleSaveConfig = (e: React.FormEvent) => {
@@ -43,6 +45,27 @@ export const IntegrationsView: React.FC = () => {
     if (activeConfigIntegration) {
       updateIntegrationConfig(activeConfigIntegration.id, tagInput, apiKeyInput);
       setActiveConfigIntegration(null);
+      setConfigWarning(null);
+    }
+  };
+
+  const handleConnectClick = (int: Integration) => {
+    if (int.status === 'conectado') {
+      // Allow immediate disconnect
+      toggleIntegrationStatus(int.id);
+    } else {
+      const isMarketplace = ['amazon', 'mercadolivre', 'shopee', 'aliexpress'].includes(int.key);
+      const isMissingTag = isMarketplace && !int.tagAfiliado;
+      const isMissingKey = !isMarketplace && !int.apiKey;
+
+      if (isMissingTag || isMissingKey) {
+        openConfigModal(
+          int,
+          `⚠️ Insira as credenciais do ${int.name} abaixo e salve para ativar a conexão!`
+        );
+      } else {
+        toggleIntegrationStatus(int.id);
+      }
     }
   };
 
@@ -134,7 +157,7 @@ export const IntegrationsView: React.FC = () => {
 
               <div className="grid grid-cols-3 gap-2">
                 <button
-                  onClick={() => toggleIntegrationStatus(int.id)}
+                  onClick={() => handleConnectClick(int)}
                   className={`py-2 rounded-xl text-xs font-semibold transition-all ${
                     int.status === 'conectado'
                       ? 'bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 border border-rose-500/30'
@@ -178,6 +201,12 @@ export const IntegrationsView: React.FC = () => {
                 <X className="w-5 h-5" />
               </button>
             </div>
+
+            {configWarning && (
+              <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-xs font-semibold leading-relaxed">
+                {configWarning}
+              </div>
+            )}
 
             <form onSubmit={handleSaveConfig} className="space-y-4">
               <div className="space-y-1">
