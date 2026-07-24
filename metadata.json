@@ -1,0 +1,6 @@
+{
+  "name": "AffiFlow AI - Automação de Afiliados",
+  "description": "Plataforma completa de automação de afiliados com inteligência artificial, filas de postagem, integração com marketplaces e redes sociais.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

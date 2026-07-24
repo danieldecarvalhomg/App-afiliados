@@ -1,0 +1,568 @@
+import React, { createContext, useContext, useState, useEffect } from 'react';
+import {
+  Product,
+  QueueConfig,
+  QueueItem,
+  Campaign,
+  AutomationRule,
+  Integration,
+  ChannelGroup,
+  CRMLead,
+  CopyTemplate,
+  LandingPageItem,
+  SystemLog,
+  SubscriptionPlan
+} from '../types';
+import {
+  INITIAL_PRODUCTS,
+  INITIAL_QUEUES,
+  INITIAL_QUEUE_ITEMS,
+  INITIAL_INTEGRATIONS,
+  INITIAL_GROUPS,
+  INITIAL_CAMPAIGNS,
+  INITIAL_AUTOMATIONS,
+  INITIAL_TEMPLATES,
+  INITIAL_LANDING_PAGES,
+  INITIAL_LEADS,
+  INITIAL_LOGS,
+  INITIAL_SUBSCRIPTION
+} from '../data/mockData';
+import { supabaseService } from '../services/supabaseService';
+import { checkSupabaseConnection } from '../lib/supabase';
+
+interface NotificationItem {
+  id: string;
+  title: string;
+  message: string;
+  time: string;
+  type: 'info' | 'success' | 'warning' | 'error';
+  read: boolean;
+}
+
+interface AppContextType {
+  activeTab: string;
+  setActiveTab: (tab: string) => void;
+  isSidebarCollapsed: boolean;
+  setIsSidebarCollapsed: (collapsed: boolean | ((prev: boolean) => boolean)) => void;
+  products: Product[];
+  setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
+  queues: QueueConfig[];
+  setQueues: React.Dispatch<React.SetStateAction<QueueConfig[]>>;
+  queueItems: QueueItem[];
+  setQueueItems: React.Dispatch<React.SetStateAction<QueueItem[]>>;
+  integrations: Integration[];
+  setIntegrations: React.Dispatch<React.SetStateAction<Integration[]>>;
+  groups: ChannelGroup[];
+  setGroups: React.Dispatch<React.SetStateAction<ChannelGroup[]>>;
+  campaigns: Campaign[];
+  automations: AutomationRule[];
+  templates: CopyTemplate[];
+  landingPages: LandingPageItem[];
+  leads: CRMLead[];
+  logs: SystemLog[];
+  subscription: SubscriptionPlan;
+  notifications: NotificationItem[];
+  markNotificationRead: (id: string) => void;
+  clearAllNotifications: () => void;
+  
+  // Quick Actions
+  addProduct: (productData: Partial<Product>) => Product;
+  updateProduct: (id: string, updates: Partial<Product>) => void;
+  deleteProduct: (id: string) => void;
+  toggleFavoriteProduct: (id: string) => void;
+  
+  addQueueItem: (item: Partial<QueueItem>) => void;
+  deleteQueueItem: (id: string) => void;
+  shuffleQueue: (queueConfigId: string) => void;
+  clearSentQueueItems: (queueConfigId: string) => void;
+  toggleQueueStatus: (queueConfigId: string) => void;
+  moveQueueItemPriority: (itemId: string, direction: 'up' | 'down') => void;
+  
+  toggleIntegrationStatus: (integrationId: string) => void;
+  updateIntegrationConfig: (integrationId: string, tagAfiliado?: string, apiKey?: string) => void;
+  
+  addLog: (level: 'info' | 'warning' | 'error' | 'success', module: string, message: string, details?: string) => void;
+  clearMockData: () => void;
+  convertAffiliateUrl: (url: string, marketplace: string) => string;
+  
+  // AI helpers
+  generateCopyWithAI: (params: any) => Promise<string>;
+  extractOfferFromUrl: (url: string) => Promise<any>;
+  
+  // Global Search
+  isSearchOpen: boolean;
+  setIsSearchOpen: (open: boolean) => void;
+}
+
+const AppContext = createContext<AppContextType | undefined>(undefined);
+
+export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [activeTab, setActiveTab] = useState<string>('dashboard');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+
+  // Purge legacy demo data from localStorage on load if present
+  useEffect(() => {
+    const cleaned = localStorage.getItem('affi_cleaned_v3');
+    if (!cleaned) {
+      localStorage.removeItem('affi_queues');
+      localStorage.removeItem('affi_products');
+      localStorage.removeItem('affi_queue_items');
+      localStorage.removeItem('affi_integrations');
+      localStorage.setItem('affi_cleaned_v3', 'true');
+    }
+  }, []);
+
+  const [products, setProducts] = useState<Product[]>(() => {
+    try {
+      const saved = localStorage.getItem('affi_products');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      // Filter out any demo items
+      const clean = parsed.filter((p: any) => p.id && !p.id.includes('prod-1') && !p.id.includes('prod-2') && !p.id.includes('prod-3') && !p.id.includes('prod-4'));
+      if (clean.length !== parsed.length) {
+        localStorage.setItem('affi_products', JSON.stringify(clean));
+      }
+      return clean;
+    } catch {
+      localStorage.removeItem('affi_products');
+      return [];
+    }
+  });
+
+  const [queues, setQueues] = useState<QueueConfig[]>(() => {
+    try {
+      const saved = localStorage.getItem('affi_queues');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      // Filter out any demo queues
+      const clean = parsed.filter((q: any) => q.id && !q.id.includes('queue-1') && !q.id.includes('queue-2') && !q.id.includes('queue-3') && !q.name.includes('Fila Principal') && !q.name.includes('Disparos WhatsApp') && !q.name.includes('Fila Tech'));
+      if (clean.length !== parsed.length) {
+        localStorage.setItem('affi_queues', JSON.stringify(clean));
+      }
+      return clean;
+    } catch {
+      localStorage.removeItem('affi_queues');
+      return [];
+    }
+  });
+
+  const [queueItems, setQueueItems] = useState<QueueItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('affi_queue_items');
+      if (!saved) return [];
+      const parsed = JSON.parse(saved);
+      const clean = parsed.filter((i: any) => i.id && !i.id.includes('qitem-1') && !i.id.includes('qitem-2') && !i.id.includes('qitem-3'));
+      if (clean.length !== parsed.length) {
+        localStorage.setItem('affi_queue_items', JSON.stringify(clean));
+      }
+      return clean;
+    } catch {
+      localStorage.removeItem('affi_queue_items');
+      return [];
+    }
+  });
+
+  const [integrations, setIntegrations] = useState<Integration[]>(() => {
+    try {
+      const isCleaned = localStorage.getItem('affi_cleaned_v3');
+      if (!isCleaned) {
+        localStorage.removeItem('affi_integrations');
+        return INITIAL_INTEGRATIONS;
+      }
+      const saved = localStorage.getItem('affi_integrations');
+      return saved ? JSON.parse(saved) : INITIAL_INTEGRATIONS;
+    } catch {
+      return INITIAL_INTEGRATIONS;
+    }
+  });
+
+  const [groups, setGroups] = useState<ChannelGroup[]>([]);
+  const [campaigns, setCampaigns] = useState<Campaign[]>([]);
+  const [automations, setAutomations] = useState<AutomationRule[]>([]);
+  const [templates] = useState<CopyTemplate[]>(INITIAL_TEMPLATES);
+  const [landingPages, setLandingPages] = useState<LandingPageItem[]>([]);
+  const [leads, setLeads] = useState<CRMLead[]>([]);
+  const [logs, setLogs] = useState<SystemLog[]>([]);
+  const [subscription] = useState<SubscriptionPlan>(INITIAL_SUBSCRIPTION);
+
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+
+  // Sync with Supabase on mount
+  useEffect(() => {
+    async function initSupabase() {
+      const conn = await checkSupabaseConnection();
+      if (conn.connected) {
+        console.log('Supabase ativo:', conn.message);
+        const remoteProducts = await supabaseService.fetchProducts();
+        if (remoteProducts && remoteProducts.length > 0) {
+          setProducts(remoteProducts);
+        }
+        const remoteQueueItems = await supabaseService.fetchQueueItems();
+        if (remoteQueueItems && remoteQueueItems.length > 0) {
+          setQueueItems(remoteQueueItems);
+        }
+      }
+    }
+    initSupabase();
+  }, []);
+
+  // Persist state
+  useEffect(() => {
+    localStorage.setItem('affi_products', JSON.stringify(products));
+  }, [products]);
+
+  useEffect(() => {
+    localStorage.setItem('affi_queues', JSON.stringify(queues));
+  }, [queues]);
+
+  useEffect(() => {
+    localStorage.setItem('affi_queue_items', JSON.stringify(queueItems));
+  }, [queueItems]);
+
+  useEffect(() => {
+    localStorage.setItem('affi_integrations', JSON.stringify(integrations));
+  }, [integrations]);
+
+  const markNotificationRead = (id: string) => {
+    setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
+  };
+
+  const clearAllNotifications = () => {
+    setNotifications([]);
+  };
+
+  const addLog = (level: 'info' | 'warning' | 'error' | 'success', module: string, message: string, details?: string) => {
+    const newLog: SystemLog = {
+      id: 'log-' + Date.now(),
+      timestamp: new Date().toLocaleString('pt-BR'),
+      level,
+      module,
+      message,
+      details,
+    };
+    setLogs(prev => [newLog, ...prev]);
+    supabaseService.saveLog(newLog);
+  };
+
+  const addProduct = (productData: Partial<Product>): Product => {
+    const newProduct: Product = {
+      id: 'prod-' + Date.now(),
+      title: productData.title || 'Novo Produto Afiliado',
+      originalPrice: productData.originalPrice || 199.90,
+      price: productData.price || 149.90,
+      discountPercent: productData.discountPercent || 25,
+      rating: productData.rating || 4.8,
+      reviewsCount: productData.reviewsCount || 100,
+      category: productData.category || 'Geral',
+      marketplace: productData.marketplace || 'Amazon',
+      rawUrl: productData.rawUrl || 'https://amazon.com.br',
+      affiliateUrl: productData.affiliateUrl || 'https://amzn.to/example',
+      couponCode: productData.couponCode || '',
+      image: productData.image || 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
+      status: 'ativo',
+      isFavorite: false,
+      isArchived: false,
+      hotScore: Math.floor(Math.random() * 30) + 70,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...productData,
+    };
+
+    setProducts(prev => [newProduct, ...prev]);
+    supabaseService.saveProduct(newProduct);
+    addLog('success', 'Produtos', `Novo produto adicionado: "${newProduct.title}"`);
+    return newProduct;
+  };
+
+  const updateProduct = (id: string, updates: Partial<Product>) => {
+    setProducts(prev => prev.map(p => {
+      if (p.id === id) {
+        const updated = { ...p, ...updates, updatedAt: new Date().toISOString() };
+        supabaseService.saveProduct(updated);
+        return updated;
+      }
+      return p;
+    }));
+  };
+
+  const deleteProduct = (id: string) => {
+    setProducts(prev => prev.filter(p => p.id !== id));
+    supabaseService.deleteProduct(id);
+    addLog('info', 'Produtos', `Produto #${id} removido.`);
+  };
+
+  const toggleFavoriteProduct = (id: string) => {
+    setProducts(prev => prev.map(p => p.id === id ? { ...p, isFavorite: !p.isFavorite } : p));
+  };
+
+  const addQueueItem = (itemData: Partial<QueueItem>) => {
+    const targetQueueId = itemData.queueConfigId || queues[0]?.id || 'queue-1';
+    const newItem: QueueItem = {
+      id: 'item-' + Date.now(),
+      queueConfigId: targetQueueId,
+      productId: itemData.productId || 'prod-1',
+      productTitle: itemData.productTitle || 'Oferta em Destaque',
+      productImage: itemData.productImage || 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
+      price: itemData.price || 99.90,
+      originalPrice: itemData.originalPrice,
+      marketplace: itemData.marketplace || 'Amazon',
+      copyText: itemData.copyText || '🔥 Confira esta oferta incrível!',
+      affiliateUrl: itemData.affiliateUrl || 'https://amzn.to/link',
+      channelIds: itemData.channelIds || ['chan-tg-1'],
+      scheduledFor: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      status: 'pendente',
+      priority: queueItems.filter(i => i.queueConfigId === targetQueueId).length + 1,
+      ...itemData
+    };
+
+    setQueueItems(prev => [...prev, newItem]);
+    supabaseService.saveQueueItem(newItem);
+    
+    // Update queue config counter
+    setQueues(prev => prev.map(q => q.id === targetQueueId ? { ...q, totalPending: q.totalPending + 1 } : q));
+    addLog('info', 'Filas', `Item adicionado à fila: "${newItem.productTitle}"`);
+  };
+
+  const deleteQueueItem = (id: string) => {
+    const item = queueItems.find(i => i.id === id);
+    if (item) {
+      setQueues(prev => prev.map(q => q.id === item.queueConfigId ? { ...q, totalPending: Math.max(0, q.totalPending - 1) } : q));
+    }
+    setQueueItems(prev => prev.filter(i => i.id !== id));
+  };
+
+  const shuffleQueue = (queueConfigId: string) => {
+    setQueueItems(prev => {
+      const otherItems = prev.filter(i => i.queueConfigId !== queueConfigId);
+      const queueSpecific = prev.filter(i => i.queueConfigId === queueConfigId && i.status === 'pendente');
+      
+      // Fisher-Yates shuffle
+      const shuffled = [...queueSpecific];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+
+      // Reassign priorities
+      shuffled.forEach((item, idx) => {
+        item.priority = idx + 1;
+      });
+
+      return [...otherItems, ...shuffled, ...prev.filter(i => i.queueConfigId === queueConfigId && i.status !== 'pendente')];
+    });
+
+    addLog('success', 'Filas', `Fila #${queueConfigId} embaralhada com sucesso.`);
+  };
+
+  const clearSentQueueItems = (queueConfigId: string) => {
+    setQueueItems(prev => prev.filter(i => !(i.queueConfigId === queueConfigId && i.status === 'enviado')));
+    addLog('info', 'Filas', `Itens já enviados da fila #${queueConfigId} foram limpos.`);
+  };
+
+  const toggleQueueStatus = (queueConfigId: string) => {
+    setQueues(prev => prev.map(q => q.id === queueConfigId ? {
+      ...q,
+      status: q.status === 'ativa' ? 'pausada' : 'ativa',
+      nextDeliveryTime: q.status === 'ativa' ? 'Pausada' : 'Em 15 minutos'
+    } : q));
+  };
+
+  const moveQueueItemPriority = (itemId: string, direction: 'up' | 'down') => {
+    setQueueItems(prev => {
+      const index = prev.findIndex(i => i.id === itemId);
+      if (index === -1) return prev;
+      
+      const newItems = [...prev];
+      const targetQueueId = newItems[index].queueConfigId;
+      
+      // Get all pending items in this queue
+      const queuePendingIndices = newItems
+        .map((item, idx) => ({ item, idx }))
+        .filter(({ item }) => item.queueConfigId === targetQueueId && item.status === 'pendente');
+
+      const currentPosInQueue = queuePendingIndices.findIndex(({ idx }) => idx === index);
+      if (currentPosInQueue === -1) return prev;
+
+      if (direction === 'up' && currentPosInQueue > 0) {
+        const idxA = queuePendingIndices[currentPosInQueue].idx;
+        const idxB = queuePendingIndices[currentPosInQueue - 1].idx;
+        [newItems[idxA], newItems[idxB]] = [newItems[idxB], newItems[idxA]];
+      } else if (direction === 'down' && currentPosInQueue < queuePendingIndices.length - 1) {
+        const idxA = queuePendingIndices[currentPosInQueue].idx;
+        const idxB = queuePendingIndices[currentPosInQueue + 1].idx;
+        [newItems[idxA], newItems[idxB]] = [newItems[idxB], newItems[idxA]];
+      }
+
+      return newItems;
+    });
+  };
+
+  const toggleIntegrationStatus = (integrationId: string) => {
+    setIntegrations(prev => prev.map(int => {
+      if (int.id === integrationId) {
+        const newStatus = int.status === 'conectado' ? 'desconectado' : 'conectado';
+        addLog(newStatus === 'conectado' ? 'success' : 'warning', 'Integrações', `Status de ${int.name} alterado para ${newStatus}.`);
+        return { ...int, status: newStatus, lastSync: newStatus === 'conectado' ? 'Conectado agora' : 'Desconectado' };
+      }
+      return int;
+    }));
+  };
+
+  const updateIntegrationConfig = (integrationId: string, tagAfiliado?: string, apiKey?: string) => {
+    setIntegrations(prev => prev.map(int => {
+      if (int.id === integrationId) {
+        return {
+          ...int,
+          tagAfiliado: tagAfiliado !== undefined ? tagAfiliado : int.tagAfiliado,
+          apiKey: apiKey !== undefined ? apiKey : int.apiKey,
+          status: 'conectado',
+          lastSync: 'Configurações salvas'
+        };
+      }
+      return int;
+    }));
+    addLog('success', 'Integrações', `Configurações da integração #${integrationId} atualizadas.`);
+  };
+
+  const generateCopyWithAI = async (params: any): Promise<string> => {
+    try {
+      const res = await fetch('/api/ai/generate-copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      const data = await res.json();
+      if (data.copy) {
+        addLog('info', 'IA Copywriter', `Cópia gerada com sucesso para ${params.productName || 'Oferta'}`);
+        return data.copy;
+      }
+      throw new Error(data.error || 'Erro na IA');
+    } catch (err: any) {
+      console.warn('Fallback local AI generation:', err);
+      return `🔥 *OFERTA ESPECIAL: ${params.productName || 'Produto em Destaque'}* 🔥\n\n` +
+        `De ~R$ ${params.originalPrice || '299,00'}~ por apenas *R$ ${params.price || '149,90'}*!\n` +
+        (params.couponCode ? `🎟️ Cupom: *${params.couponCode}*\n` : '') +
+        `\n👇 Garanta a sua compra com preço promocional:\n[LINK_AFILIADO]`;
+    }
+  };
+
+  const extractOfferFromUrl = async (url: string): Promise<any> => {
+    try {
+      const res = await fetch('/api/ai/extract-offer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ url }),
+      });
+      const data = await res.json();
+      return data;
+    } catch (err) {
+      return {
+        productName: 'Produto Detectado Automaticamente',
+        price: 199.90,
+        originalPrice: 299.90,
+        discountPercent: 33,
+        marketplace: url.includes('shopee') ? 'Shopee' : url.includes('mercadolivre') ? 'Mercado Livre' : 'Amazon',
+        category: 'Geral'
+      };
+    }
+  };
+
+  const convertAffiliateUrl = (url: string, marketplace: string): string => {
+    if (!url) return '';
+    const cleanUrl = url.split('?')[0];
+    const key = marketplace.toLowerCase().replace(/\s+/g, '');
+    const integration = integrations.find(i => i.key === key);
+    const tag = integration?.status === 'conectado' ? integration.tagAfiliado : '';
+
+    if (!tag) return cleanUrl;
+
+    if (key === 'amazon') {
+      return `${cleanUrl}?tag=${tag}`;
+    }
+    if (key === 'mercadolivre') {
+      return `${cleanUrl}?ref=${tag}`;
+    }
+    if (key === 'shopee') {
+      return `${cleanUrl}?sub_id=${tag}`;
+    }
+    if (key === 'aliexpress') {
+      return `${cleanUrl}?aff_id=${tag}`;
+    }
+    return `${cleanUrl}?affiliate=${tag}`;
+  };
+
+  const clearMockData = () => {
+    setProducts([]);
+    setQueueItems([]);
+    setQueues([]);
+    setGroups([]);
+    setCampaigns([]);
+    setAutomations([]);
+    setLandingPages([]);
+    setLeads([]);
+    setLogs([]);
+    setNotifications([]);
+    localStorage.clear();
+  };
+
+  return (
+    <AppContext.Provider
+      value={{
+        activeTab,
+        setActiveTab,
+        isSidebarCollapsed,
+        setIsSidebarCollapsed,
+        products,
+        setProducts,
+        queues,
+        setQueues,
+        queueItems,
+        setQueueItems,
+        integrations,
+        setIntegrations,
+        groups,
+        setGroups,
+        campaigns,
+        automations,
+        templates,
+        landingPages,
+        leads,
+        logs,
+        subscription,
+        notifications,
+        markNotificationRead,
+        clearAllNotifications,
+        clearMockData,
+        convertAffiliateUrl,
+        addProduct,
+        updateProduct,
+        deleteProduct,
+        toggleFavoriteProduct,
+        addQueueItem,
+        deleteQueueItem,
+        shuffleQueue,
+        clearSentQueueItems,
+        toggleQueueStatus,
+        moveQueueItemPriority,
+        toggleIntegrationStatus,
+        updateIntegrationConfig,
+        addLog,
+        generateCopyWithAI,
+        extractOfferFromUrl,
+        isSearchOpen,
+        setIsSearchOpen,
+      }}
+    >
+      {children}
+    </AppContext.Provider>
+  );
+};
+
+export const useApp = () => {
+  const context = useContext(AppContext);
+  if (!context) {
+    throw new Error('useApp must be used within an AppProvider');
+  }
+  return context;
+};
