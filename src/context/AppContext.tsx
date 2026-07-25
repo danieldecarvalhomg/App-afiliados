@@ -1233,7 +1233,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
       tentativas.push(cta);
 
-      if (!isCtaRepeated(cta, prof.ctasGerados)) {
+      if (!isCtaRepeated(cta, prof.ctasGerados || [])) {
         saveCtaToHistory(cta);
         return cta;
       }
@@ -1256,7 +1256,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (/começa(r)? do zero|reinicia(r)?|apaga(r)? tudo|esquece tudo|zera(r)? tudo/.test(t)) return 'reset';
     if (/o que (você|vc) (sabe|aprendeu)|resume(r)?|minhas prefer|perfil atual|o que (você|vc) tem/.test(t)) return 'consultar';
-    if (/gera(r)?|cria(r)?|mostra(r)?|faz um|quero ver|me d[aá]\s*(um|uns)|exemplos de cta/.test(t)) return 'gerar_exemplo';
+    if (/ger[ae](r)?|cri[ae](r)?|mostr[ae](r)?|faz|faze(r)?|quero( ver)?( um)?|me d[aá]|me manda|exib[ie](r)?|exemplo|cta|teste|testar|ver como fica|como ficaria/.test(t)) return 'gerar_exemplo';
     if (/gostei|ficou (bom|ótimo|perfeito)|amei|esse (tá|está) (bom|ótimo)|aprovo/.test(t)) return 'feedback';
     if (/não (gostei|presta|gosto mais)|ficou (ruim|horrível|péssimo|forçado)|esse não/.test(t)) return 'feedback';
     if (/\b(não|nunca|remove(r)?|tira(r)?|esquece(r)?|para de|deixa de|sem)\b/.test(t)) return 'remover';
@@ -1433,23 +1433,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     if (intencao === 'gerar_exemplo') {
-      const contexto: CtaContext = {
-        produto: 'Produto em Destaque',
-        preco: '99,90',
-        preco_original: '149,90',
-        frete_gratis: true
-      };
-      const ctas = [
-        generateCtaFromProfile(contexto),
-        generateCtaFromProfile({ ...contexto, frete_gratis: false, pix: true }),
-        generateCtaFromProfile({ ...contexto, cupom: 'MEGA10' })
-      ];
+      try {
+        const contexto: CtaContext = {
+          produto: 'Produto em Destaque',
+          preco: '99,90',
+          preco_original: '149,90',
+          frete_gratis: true
+        };
+        const ctas = [
+          generateCtaFromProfile(contexto),
+          generateCtaFromProfile({ ...contexto, frete_gratis: false, pix: true }),
+          generateCtaFromProfile({ ...contexto, cupom: 'MEGA10' })
+        ];
 
-      addTrainingMessage({
-        role: 'ai',
-        content: `🧪 *Aqui estão 3 exemplos de CTA no seu estilo atual:*\n\n---\n**Opção 1:**\n${ctas[0]}\n\n---\n**Opção 2:**\n${ctas[1]}\n\n---\n**Opção 3:**\n${ctas[2]}\n\n---\nCurte algum? Diz o número e eu salvo como exemplo bom! Ou me fala o que não gostou para eu ajustar. 👇`,
-        generatedCtas: ctas
-      });
+        addTrainingMessage({
+          role: 'ai',
+          content: `🧪 *Aqui estão 3 exemplos de CTA no seu estilo atual:*\n\n—\n**Opção 1:**\n${ctas[0]}\n\n—\n**Opção 2:**\n${ctas[1]}\n\n—\n**Opção 3:**\n${ctas[2]}\n\n—\nCurte algum? Diz o número e eu salvo como exemplo bom! Ou me fala o que não gostou para eu ajustar. 👇`,
+          generatedCtas: ctas
+        });
+      } catch (err) {
+        addTrainingMessage({
+          role: 'ai',
+          content: '⚠️ Tive um problema ao gerar os exemplos. Tente novamente ou clique no botão "Gerar Exemplos" abaixo do chat.'
+        });
+      }
       return;
     }
 
