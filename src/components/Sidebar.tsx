@@ -64,7 +64,6 @@ export const Sidebar: React.FC = () => {
         { id: 'campanhas', label: 'Campanhas', icon: Megaphone },
         { id: 'automacoes', label: 'Automações & Regras', icon: Zap },
         { id: 'ia', label: 'Gerador IA & Templates', icon: Wand2, badge: 'PRO', badgeColor: 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' },
-        { id: 'monitoramento', label: 'Monitor de Grupos', icon: Bot, badge: 'NOVO', badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' },
         { id: 'landing-pages', label: 'Landing Pages', icon: Globe },
       ]
     },
