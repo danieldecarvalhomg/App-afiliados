@@ -23,17 +23,41 @@ app.get("/api/health", (req, res) => {
 // AI Copywriting & Offer Analyzer API
 app.post("/api/ai/generate-copy", async (req, res) => {
   try {
-    const { productName, price, originalPrice, couponCode, marketplace, tone, keyFeatures, destinationChannel } = req.body;
+    const {
+      productName,
+      price,
+      originalPrice,
+      couponCode,
+      marketplace,
+      tone,
+      keyFeatures,
+      destinationChannel,
+      customTraining
+    } = req.body;
     
     const ai = getGenAI();
     if (!ai) {
-      // Fallback response if GEMINI_API_KEY is not set
-      const fallbackCopy = `🔥 *OFERTA IMPERDÍVEL: ${productName || "Produto em Destaque"}* 🔥\n\n` +
+      const fallbackCopy = `🔥 *OFERTA ESPECIAL: ${productName || "Produto em Destaque"}* 🔥\n\n` +
         `De ~R$ ${originalPrice || "299,00"}~ por apenas *R$ ${price || "149,90"}*!\n` +
         (couponCode ? `🎟️ Cupom Exclusivo: *${couponCode}*\n` : "") +
         `🛒 Garanta o seu antes que acabe o estoque!\n\n` +
         `👇 *Clique para Comprar no ${marketplace || "Marketplace"}:*\n[LINK_AFILIADO_AQUI]`;
       return res.json({ copy: fallbackCopy, source: "template_fallback" });
+    }
+
+    let customPromptSection = "";
+    if (customTraining) {
+      customPromptSection = `
+INSTRUÇÕES ESPECÍFICAS DE TREINAMENTO E ESTILO DO USUÁRIO:
+- Tom de Voz Obrigatório: ${customTraining.tone || tone || "Personalizado"}
+- Palavras/Expressões OBRIGATÓRIAS a utilizar: ${customTraining.mustUseWords || "Nenhuma"}
+- Palavras/Expressões PROIBIDAS (NÃO UTILIZAR DE FORMA ALGUMA): ${customTraining.forbiddenWords || "Nenhuma"}
+- Estilo da Chamada para Ação (CTA) Preferida: ${customTraining.preferredCta || "Padrão"}
+- Exemplo do Estilo Pessoal do Usuário para ESPELHAR EXATAMENTE:
+"""
+${customTraining.exampleCopy || "Nenhum exemplo fornecido."}
+"""
+`;
     }
 
     const prompt = `Você é um Copywriter Especialista em Marketing de Afiliados no Brasil.
@@ -47,15 +71,17 @@ Informações da Oferta:
 - Marketplace: ${marketplace || "Amazon / Shopee / Mercado Livre"}
 - Tom de Voz: ${tone || "Urgente e Atrativo com Emojis"}
 - Detalhes/Destaques: ${keyFeatures || "Melhor custo-benefício do mercado!"}
+${customPromptSection}
 
 Requisitos da Cópia:
 1. Use formatação legível para Telegram e WhatsApp (negrito com *, tachado com ~).
 2. Inclua emojis relevantes e atraentes sem poluir excessivamente.
-3. Adicione uma chamada para ação (CTA) chamativa para o link do afiliado.
-4. Mantenha espaço reservado para [LINK_AFILIADO].
-5. Crie também 3 hashtags estratégicas ao final.
+3. Respeite as palavras obrigatórias e evite estritamente as palavras proibidas pelo usuário.
+4. Adicione a chamada para ação (CTA) personalizada no estilo solicitado.
+5. Mantenha espaço reservado para [LINK_AFILIADO].
+6. Crie também 3 hashtags estratégicas ao final.
 
-Responda APENAS com a cópia final pronta para cópia/disparo.`;
+Responda APENAS com a cópia final pronta para disparo.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",

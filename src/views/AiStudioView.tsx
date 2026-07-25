@@ -29,7 +29,11 @@ import {
   Bot,
   Radio,
   ArrowRight,
-  CheckCircle2
+  CheckCircle2,
+  Brain,
+  MessageSquareQuote,
+  Sliders,
+  AlertOctagon
 } from 'lucide-react';
 
 // ============================================================================
@@ -127,6 +131,51 @@ export const AiStudioView: React.FC = () => {
   );
   const [copied, setCopied] = useState(false);
 
+  // AI Training & Persona State
+  const [isAiTrainingOpen, setIsAiTrainingOpen] = useState(false);
+
+  const [aiTone, setAiTone] = useState(() => {
+    try {
+      const saved = localStorage.getItem('affi_ai_training');
+      if (saved) return JSON.parse(saved).tone || 'Amigável & Descontraído';
+    } catch {}
+    return 'Amigável & Descontraído';
+  });
+
+  const [mustUseWords, setMustUseWords] = useState(() => {
+    try {
+      const saved = localStorage.getItem('affi_ai_training');
+      if (saved) return JSON.parse(saved).mustUseWords || 'Gente!, Achadinho, Corre!';
+    } catch {}
+    return 'Gente!, Achadinho, Corre!';
+  });
+
+  const [forbiddenWords, setForbiddenWords] = useState(() => {
+    try {
+      const saved = localStorage.getItem('affi_ai_training');
+      if (saved) return JSON.parse(saved).forbiddenWords || 'Não perca, Compre já';
+    } catch {}
+    return 'Não perca, Compre já';
+  });
+
+  const [preferredCta, setPreferredCta] = useState(() => {
+    try {
+      const saved = localStorage.getItem('affi_ai_training');
+      if (saved) return JSON.parse(saved).preferredCta || '👉 Resgate o seu no link oficial abaixo:';
+    } catch {}
+    return '👉 Resgate o seu no link oficial abaixo:';
+  });
+
+  const [exampleCopy, setExampleCopy] = useState(() => {
+    try {
+      const saved = localStorage.getItem('affi_ai_training');
+      if (saved) return JSON.parse(saved).exampleCopy || 'Gente, olha que achadinho surreal! Fone Bluetooth com bateria monstra por R$ 99! Corre antes que acabe: [LINK]';
+    } catch {}
+    return 'Gente, olha que achadinho surreal! Fone Bluetooth com bateria monstra por R$ 99! Corre antes que acabe: [LINK]';
+  });
+
+  const [isTrainingSaved, setIsTrainingSaved] = useState(false);
+
   // Template Management States
   const [searchTemplate, setSearchTemplate] = useState('');
   const [isEditorOpen, setIsEditorOpen] = useState(false);
@@ -180,7 +229,7 @@ export const AiStudioView: React.FC = () => {
       group: '🔥 Grupo Ofertas Tech (Telegram)',
       rawText: '🚨 CORRE GENTE!! Fone JBL Tune 520BT com 40% OFF saindo por apenas R$ 189,90 no PIX usando o cupom BEMVINDO20! Frete Grátis Prime disponivel! Compre aqui: https://amzn.to/jbl-520bt-raw',
       extracted: {
-        cta: '🔥 *OFERTA IMPERDÍVEL DETECTADA!*',
+        cta: preferredCta || '🔥 *OFERTA IMPERDÍVEL DETECTADA!*',
         produto: 'Fone JBL Tune 520BT Bluetooth',
         loja: 'Amazon',
         preco: '189.90',
@@ -197,7 +246,7 @@ export const AiStudioView: React.FC = () => {
       group: '📱 Achadinhos VIP (WhatsApp)',
       rawText: '🧡 GEEENTE OLHA ESSE ACHADINHO SHOPEE!! Smartwatch Xiaomi Band 8 saindo por R$ 179,00! Cupom BAND20OFF de R$ 20 OFF na página. Link: https://shopee.com.br/band-8-raw',
       extracted: {
-        cta: '🧡 *ACHADINHO IMPERDÍVEL DA SHOPEE!*',
+        cta: preferredCta || '🧡 *ACHADINHO IMPERDÍVEL DA SHOPEE!*',
         produto: 'Smartwatch Xiaomi Band 8 Tela AMOLED',
         loja: 'Shopee',
         preco: '179.00',
@@ -214,7 +263,7 @@ export const AiStudioView: React.FC = () => {
       group: '⚡ Promoções Relâmpago (Telegram)',
       rawText: '🔥 MENOR PREÇO DO ANO Mercado Livre! Smart TV 55 4K Samsung por R$ 2.399 em até 10x sem juros! Frete grátis para todo Brasil. Link: https://mercadolivre.com.br/tv-55-raw',
       extracted: {
-        cta: '⚡ *OFERTA RELÂMPAGO DO MERCADO LIVRE!*',
+        cta: preferredCta || '⚡ *OFERTA RELÂMPAGO DO MERCADO LIVRE!*',
         produto: 'Smart TV 55 Crystal 4K Samsung',
         loja: 'Mercado Livre',
         preco: '2399.00',
@@ -278,15 +327,33 @@ export const AiStudioView: React.FC = () => {
         originalPrice,
         couponCode,
         marketplace,
-        tone
+        tone: aiTone || tone
       });
       setGeneratedCopy(result);
-      addLog('success', 'Gerador IA', `Cópia gerada com sucesso para "${productName}"`);
+      addLog('success', 'Gerador IA', `Cópia gerada com estilo da IA para "${productName}"`);
     } catch (e) {
       addLog('error', 'Gerador IA', 'Falha ao gerar cópia via IA.');
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleSaveAiTrainingSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trainingObj = {
+      tone: aiTone,
+      mustUseWords,
+      forbiddenWords,
+      preferredCta,
+      exampleCopy
+    };
+    localStorage.setItem('affi_ai_training', JSON.stringify(trainingObj));
+    setIsTrainingSaved(true);
+    addLog('success', 'Treinamento IA', 'Personalidade e estilo da IA atualizados com sucesso!');
+    setTimeout(() => {
+      setIsTrainingSaved(false);
+      setIsAiTrainingOpen(false);
+    }, 1200);
   };
 
   const handleCopyText = () => {
@@ -464,7 +531,7 @@ export const AiStudioView: React.FC = () => {
               Gestão de Templates & Gerador IA
             </h1>
             <p className="text-xs text-slate-400 mt-0.5">
-              Crie modelos padronizados com suporte a variáveis dinâmicas e blocos de lógica condicional.
+              Crie modelos padronizados com suporte a variáveis dinâmicas e treine a IA no seu estilo de copy.
             </p>
           </div>
 
@@ -528,22 +595,38 @@ export const AiStudioView: React.FC = () => {
             {activeTypeTab === 'texto' ? (
               <div className="p-5 rounded-3xl bg-slate-900/90 border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg">
                 <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-emerald-400" />
-                    Gerenciador de Templates de Texto Persuasivo
-                  </h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-sm font-bold text-white flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-emerald-400" />
+                      Gerenciador de Templates & Treinador IA
+                    </h3>
+                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
+                      <Brain className="w-3 h-3 text-amber-400" />
+                      Estilo: "{aiTone}"
+                    </span>
+                  </div>
                   <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
-                    Configure os formatos de mensagem utilizados no envio automático para Telegram e WhatsApp. Insira marcadores como <code className="text-indigo-300">{'{produto}'}</code> e condicionais como <code className="text-emerald-300">[se cupom]</code>.
+                    Configure os formatos de mensagem e treine o tom de voz da IA com suas palavras obrigatórias, frases a evitar e estilo de CTA.
                   </p>
                 </div>
 
-                <button
-                  onClick={() => handleOpenEditor()}
-                  className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all hover:scale-105 shrink-0"
-                >
-                  <Plus className="w-4 h-4" />
-                  + Cadastrar
-                </button>
+                <div className="flex items-center gap-2.5 shrink-0">
+                  <button
+                    onClick={() => setIsAiTrainingOpen(true)}
+                    className="px-4 py-2.5 rounded-2xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 font-bold text-xs flex items-center gap-2 transition-all shadow-lg shadow-purple-600/10 hover:scale-105"
+                  >
+                    <Brain className="w-4 h-4 text-purple-400" />
+                    Treinar IA (Meu Estilo)
+                  </button>
+
+                  <button
+                    onClick={() => handleOpenEditor()}
+                    className="px-5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all hover:scale-105"
+                  >
+                    <Plus className="w-4 h-4" />
+                    + Cadastrar
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="p-8 text-center rounded-3xl bg-slate-900/50 border border-slate-800 text-xs text-slate-400 space-y-2">
@@ -562,7 +645,7 @@ export const AiStudioView: React.FC = () => {
       {selectedTemplateTab === 'templates' && activeTypeTab === 'texto' && (
         <div className="space-y-8">
 
-          {/* NEW SECTION: IA MONITORA DE GRUPOS & ADAPTADOR DE TEMPLATES */}
+          {/* SECTION: IA MONITORA DE GRUPOS & ADAPTADOR DE TEMPLATES */}
           <div className="p-6 rounded-3xl bg-gradient-to-r from-indigo-950/80 via-slate-900 to-purple-950/60 border border-indigo-500/30 space-y-6 shadow-2xl relative overflow-hidden">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
               <div className="space-y-1">
@@ -575,7 +658,7 @@ export const AiStudioView: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-xs text-slate-300">
-                  A IA analisa as postagens dos grupos concorrentes monitorados, extrai os parâmetros e formata automaticamente para o template cadastrado por você no site.
+                  A IA analisa as postagens dos grupos concorrentes monitorados, extrai os parâmetros e formata automaticamente para o seu estilo treinado e template cadastrado.
                 </p>
               </div>
 
@@ -1109,6 +1192,137 @@ De ~R$ {preco_original}~ por
       )}
 
       {/* ==================================================================== */}
+      {/* MODAL: TREINAR IA & PERSONALIZAR ESTILO                              */}
+      {/* ==================================================================== */}
+      {isAiTrainingOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
+          <div className="w-full max-w-2xl rounded-3xl bg-slate-900 border border-purple-500/30 shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150 my-8">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-purple-500/20 text-purple-300 flex items-center justify-center font-bold">
+                  <Brain className="w-4 h-4" />
+                </div>
+                <div>
+                  <h2 className="text-base font-bold text-white">Treinar IA & Personalizar Estilo da Copy</h2>
+                  <p className="text-[11px] text-slate-400">Ensine o Gemini 2.5 Flash a escrever com a sua própria voz e vocabulário.</p>
+                </div>
+              </div>
+              <button onClick={() => setIsAiTrainingOpen(false)} className="p-1 text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveAiTrainingSubmit} className="space-y-4 text-xs">
+              <div>
+                <label className="text-slate-300 block mb-1 font-semibold flex items-center gap-1.5">
+                  <Sliders className="w-3.5 h-3.5 text-purple-400" />
+                  Tom de Voz & Personalidade Principal
+                </label>
+                <select
+                  value={aiTone}
+                  onChange={e => setAiTone(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500 font-medium"
+                >
+                  <option value="Amigável & Descontraído">Amigável & Descontraído (Gente, achadinho, corre!)</option>
+                  <option value="Urgente & Escassez extrema">Urgente & Escassez extrema (Estoque baixo, corre antes que acabe!)</option>
+                  <option value="Direto & Objetivo">Direto & Objetivo (Preço sem enrolação e focado)</option>
+                  <option value="Consultivo & Review Tech">Consultivo & Review Tech (Prós, contras e garantia)</option>
+                  <option value="Divertido com Memes & Emojis">Divertido com Memes & Emojis otimizados</option>
+                </select>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-slate-300 block mb-1 font-semibold flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                    Palavras / Expressões Recomendadas (Obrigatórias)
+                  </label>
+                  <input
+                    type="text"
+                    value={mustUseWords}
+                    onChange={e => setMustUseWords(e.target.value)}
+                    placeholder="Ex: Corre!, Gente!, Achadinho, Garantia"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">Separe por vírgulas as palavras que a IA deve usar.</span>
+                </div>
+
+                <div>
+                  <label className="text-slate-300 block mb-1 font-semibold flex items-center gap-1.5">
+                    <AlertOctagon className="w-3.5 h-3.5 text-rose-400" />
+                    Palavras / Expressões Proibidas (A Evitar)
+                  </label>
+                  <input
+                    type="text"
+                    value={forbiddenWords}
+                    onChange={e => setForbiddenWords(e.target.value)}
+                    placeholder="Ex: Não perca, Compre já, Imperdível"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-rose-500 font-mono text-[11px]"
+                  />
+                  <span className="text-[10px] text-slate-500 mt-1 block">A IA evitará estritamente essas palavras.</span>
+                </div>
+              </div>
+
+              <div>
+                <label className="text-slate-300 block mb-1 font-semibold flex items-center gap-1.5">
+                  <ArrowRight className="w-3.5 h-3.5 text-indigo-400" />
+                  Estilo da Chamada para Ação (CTA Preferida)
+                </label>
+                <input
+                  type="text"
+                  value={preferredCta}
+                  onChange={e => setPreferredCta(e.target.value)}
+                  placeholder="Ex: 👉 Resgate o seu desconto exclusivo no link abaixo:"
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="text-slate-300 block mb-1 font-semibold flex items-center gap-1.5">
+                  <MessageSquareQuote className="w-3.5 h-3.5 text-amber-400" />
+                  Exemplo de Postagem no Seu Estilo (Treinamento Few-Shot)
+                </label>
+                <textarea
+                  rows={4}
+                  value={exampleCopy}
+                  onChange={e => setExampleCopy(e.target.value)}
+                  placeholder="Cole um exemplo de texto ou CTA que você escreveu para a IA espelhar o seu estilo exato..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-purple-500 leading-relaxed"
+                />
+                <span className="text-[10px] text-slate-500 mt-1 block">
+                  A IA analisará a estrutura de frases, emojis e ritmo do seu texto de exemplo.
+                </span>
+              </div>
+
+              {isTrainingSaved && (
+                <div className="p-3.5 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold text-center flex items-center justify-center gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  Treinamento salvo! O Gemini 2.5 agora usará a sua personalidade.
+                </div>
+              )}
+
+              <div className="pt-3 flex justify-end gap-3 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => setIsAiTrainingOpen(false)}
+                  className="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  className="px-6 py-2.5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white text-xs font-bold shadow-lg shadow-purple-600/30 flex items-center gap-2"
+                >
+                  <Brain className="w-4 h-4 text-amber-300" />
+                  Salvar & Treinar IA
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ==================================================================== */}
       {/* 3. EDITOR DE TEMPLATE (MODAL FULL-FEATURED)                           */}
       {/* ==================================================================== */}
       {isEditorOpen && (
@@ -1344,9 +1558,19 @@ Quando não existe
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Controls Column */}
           <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800/80 shadow-xl space-y-5">
-            <div className="flex items-center gap-2 border-b border-slate-800 pb-3">
-              <Sparkles className="w-5 h-5 text-indigo-400" />
-              <h2 className="text-base font-bold text-white">Parâmetros de Geração com Gemini 2.5</h2>
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-5 h-5 text-indigo-400" />
+                <h2 className="text-base font-bold text-white">Parâmetros de Geração com Gemini 2.5</h2>
+              </div>
+
+              <button
+                onClick={() => setIsAiTrainingOpen(true)}
+                className="px-3 py-1.5 rounded-xl bg-purple-600/20 hover:bg-purple-600/30 text-purple-300 border border-purple-500/40 text-[11px] font-bold flex items-center gap-1.5 transition-all"
+              >
+                <Brain className="w-3.5 h-3.5 text-purple-400" />
+                Estilo: {aiTone}
+              </button>
             </div>
 
             <div className="space-y-4">
@@ -1454,7 +1678,7 @@ Quando não existe
                 ) : (
                   <>
                     <Sparkles className="w-4 h-4" />
-                    Gerar Cópia de Alta Conversão com IA
+                    Gerar Cópia de Alta Conversão com IA Treinada
                   </>
                 )}
               </button>

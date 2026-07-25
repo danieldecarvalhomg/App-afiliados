@@ -517,14 +517,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const generateCopyWithAI = async (params: any): Promise<string> => {
     try {
+      let customTraining = null;
+      try {
+        const savedTraining = localStorage.getItem('affi_ai_training');
+        if (savedTraining) customTraining = JSON.parse(savedTraining);
+      } catch (e) {}
+
       const res = await fetch('/api/ai/generate-copy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
+        body: JSON.stringify({ ...params, customTraining }),
       });
       const data = await res.json();
       if (data.copy) {
-        addLog('info', 'IA Copywriter', `Cópia gerada com sucesso para ${params.productName || 'Oferta'}`);
+        addLog('info', 'IA Copywriter', `Cópia gerada com sucesso com estilo da IA para ${params.productName || 'Oferta'}`);
         return data.copy;
       }
       throw new Error(data.error || 'Erro na IA');
