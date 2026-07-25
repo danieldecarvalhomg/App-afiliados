@@ -122,6 +122,7 @@ export const AiStudioView: React.FC = () => {
     addQueueItem,
     addLog,
     generateCopyWithAI,
+    generateCtaWithAI,
     templates,
     addTemplate,
     updateTemplate,
@@ -203,6 +204,16 @@ export const AiStudioView: React.FC = () => {
     return '👉 RESGATE O SEU NO LINK OFICIAL ABAIXO:';
   });
 
+  const [ctaInstructions, setCtaInstructions] = useState(() => {
+    try {
+      const saved = localStorage.getItem('affi_ai_training');
+      if (saved) return JSON.parse(saved).ctaInstructions || 'Crie uma CTA atrativa com emojis e foco no link de afiliado oficial';
+    } catch {}
+    return 'Crie uma CTA atrativa com emojis e foco no link de afiliado oficial';
+  });
+
+  const [isGeneratingCta, setIsGeneratingCta] = useState(false);
+
   const [exampleCopy, setExampleCopy] = useState(() => {
     try {
       const saved = localStorage.getItem('affi_ai_training');
@@ -212,6 +223,27 @@ export const AiStudioView: React.FC = () => {
   });
 
   const [isTrainingSaved, setIsTrainingSaved] = useState(false);
+
+  const handleRegenerateCtaWithAI = async () => {
+    setIsGeneratingCta(true);
+    try {
+      const pickedTone = selectedTones[Math.floor(Math.random() * selectedTones.length)];
+      const newCta = await generateCtaWithAI({
+        tone: pickedTone,
+        ctaInstructions,
+        mustUseWords,
+        forbiddenWords,
+        forceUppercaseCta
+      });
+      const finalCta = forceUppercaseCta ? newCta.toUpperCase() : newCta;
+      setPreferredCta(finalCta);
+      addLog('success', 'IA CTA', `Nova CTA gerada com sucesso pela IA no estilo "${pickedTone}"!`);
+    } catch (e) {
+      addLog('error', 'IA CTA', 'Falha ao regenerar CTA via IA.');
+    } finally {
+      setIsGeneratingCta(false);
+    }
+  };
 
   const handleToggleTone = (t: string) => {
     setSelectedTones(prev => {
@@ -409,11 +441,12 @@ export const AiStudioView: React.FC = () => {
       mustUseWords,
       forbiddenWords,
       preferredCta: finalCta,
+      ctaInstructions,
       exampleCopy
     };
     localStorage.setItem('affi_ai_training', JSON.stringify(trainingObj));
     setIsTrainingSaved(true);
-    addLog('success', 'Treinamento IA', `Personalidade (${selectedTones.length} tons) e CTA em CAIXA ALTA salvos com sucesso!`);
+    addLog('success', 'Treinamento IA', `Instruções de CTA e personalidade da IA salvas com sucesso!`);
     setTimeout(() => {
       setIsTrainingSaved(false);
       setIsAiTrainingOpen(false);
@@ -1357,12 +1390,30 @@ De ~R$ {preco_original}~ por
                 </div>
               </div>
 
-              {/* CTA Input with Uppercase Checkbox */}
+              {/* Instructions for AI CTA Creation */}
+              <div className="space-y-1 border-t border-slate-800/80 pt-3">
+                <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+                  Instruções Específicas para a IA Criar CTAs
+                </label>
+                <textarea
+                  rows={2}
+                  value={ctaInstructions}
+                  onChange={e => setCtaInstructions(e.target.value)}
+                  placeholder="Ex: Use bordões como 'Corre gente!', coloque emojis de fogo, traga tom super entusiasmado e foque no link oficial..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500 leading-relaxed"
+                />
+                <span className="text-[10px] text-slate-500 block">
+                  A IA usará estas instruções específicas para sintetizar chamadas para ação.
+                </span>
+              </div>
+
+              {/* CTA Input with Uppercase Checkbox & Regenerate Button */}
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <label className="text-slate-300 font-semibold flex items-center gap-1.5">
                     <ArrowRight className="w-3.5 h-3.5 text-indigo-400" />
-                    Estilo da Chamada para Ação (CTA Preferida)
+                    Chamada para Ação Gerada (CTA Atual)
                   </label>
                   <label className="flex items-center gap-2 cursor-pointer bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/30">
                     <input
@@ -1381,16 +1432,32 @@ De ~R$ {preco_original}~ por
                   </label>
                 </div>
 
-                <input
-                  type="text"
-                  value={preferredCta}
-                  onChange={e => {
-                    const val = e.target.value;
-                    setPreferredCta(forceUppercaseCta ? val.toUpperCase() : val);
-                  }}
-                  placeholder="Ex: 👉 RESGATE O SEU DESCONTO EXCLUSIVO NO LINK ABAIXO:"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-xs"
-                />
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={preferredCta}
+                    onChange={e => {
+                      const val = e.target.value;
+                      setPreferredCta(forceUppercaseCta ? val.toUpperCase() : val);
+                    }}
+                    placeholder="Ex: 👉 RESGATE O SEU DESCONTO EXCLUSIVO NO LINK ABAIXO:"
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-xs"
+                  />
+
+                  <button
+                    type="button"
+                    onClick={handleRegenerateCtaWithAI}
+                    disabled={isGeneratingCta}
+                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-md transition-all hover:scale-105"
+                  >
+                    {isGeneratingCta ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : (
+                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                    )}
+                    {isGeneratingCta ? 'Gerando...' : 'Regenerar CTA'}
+                  </button>
+                </div>
               </div>
 
               <div>

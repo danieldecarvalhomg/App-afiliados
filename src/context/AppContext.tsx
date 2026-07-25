@@ -93,6 +93,7 @@ interface AppContextType {
   
   // AI helpers
   generateCopyWithAI: (params: any) => Promise<string>;
+  generateCtaWithAI: (params: any) => Promise<string>;
   extractOfferFromUrl: (url: string) => Promise<any>;
   
   // Global Search
@@ -543,6 +544,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const generateCtaWithAI = async (params: any): Promise<string> => {
+    try {
+      const res = await fetch('/api/ai/generate-cta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(params),
+      });
+      const data = await res.json();
+      if (data.cta) {
+        addLog('info', 'IA CTA', 'Nova chamada para ação (CTA) sintetizada com sucesso!');
+        return data.cta;
+      }
+      throw new Error(data.error || 'Erro ao gerar CTA');
+    } catch (err: any) {
+      const fallbackCtas = [
+        "👉 RESGATE O SEU DESCONTO EXCLUSIVO NO LINK ABAIXO:",
+        "🔥 CORRE GALERA! GARANTA O SEU ANTES QUE ACABE O ESTOQUE NO LINK:",
+        "🛍️ CLIQUE AQUI E COMPRE COM MENOR PREÇO DO ANO:",
+        "⚡ DESCONTO ESPECIAL LIBERADO! ACESSE AGORA NO LINK:"
+      ];
+      const picked = fallbackCtas[Math.floor(Math.random() * fallbackCtas.length)];
+      return params.forceUppercaseCta ? picked.toUpperCase() : picked;
+    }
+  };
+
   const extractOfferFromUrl = async (url: string): Promise<any> => {
     try {
       const res = await fetch('/api/ai/extract-offer', {
@@ -651,6 +677,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateIntegrationConfig,
         addLog,
         generateCopyWithAI,
+        generateCtaWithAI,
         extractOfferFromUrl,
         isSearchOpen,
         setIsSearchOpen,

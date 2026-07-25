@@ -106,6 +106,55 @@ Responda APENAS com a cópia final pronta para disparo.`;
   }
 });
 
+// AI Dynamic CTA Generator API
+app.post("/api/ai/generate-cta", async (req, res) => {
+  try {
+    const { tone, ctaInstructions, mustUseWords, forbiddenWords, forceUppercaseCta } = req.body;
+
+    const ai = getGenAI();
+    if (!ai) {
+      const fallbackCtas = [
+        "👉 RESGATE O SEU DESCONTO EXCLUSIVO NO LINK ABAIXO:",
+        "🔥 CORRE GALERA! GARANTA O SEU ANTES QUE ACABE O ESTOQUE NO LINK:",
+        "🛍️ CLIQUE AQUI E COMPRE COM MENOR PREÇO DO ANO:",
+        "⚡ DESCONTO ESPECIAL LIBERADO! ACESSE AGORA NO LINK:"
+      ];
+      const picked = fallbackCtas[Math.floor(Math.random() * fallbackCtas.length)];
+      return res.json({ cta: forceUppercaseCta ? picked.toUpperCase() : picked });
+    }
+
+    const prompt = `Você é um Copywriter Especialista em Marketing de Afiliados no Brasil.
+Crie APENAS uma Chamada para Ação (CTA) em 1 linha curta e impactante para Telegram/WhatsApp.
+
+Orientações de Treinamento:
+- Tom de Voz/Personalidade: ${tone || "Amigável & Descontraído"}
+- Instruções Específicas para a CTA: ${ctaInstructions || "Crie uma CTA atrativa com emojis e foco no link de afiliado."}
+- Palavras/Expressões Recomendadas: ${mustUseWords || "Nenhuma"}
+- Palavras/Expressões Proibidas (NÃO USAR): ${forbiddenWords || "Nenhuma"}
+
+Requisitos:
+- Escreva APENAS a linha de texto da CTA (máximo 15 palavras).
+- Deve terminar indicando o link (ex: "no link abaixo:" ou "no link:").
+${forceUppercaseCta ? "- OBRIGATÓRIO: ESCREVA A CTA TOTALMENTE EM CAIXA ALTA / LETRAS MAIÚSCULAS." : ""}
+- Responda APENAS com o texto da CTA pronta, sem aspas nem explicações adicionais.`;
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: prompt,
+    });
+
+    let generatedText = (response.text || "").trim().replace(/^["']|["']$/g, '');
+    if (forceUppercaseCta) {
+      generatedText = generatedText.toUpperCase();
+    }
+
+    return res.json({ cta: generatedText });
+  } catch (error: any) {
+    console.error("Erro na rota /api/ai/generate-cta:", error);
+    return res.status(500).json({ error: error.message || "Falha ao gerar CTA" });
+  }
+});
+
 // AI Link Converter / Title Auto-Extractor API
 app.post("/api/ai/extract-offer", async (req, res) => {
   try {
