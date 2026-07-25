@@ -132,6 +132,8 @@ interface AppContextType {
   ctaFeedbacks: CtaFeedback[];
   addCtaFeedback: (feedback: Partial<CtaFeedback>) => void;
   sendTrainingMessage: (userText: string) => Promise<void>;
+  openAiApiKey: string;
+  setOpenAiApiKey: (key: string) => void;
 
   // Global Search
   isSearchOpen: boolean;
@@ -188,6 +190,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return [];
     }
   });
+
+  const [openAiApiKey, setOpenAiApiKeyState] = useState<string>(() => {
+    try {
+      return localStorage.getItem('affi_openai_api_key_v1') || '';
+    } catch {
+      return '';
+    }
+  });
+
+  const setOpenAiApiKey = (key: string) => {
+    setOpenAiApiKeyState(key);
+    try {
+      localStorage.setItem('affi_openai_api_key_v1', key);
+    } catch {}
+  };
 
   // Purge legacy demo data from localStorage on load if present
   useEffect(() => {
@@ -1397,10 +1414,44 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Save user message
     addTrainingMessage({ role: 'user', content: userText });
 
+    // Try Real AI API (ChatGPT or Gemini) via server route
+    try {
+      const res = await fetch('/api/ai/chat-training', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userMessage: userText,
+          currentProfile: ctaProfile,
+          history: trainingMessages,
+          userApiKey: openAiApiKey
+        })
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (data && data.reply && data.source !== 'fallback') {
+          if (data.updatedProfile && typeof data.updatedProfile === 'object' && Object.keys(data.updatedProfile).length > 0) {
+            updateCtaProfile(data.updatedProfile, userText);
+          }
+          addTrainingMessage({
+            role: 'ai',
+            content: data.reply,
+            profileChanges: data.updatedProfile || undefined,
+            generatedCtas: data.generatedCtas || undefined
+          });
+          addLog('info', 'IA Chatbot', `Resposta gerada via ${data.source}`);
+          return;
+        }
+      }
+    } catch (apiError) {
+      console.warn('API chat-training fallback:', apiError);
+    }
+
+    // Fallback to local rule engine if API is offline or no key set
     const intencao = detectarIntencao(userText);
 
     // Simulate typing delay
-    await new Promise(r => setTimeout(r, 800 + Math.random() * 600));
+    await new Promise(r => setTimeout(r, 600 + Math.random() * 400));
 
     // Handle each intent
     if (intencao === 'reset') {
@@ -1576,6 +1627,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         ctaFeedbacks,
         addCtaFeedback,
         sendTrainingMessage,
+        openAiApiKey,
+        setOpenAiApiKey,
         isSearchOpen,
         setIsSearchOpen,
       }}

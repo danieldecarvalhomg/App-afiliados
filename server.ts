@@ -120,7 +120,6 @@ Retorne APENAS o JSON válido sem nenhum bloco de markdown ao redor.`;
     return res.json(data);
   } catch (error: any) {
     console.error("Erro ao extrair oferta:", error);
-    // Fallback on parse failure
     return res.json({
       productName: "Produto Automático Afiliado",
       price: 149.90,
@@ -132,6 +131,121 @@ Retorne APENAS o JSON válido sem nenhum bloco de markdown ao redor.`;
       rating: 4.5,
       reviewsCount: 120
     });
+  }
+});
+
+// AI Chatbot Training API (ChatGPT / Gemini integration)
+app.post("/api/ai/chat-training", async (req, res) => {
+  try {
+    const { userMessage, currentProfile, history, userApiKey } = req.body;
+    if (!userMessage) {
+      return res.status(400).json({ error: "Mensagem é obrigatória" });
+    }
+
+    const apiKey = userApiKey || process.env.OPENAI_API_KEY;
+
+    // 1. Try OpenAI ChatGPT if key is available
+    if (apiKey && (apiKey.startsWith("sk-") || userApiKey)) {
+      const systemPrompt = `Você é uma Inteligência Artificial Especialista em Copywriting e Marketing de Afiliados no Brasil.
+Seu papel é conversar amigavelmente com o usuário, entender como ele gosta das suas chamadas para ação (CTAs) para o Telegram/WhatsApp e atualizar o Perfil de Preferências (JSON).
+
+PERFIL DE PREFERÊNCIAS ATUAL DO USUÁRIO:
+${JSON.stringify(currentProfile || {}, null, 2)}
+
+DIRETRIZES DE RESPOSTA:
+1. Responda em Português do Brasil com tom simpático, inteligente e especialista em afiliados.
+2. Analise a mensagem do usuário e determine se ele está:
+   - Adicionando ou alterando preferências (tom: "urgente" | "descontraido" | "formal" | "divertido" | "luxuoso", tamanhoPreferido: "curto" | "medio" | "longo", usaEmoji: boolean, usaCaixaAlta: boolean, emojisPreferidos, palavrasProibidas, palavrasFavoritas).
+   - Pedindo exemplos de CTA.
+   - Fazendo perguntas ou tirando dúvidas sobre marketing de afiliados e copies.
+3. IMPORTANTE: Se o usuário especificou qualquer preferência ou mudança no tom/estilo/regras, inclua no objeto "updatedProfile" APENAS os campos que foram modificados.
+4. Se o usuário pediu para reiniciar ou começar do zero, retorne um "updatedProfile" zerado.
+5. Retorne APENAS um objeto JSON no seguinte formato:
+{
+  "reply": "Texto de resposta conversacional em Markdown formato WhatsApp (*negrito*, _itálico_)",
+  "updatedProfile": null ou objeto com os campos alterados,
+  "generatedCtas": null ou array de 3 CTAs fraseados se o usuário pediu exemplos
+}`;
+
+      const formattedHistory = (history || []).slice(-6).map((h: any) => ({
+        role: h.role === "user" ? "user" : "assistant",
+        content: h.content
+      }));
+
+      const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${apiKey}`
+        },
+        body: JSON.stringify({
+          model: "gpt-4o-mini",
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...formattedHistory,
+            { role: "user", content: userMessage }
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.7
+        })
+      });
+
+      if (openAiRes.ok) {
+        const data = await openAiRes.json();
+        const jsonContent = JSON.parse(data.choices[0]?.message?.content || "{}");
+        return res.json({
+          source: "openai-gpt-4o-mini",
+          reply: jsonContent.reply || "Entendido! Atualizei suas preferências de CTA.",
+          updatedProfile: jsonContent.updatedProfile || null,
+          generatedCtas: jsonContent.generatedCtas || null
+        });
+      } else {
+        const errorText = await openAiRes.text();
+        console.warn("OpenAI API request failed:", errorText);
+      }
+    }
+
+    // 2. Try Gemini 2.5 Flash if GEMINI_API_KEY is available
+    const ai = getGenAI();
+    if (ai) {
+      const prompt = `Você é um Assistente de Copywriting especialista em Marketing de Afiliados.
+Perfil Atual do Usuário: ${JSON.stringify(currentProfile || {})}
+Mensagem do Usuário: "${userMessage}"
+
+Analise a mensagem, responda em tom consultivo e extraia qualquer preferência alterada.
+Retorne um JSON estrito no formato:
+{
+  "reply": "Resposta em markdown",
+  "updatedProfile": null ou objeto com os campos alterados,
+  "generatedCtas": null ou array de 3 CTAs curtos se solicitado
+}
+Retorne APENAS o JSON válido sem blocos de código ao redor.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: prompt,
+      });
+
+      let rawText = response.text || "{}";
+      rawText = rawText.replace(/```json/g, "").replace(/```/g, "").trim();
+      const parsed = JSON.parse(rawText);
+      return res.json({
+        source: "gemini-2.5-flash",
+        reply: parsed.reply || "Entendido! Atualizei seu perfil.",
+        updatedProfile: parsed.updatedProfile || null,
+        generatedCtas: parsed.generatedCtas || null
+      });
+    }
+
+    // 3. Fallback when no API key is available
+    return res.json({
+      source: "fallback",
+      reply: null,
+      updatedProfile: null
+    });
+  } catch (error: any) {
+    console.error("Erro no chat training API:", error);
+    return res.json({ source: "fallback", reply: null, updatedProfile: null });
   }
 });
 

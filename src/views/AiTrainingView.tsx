@@ -15,7 +15,9 @@ import {
   AlertTriangle,
   Zap,
   MessageSquare,
-  Settings
+  Settings,
+  Key,
+  CheckCircle2
 } from 'lucide-react';
 
 // ─── WhatsApp-style markdown renderer (module-level, never recreated) ─────────
@@ -88,6 +90,8 @@ export const AiTrainingView: React.FC = () => {
     trainingMessages,
     sendTrainingMessage,
     addCtaFeedback,
+    openAiApiKey,
+    setOpenAiApiKey,
   } = useApp();
 
   const [inputText, setInputText]           = useState('');
@@ -95,6 +99,8 @@ export const AiTrainingView: React.FC = () => {
   const [mobileTab, setMobileTab]           = useState<'chat' | 'perfil'>('chat');
   const [showJson, setShowJson]             = useState(false);
   const [showReset, setShowReset]           = useState(false);
+  const [showApiKeyModal, setShowApiKeyModal] = useState(false);
+  const [tempKeyInput, setTempKeyInput]     = useState('');
   const [examples, setExamples]             = useState<string[]>([]);
   const [editIdx, setEditIdx]               = useState<number | null>(null);
   const [editText, setEditText]             = useState('');
@@ -176,8 +182,22 @@ export const AiTrainingView: React.FC = () => {
           </p>
         </div>
 
-        {/* Mobile tabs */}
-        <div className="flex lg:hidden items-center gap-1 p-1 rounded-xl bg-slate-900 border border-slate-800 self-start">
+        {/* Header Right Actions */}
+        <div className="flex items-center gap-2 self-start">
+          <button
+            onClick={() => { setTempKeyInput(openAiApiKey); setShowApiKeyModal(true); }}
+            className={`px-3.5 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 border transition-all shadow-md ${
+              openAiApiKey
+                ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
+                : 'bg-gradient-to-r from-violet-600/20 to-indigo-600/20 text-violet-300 border-violet-500/30 hover:border-violet-400'
+            }`}
+          >
+            <Key className="w-3.5 h-3.5" />
+            {openAiApiKey ? '🤖 ChatGPT Conectado' : '🔑 Conectar ChatGPT (API)'}
+          </button>
+
+          {/* Mobile tabs */}
+          <div className="flex lg:hidden items-center gap-1 p-1 rounded-xl bg-slate-900 border border-slate-800">
           {(['chat', 'perfil'] as const).map(tab => (
             <button
               key={tab}
@@ -190,6 +210,7 @@ export const AiTrainingView: React.FC = () => {
               {tab === 'chat' ? 'Chat' : 'Perfil'}
             </button>
           ))}
+          </div>
         </div>
       </div>
 
@@ -505,6 +526,60 @@ export const AiTrainingView: React.FC = () => {
                 className="flex-1 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white text-xs font-bold shadow-md"
               >
                 Reiniciar tudo
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── OpenAI API Key Modal ─────────────────────────────────────────────── */}
+      {showApiKeyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
+          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+              <h2 className="text-base font-bold text-white flex items-center gap-2">
+                <Key className="w-5 h-5 text-violet-400" />
+                API Key do ChatGPT (OpenAI)
+              </h2>
+              <button onClick={() => setShowApiKeyModal(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-300 leading-relaxed">
+              Insira sua chave da OpenAI (<code className="font-mono text-emerald-400">sk-...</code>). Quando configurada, o chat do Treinar minha IA e a geração de cópias usarão o modelo <strong>ChatGPT (GPT-4o-mini)</strong> em tempo real!
+            </p>
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-bold text-slate-400">Chave da API OpenAI</label>
+              <input
+                type="password"
+                value={tempKeyInput}
+                onChange={e => setTempKeyInput(e.target.value)}
+                placeholder="sk-proj-..."
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-violet-500"
+              />
+            </div>
+
+            <p className="text-[10px] text-slate-500 leading-normal">
+              🔒 Sua chave é salva exclusivamente no seu navegador (localStorage) e usada apenas para se comunicar diretamente com as APIs oficiais.
+            </p>
+
+            <div className="flex gap-2 pt-2">
+              {openAiApiKey && (
+                <button
+                  onClick={() => { setOpenAiApiKey(''); setTempKeyInput(''); setShowApiKeyModal(false); }}
+                  className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-bold border border-rose-500/20"
+                >
+                  Remover Chave
+                </button>
+              )}
+              <button
+                onClick={() => { setOpenAiApiKey(tempKeyInput.trim()); setShowApiKeyModal(false); }}
+                className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1.5"
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                Salvar e Conectar
               </button>
             </div>
           </div>
