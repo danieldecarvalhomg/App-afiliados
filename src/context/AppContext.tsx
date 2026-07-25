@@ -560,75 +560,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } catch (err: any) {
       const { tone = '', ctaInstructions = '', mustUseWords = '', forbiddenWords = '', forceUppercaseCta = false } = params;
 
-      let emojis = ['🔥', '🚨', '⚡', '🧡', '🎁', '✨', '🛍️', '👉', '🛒'];
-      if (tone.includes('Amigável')) emojis = ['🧡', '✨', '🥰', '🎁'];
-      else if (tone.includes('Direto')) emojis = ['💰', '🛒', '👉', '🎯'];
-      else if (tone.includes('Consultivo')) emojis = ['⭐', '🛡️', '💎', '📌'];
-      else if (tone.includes('Divertido')) emojis = ['🔥', '🎉', '🤪', '🚀'];
-      else if (tone.includes('Urgente')) emojis = ['🚨', '⚠️', '⚡', '🔥'];
+      const rawInst = (ctaInstructions || '').trim();
+      const instLower = rawInst.toLowerCase();
 
-      const e1 = emojis[Math.floor(Math.random() * emojis.length)];
-      let resultText = '';
-
-      const cleanInst = (ctaInstructions || '').trim();
-
-      if (cleanInst.length > 0) {
-        let text = cleanInst;
-
-        // Clean prompt command verbs (e.g. "diga que", "escreva que", "faça um texto", etc.)
-        text = text.replace(/^(escreva|faça|faca|crie|diga|avisa|avise|manda|peça|peca|quero|foca|foco|use)\s+(que|uma|um|em|para|sobre)?\s+/gi, '');
-        text = text.replace(/^(um|uma|texto|chamada|cta|mensagem|post)\s+(para|sobre|com|de)?\s+/gi, '');
-
-        // Capitalize first letter
-        text = text.charAt(0).toUpperCase() + text.slice(1);
-
-        // If text doesn't indicate link, append link CTA suffix
-        if (!text.toLowerCase().includes('link')) {
-          text = `${text}! COMPRE NO LINK OFICIAL:`;
-        }
-
-        resultText = `${e1} ${text}`;
-      } else {
-        let pool = [
-          'CORRE ANTES QUE ACABE O ESTOQUE NO LINK:',
-          'DESCONTO EXCLUSIVO LIBERADO AGORA NO LINK:',
-          'GARANTA A SUA UNIDADE NO LINK ABAIXO:'
-        ];
-        if (tone.includes('Amigável')) {
-          pool = [
-            'OBA GEEENTE! ACHADINHO INCRÍVEL NO LINK:',
-            'GALERA, DICA DA HORA PRA VOCÊS! RESGATE NO LINK ABAIXO:'
-          ];
-        } else if (tone.includes('Direto')) {
-          pool = [
-            'PREÇO DE CUSTO! COMPRE AGORA ACESSANDO O LINK:',
-            'MENOR PREÇO GARANTIDO DO DIA NO LINK ABAIXO:'
-          ];
-        }
-        resultText = `${e1} ${pool[Math.floor(Math.random() * pool.length)]}`;
+      // 1. Emoji Selection & Position Interpreter
+      let emojiPos: 'start' | 'end' = 'start';
+      if (instLower.includes('no final') || instLower.includes('no fim') || instLower.includes('ao final') || instLower.includes('ao fim')) {
+        emojiPos = 'end';
       }
 
+      let selectedEmoji = '🔥';
+      if (instLower.includes('raio') || instLower.includes('trovão')) selectedEmoji = '⚡';
+      else if (instLower.includes('fogo') || instLower.includes('chama')) selectedEmoji = '🔥';
+      else if (instLower.includes('sirene') || instLower.includes('alerta') || instLower.includes('urgente')) selectedEmoji = '🚨';
+      else if (instLower.includes('coração') || instLower.includes('coracao') || instLower.includes('amor')) selectedEmoji = '🧡';
+      else if (instLower.includes('presente') || instLower.includes('gift')) selectedEmoji = '🎁';
+      else if (tone.includes('Amigável')) selectedEmoji = '🧡';
+      else if (tone.includes('Direto')) selectedEmoji = '💰';
+      else if (tone.includes('Consultivo')) selectedEmoji = '⭐';
+      else if (tone.includes('Divertido')) selectedEmoji = '🚀';
+
+      // 2. Topic & Intent Interpreter
+      let phrase = '';
+
+      const quoteMatches = rawInst.match(/['"“]([^'"”]+)['"”]/g);
+      let extractedQuote = '';
+      if (quoteMatches && quoteMatches.length > 0) {
+        extractedQuote = quoteMatches[Math.floor(Math.random() * quoteMatches.length)].replace(/['"“]/g, '').trim();
+      }
+
+      if (extractedQuote && (instLower.includes('cupom') || instLower.includes('desconto') || instLower.includes('código'))) {
+        phrase = `APLIQUE O CUPOM ${extractedQuote.toUpperCase()} E GARANTA SEU DESCONTO NO LINK OFICIAL:`;
+      } else if (instLower.includes('cupom') || instLower.includes('desconto')) {
+        phrase = `RESGATE SEU CUPOM DE DESCONTO EXCLUSIVO NO LINK ABAIXO:`;
+      } else if (instLower.includes('frete') || instLower.includes('grátis') || instLower.includes('gratis')) {
+        phrase = `GARANTA A SUA UNIDADE COM FRETE GRÁTIS NO LINK ABAIXO:`;
+      } else if (instLower.includes('pix')) {
+        phrase = `APROVEITE O DESCONTO EXCLUSIVO NO PIX ACESSANDO O LINK:`;
+      } else if (instLower.includes('estoque') || instLower.includes('acabe') || instLower.includes('urgente')) {
+        phrase = `CORRE ANTES QUE ACABE O ESTOQUE NO LINK ABAIXO:`;
+      } else if (tone.includes('Amigável')) {
+        phrase = `OBA GEEENTE! OLHA ESSE ACHADINHO SENSACIONAL NO LINK ABAIXO:`;
+      } else if (tone.includes('Direto')) {
+        phrase = `PREÇO DE CUSTO! COMPRE AGORA MESMO NO LINK OFICIAL:`;
+      } else if (tone.includes('Consultivo')) {
+        phrase = `REVIEW TECH: EXCELENTE CUSTO-BENEFÍCIO NO LINK ABAIXO:`;
+      } else if (tone.includes('Divertido')) {
+        phrase = `PREÇO TÃO BAIXO QUE PARECE MEME! COMPRE NO LINK ABAIXO:`;
+      } else {
+        phrase = `DESCONTO EXCLUSIVO LIBERADO! GARANTA O SEU NO LINK ABAIXO:`;
+      }
+
+      // 3. Assemble Emoji Position
+      let fullCta = emojiPos === 'end' ? `${phrase} ${selectedEmoji}` : `${selectedEmoji} ${phrase}`;
+
+      // 4. Inject Must-Use Words
       if (mustUseWords && mustUseWords.trim().length > 0) {
         const wordList = mustUseWords.split(',').map((w: string) => w.trim()).filter(Boolean);
         if (wordList.length > 0) {
           const extraWord = wordList[Math.floor(Math.random() * wordList.length)];
-          if (!resultText.toLowerCase().includes(extraWord.toLowerCase())) {
-            resultText = `${extraWord.toUpperCase()}! ${resultText}`;
+          if (!fullCta.toLowerCase().includes(extraWord.toLowerCase())) {
+            fullCta = emojiPos === 'end' ? `${extraWord.toUpperCase()}! ${fullCta}` : `${selectedEmoji} ${extraWord.toUpperCase()}! ${phrase}`;
           }
         }
       }
 
+      // 5. Filter Forbidden Words
       if (forbiddenWords && forbiddenWords.trim().length > 0) {
-        const forbiddenList = forbiddenWords.split(',').map((w: string) => w.trim().toLowerCase()).filter(Boolean);
+        const forbiddenList = forbiddenWords.split(',').map((w: string) => w.trim()).filter(Boolean);
         forbiddenList.forEach((fw: string) => {
           if (fw) {
             const reg = new RegExp(fw, 'gi');
-            resultText = resultText.replace(reg, '');
+            fullCta = fullCta.replace(reg, '');
           }
         });
       }
 
-      return forceUppercaseCta ? resultText.toUpperCase() : resultText;
+      return forceUppercaseCta ? fullCta.toUpperCase() : fullCta;
     }
   };
 

@@ -108,99 +108,88 @@ Responda APENAS com a cópia final pronta para disparo.`;
   }
 });
 
-// Dynamic Fallback CTA Generator with Strict Directive Fulfiller
+// Smart Rule & Directive Interpreter Engine for CTAs
 function buildDynamicFallbackCta(params: any): string {
   const { tone = '', ctaInstructions = '', mustUseWords = '', forbiddenWords = '', forceUppercaseCta = false } = params;
 
-  let emojis = ['🔥', '🚨', '⚡', '🧡', '🎁', '✨', '🛍️', '👉', '🛒'];
-  if (tone.includes('Amigável')) emojis = ['🧡', '✨', '🥰', '🎁'];
-  else if (tone.includes('Direto')) emojis = ['💰', '🛒', '👉', '🎯'];
-  else if (tone.includes('Consultivo')) emojis = ['⭐', '🛡️', '💎', '📌'];
-  else if (tone.includes('Divertido')) emojis = ['🔥', '🎉', '🤪', '🚀'];
-  else if (tone.includes('Urgente')) emojis = ['🚨', '⚠️', '⚡', '🔥'];
+  const rawInst = (ctaInstructions || '').trim();
+  const instLower = rawInst.toLowerCase();
 
-  const e1 = emojis[Math.floor(Math.random() * emojis.length)];
-  let resultText = '';
-
-  const cleanInst = (ctaInstructions || '').trim();
-
-  if (cleanInst.length > 0) {
-    let text = cleanInst;
-
-    // Clean prompt command verbs (e.g. "diga que", "escreva que", "faça um texto", etc.)
-    text = text.replace(/^(escreva|faça|faca|crie|diga|avisa|avise|manda|peça|peca|quero|foca|foco|use)\s+(que|uma|um|em|para|sobre)?\s+/gi, '');
-    text = text.replace(/^(um|uma|texto|chamada|cta|mensagem|post)\s+(para|sobre|com|de)?\s+/gi, '');
-
-    // Capitalize first letter
-    text = text.charAt(0).toUpperCase() + text.slice(1);
-
-    // If text doesn't indicate link, append link CTA suffix
-    if (!text.toLowerCase().includes('link')) {
-      const suffixes = [
-        'COMPRE NO LINK OFICIAL:',
-        'GARANTA O SEU NO LINK ABAIXO:',
-        'RESGATE O SEU DESCONTO NO LINK:'
-      ];
-      const suff = suffixes[Math.floor(Math.random() * suffixes.length)];
-      text = `${text}! ${suff}`;
-    }
-
-    resultText = `${e1} ${text}`;
-  } else {
-    let pool = [
-      'CORRE ANTES QUE ACABE O ESTOQUE NO LINK:',
-      'DESCONTO EXCLUSIVO LIBERADO AGORA NO LINK:',
-      'GARANTA A SUA UNIDADE NO LINK ABAIXO:'
-    ];
-
-    if (tone.includes('Amigável')) {
-      pool = [
-        'OBA GEEENTE! ACHADINHO INCRÍVEL NO LINK:',
-        'GALERA, DICA DA HORA PRA VOCÊS! RESGATE NO LINK ABAIXO:'
-      ];
-    } else if (tone.includes('Direto')) {
-      pool = [
-        'PREÇO DE CUSTO! COMPRE AGORA ACESSANDO O LINK:',
-        'MENOR PREÇO GARANTIDO DO DIA NO LINK ABAIXO:'
-      ];
-    } else if (tone.includes('Consultivo')) {
-      pool = [
-        'REVIEW TECH: EXCELENTE CUSTO-BENEFÍCIO NO LINK:',
-        'PRODUTO COM GARANTIA E MELHOR PREÇO NO LINK ABAIXO:'
-      ];
-    } else if (tone.includes('Divertido')) {
-      pool = [
-        'PREÇO TÃO BAIXO QUE PARECE MEME! CORRE NO LINK:',
-        'SURREAL DE BARATO! GARANTA O SEU NO LINK ABAIXO:'
-      ];
-    }
-
-    resultText = `${e1} ${pool[Math.floor(Math.random() * pool.length)]}`;
+  // 1. Emoji Selection & Position Interpreter
+  let emojiPos: 'start' | 'end' = 'start';
+  if (instLower.includes('no final') || instLower.includes('no fim') || instLower.includes('ao final') || instLower.includes('ao fim')) {
+    emojiPos = 'end';
   }
 
-  // Inject mustUseWords if specified
+  let selectedEmoji = '🔥';
+  if (instLower.includes('raio') || instLower.includes('trovão')) selectedEmoji = '⚡';
+  else if (instLower.includes('fogo') || instLower.includes('chama')) selectedEmoji = '🔥';
+  else if (instLower.includes('sirene') || instLower.includes('alerta') || instLower.includes('urgente')) selectedEmoji = '🚨';
+  else if (instLower.includes('coração') || instLower.includes('coracao') || instLower.includes('amor')) selectedEmoji = '🧡';
+  else if (instLower.includes('presente') || instLower.includes('gift')) selectedEmoji = '🎁';
+  else if (tone.includes('Amigável')) selectedEmoji = '🧡';
+  else if (tone.includes('Direto')) selectedEmoji = '💰';
+  else if (tone.includes('Consultivo')) selectedEmoji = '⭐';
+  else if (tone.includes('Divertido')) selectedEmoji = '🚀';
+
+  // 2. Topic & Intent Interpreter
+  let phrase = '';
+
+  // Check for explicit quotes like "10gg" or 'VIP20'
+  const quoteMatches = rawInst.match(/['"“]([^'"”]+)['"”]/g);
+  let extractedQuote = '';
+  if (quoteMatches && quoteMatches.length > 0) {
+    extractedQuote = quoteMatches[Math.floor(Math.random() * quoteMatches.length)].replace(/['"“]/g, '').trim();
+  }
+
+  if (extractedQuote && (instLower.includes('cupom') || instLower.includes('desconto') || instLower.includes('código'))) {
+    phrase = `APLIQUE O CUPOM ${extractedQuote.toUpperCase()} E GARANTA SEU DESCONTO NO LINK OFICIAL:`;
+  } else if (instLower.includes('cupom') || instLower.includes('desconto')) {
+    phrase = `RESGATE SEU CUPOM DE DESCONTO EXCLUSIVO NO LINK ABAIXO:`;
+  } else if (instLower.includes('frete') || instLower.includes('grátis') || instLower.includes('gratis')) {
+    phrase = `GARANTA A SUA UNIDADE COM FRETE GRÁTIS NO LINK ABAIXO:`;
+  } else if (instLower.includes('pix')) {
+    phrase = `APROVEITE O DESCONTO EXCLUSIVO NO PIX ACESSANDO O LINK:`;
+  } else if (instLower.includes('estoque') || instLower.includes('acabe') || instLower.includes('urgente')) {
+    phrase = `CORRE ANTES QUE ACABE O ESTOQUE NO LINK ABAIXO:`;
+  } else if (tone.includes('Amigável')) {
+    phrase = `OBA GEEENTE! OLHA ESSE ACHADINHO SENSACIONAL NO LINK ABAIXO:`;
+  } else if (tone.includes('Direto')) {
+    phrase = `PREÇO DE CUSTO! COMPRE AGORA MESMO NO LINK OFICIAL:`;
+  } else if (tone.includes('Consultivo')) {
+    phrase = `REVIEW TECH: EXCELENTE CUSTO-BENEFÍCIO NO LINK ABAIXO:`;
+  } else if (tone.includes('Divertido')) {
+    phrase = `PREÇO TÃO BAIXO QUE PARECE MEME! COMPRE NO LINK ABAIXO:`;
+  } else {
+    phrase = `DESCONTO EXCLUSIVO LIBERADO! GARANTA O SEU NO LINK ABAIXO:`;
+  }
+
+  // 3. Assemble Emoji Position
+  let fullCta = emojiPos === 'end' ? `${phrase} ${selectedEmoji}` : `${selectedEmoji} ${phrase}`;
+
+  // 4. Inject Must-Use Words
   if (mustUseWords && mustUseWords.trim().length > 0) {
     const wordList = mustUseWords.split(',').map((w: string) => w.trim()).filter(Boolean);
     if (wordList.length > 0) {
       const extraWord = wordList[Math.floor(Math.random() * wordList.length)];
-      if (!resultText.toLowerCase().includes(extraWord.toLowerCase())) {
-        resultText = `${extraWord.toUpperCase()}! ${resultText}`;
+      if (!fullCta.toLowerCase().includes(extraWord.toLowerCase())) {
+        fullCta = emojiPos === 'end' ? `${extraWord.toUpperCase()}! ${fullCta}` : `${selectedEmoji} ${extraWord.toUpperCase()}! ${phrase}`;
       }
     }
   }
 
-  // Filter forbiddenWords
+  // 5. Filter Forbidden Words
   if (forbiddenWords && forbiddenWords.trim().length > 0) {
     const forbiddenList = forbiddenWords.split(',').map((w: string) => w.trim().toLowerCase()).filter(Boolean);
     forbiddenList.forEach((fw: string) => {
       if (fw) {
         const reg = new RegExp(fw, 'gi');
-        resultText = resultText.replace(reg, '');
+        fullCta = fullCta.replace(reg, '');
       }
     });
   }
 
-  return forceUppercaseCta ? resultText.toUpperCase() : resultText;
+  return forceUppercaseCta ? fullCta.toUpperCase() : fullCta;
 }
 
 // AI Dynamic CTA Generator API
@@ -216,28 +205,27 @@ app.post("/api/ai/generate-cta", async (req, res) => {
 
     const cleanInst = (ctaInstructions || '').trim();
 
-    const prompt = `Você é um Copywriter Especialista em Marketing de Afiliados no Brasil.
-O usuário digitou a seguinte INSTRUÇÃO / ORDEM DIRETA para a CTA de Telegram/WhatsApp:
-"${cleanInst || "Crie uma chamada atraente com indicação para o link"}"
+    const prompt = `Você é um Copywriter de Inteligência Artificial Especialista em Marketing de Afiliados no Brasil.
 
-SUA TAREFA OBRIGATÓRIA:
-EXECUTE A ORDEM DO USUÁRIO E CRIE A FRASE DA CTA FINAL EM 1 LINHA.
-Se o usuário disse "diga que o cupom 10gg dá desconto", VOCÊ DEVE ESCREVER UMA FRASE DE CTA SOBRE O CUPOM 10GG DANDO DESCONTO!
+REGRAS CRÍTICAS DE INTERPRETAÇÃO DE COMANDOS:
+O usuário forneceu instruções de estilo, regras ou formatação:
+"${cleanInst || "Crie uma CTA atrativa com foco no link oficial"}"
 
-Exemplos de Execução Correta:
-- Ordem do usuário: "diga que o cupom 10gg dá desconto" -> CTA final: "🎟️ APLIQUE O CUPOM 10GG E GARANTA O SEU DESCONTO NO LINK OFICIAL:"
-- Ordem do usuário: "avisa que o frete é grátis" -> CTA final: "🚚 FRETE GRÁTIS LIBERADO! RESGATE O SEU NO LINK ABAIXO:"
-- Ordem do usuário: "estoque acabando" -> CTA final: "🚨 ATENÇÃO: ESTOQUE NO FIM! COMPRE AGORA NO LINK:"
+DIRETRIZES DE INTERPRETAÇÃO:
+1. INTERPRETE O SIGNIFICADO DAS REGRAS ACIMA. NÃO repita os comandos de instrução ("coloque emoji no final", "faça um texto", "diga que...").
+2. Se o usuário pediu "emoji no final", COLOQUE O EMOJI NO FINAL DA FRASE GERADA.
+3. Se o usuário pediu para mencionar um cupom ou código (ex: "10gg"), crie uma frase persuasiva citando o cupom 10gg.
+4. Se o usuário pediu frete grátis, Pix ou urgência, CRIE UMA CTA ORIGINAL FOCADA NESSE BENEFÍCIO.
 
-PERSONALIDADE & TOM DE VOZ: ${tone || "Amigável & Descontraído"}
-PALAVRAS OBRIGATÓRIAS A INCLUIR: ${mustUseWords || "Nenhuma"}
-PALAVRAS PROIBIDAS (NÃO USAR): ${forbiddenWords || "Nenhuma"}
+PARÂMETROS DE ESTILO:
+- Tom de Voz / Personalidade: ${tone || "Amigável & Descontraído"}
+- Palavras Obrigatórias: ${mustUseWords || "Nenhuma"}
+- Palavras Proibidas: ${forbiddenWords || "Nenhuma"}
 
-REGRAS RIGOROSAS:
-1. A CTA DEVE refletir obrigatoriamente e 100% a ORDEM DO USUÁRIO acima.
-2. Mantenha em 1 linha (máximo 15 palavras) terminando com chamada para o link (ex: "no link:" ou "no link abaixo:").
-${forceUppercaseCta ? "3. OBRIGATÓRIO: A CTA DEVE ESTAR TOTALMENTE EM CAIXA ALTA (LETRAS MAIÚSCULAS)." : ""}
-4. Responda APENAS com o texto final da CTA, sem aspas nem explicações adicionais.`;
+REQUISITOS DA SAÍDA:
+- Escreva APENAS 1 frase de CTA (máximo 15 palavras) terminando com chamada para o link (ex: "no link:" ou "no link abaixo:").
+${forceUppercaseCta ? "- OBRIGATÓRIO: ESCREVA A CTA TOTALMENTE EM CAIXA ALTA (LETRAS MAIÚSCULAS)." : ""}
+- Responda APENAS com o texto final da CTA, sem aspas nem explicações adicionais.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
