@@ -26,8 +26,10 @@ import {
   ChevronRight,
   HelpCircle,
   RotateCcw,
-  CheckCircle2,
-  AlertCircle
+  Bot,
+  Radio,
+  ArrowRight,
+  CheckCircle2
 } from 'lucide-react';
 
 // ============================================================================
@@ -159,15 +161,74 @@ export const AiStudioView: React.FC = () => {
     preco_unitario: '99.95',
     preco_recorrencia: '179.90/mês',
     link_site: 'https://meusite.com/promos',
-
-    // Checkboxes for Conditionals
     frete_gratis: true,
     internacional: false,
     pix: true
   });
 
-  // Target template for simulator (defaults to first active template)
   const [simSelectedTemplateId, setSimSelectedTemplateId] = useState<string>('');
+
+  // AI Group Monitor Adapter State
+  const [selectedMonitoredGroup, setSelectedMonitoredGroup] = useState('🔥 Grupo Ofertas Tech (Telegram)');
+  const [selectedTargetTemplateId, setSelectedTargetTemplateId] = useState('');
+  const [isAiAutoAdaptActive, setIsAiAutoAdaptActive] = useState(true);
+  const [sampleIndex, setSampleIndex] = useState(0);
+  const [adaptedCopied, setAdaptedCopied] = useState(false);
+
+  const competitorSamples = [
+    {
+      group: '🔥 Grupo Ofertas Tech (Telegram)',
+      rawText: '🚨 CORRE GENTE!! Fone JBL Tune 520BT com 40% OFF saindo por apenas R$ 189,90 no PIX usando o cupom BEMVINDO20! Frete Grátis Prime disponivel! Compre aqui: https://amzn.to/jbl-520bt-raw',
+      extracted: {
+        cta: '🔥 *OFERTA IMPERDÍVEL DETECTADA!*',
+        produto: 'Fone JBL Tune 520BT Bluetooth',
+        loja: 'Amazon',
+        preco: '189.90',
+        preco_original: '319.90',
+        cupom: 'BEMVINDO20',
+        link: 'https://amzn.to/meu-affiliate-link-jbl',
+        condicoes_pagamento: 'em até 4x sem juros',
+        cupom_desconto: '40% OFF',
+        frete_gratis: true,
+        pix: true
+      }
+    },
+    {
+      group: '📱 Achadinhos VIP (WhatsApp)',
+      rawText: '🧡 GEEENTE OLHA ESSE ACHADINHO SHOPEE!! Smartwatch Xiaomi Band 8 saindo por R$ 179,00! Cupom BAND20OFF de R$ 20 OFF na página. Link: https://shopee.com.br/band-8-raw',
+      extracted: {
+        cta: '🧡 *ACHADINHO IMPERDÍVEL DA SHOPEE!*',
+        produto: 'Smartwatch Xiaomi Band 8 Tela AMOLED',
+        loja: 'Shopee',
+        preco: '179.00',
+        preco_original: '259.00',
+        cupom: 'BAND20OFF',
+        cupom_desconto: 'R$ 20 OFF',
+        link: 'https://shopee.com.br/meu-subid-band8',
+        condicoes_pagamento: '',
+        frete_gratis: true,
+        pix: false
+      }
+    },
+    {
+      group: '⚡ Promoções Relâmpago (Telegram)',
+      rawText: '🔥 MENOR PREÇO DO ANO Mercado Livre! Smart TV 55 4K Samsung por R$ 2.399 em até 10x sem juros! Frete grátis para todo Brasil. Link: https://mercadolivre.com.br/tv-55-raw',
+      extracted: {
+        cta: '⚡ *OFERTA RELÂMPAGO DO MERCADO LIVRE!*',
+        produto: 'Smart TV 55 Crystal 4K Samsung',
+        loja: 'Mercado Livre',
+        preco: '2399.00',
+        preco_original: '3299.00',
+        cupom: '',
+        link: 'https://mercadolivre.com.br/sec-tag-tv55',
+        condicoes_pagamento: 'em até 10x sem juros',
+        frete_gratis: true,
+        pix: true
+      }
+    }
+  ];
+
+  const currentSample = competitorSamples[sampleIndex % competitorSamples.length];
 
   const activeSimTemplate = useMemo(() => {
     if (simSelectedTemplateId) {
@@ -178,13 +239,24 @@ export const AiStudioView: React.FC = () => {
     return defaultTpl ? defaultTpl.content : editorContent;
   }, [simSelectedTemplateId, templates, editorContent]);
 
-  // Compute Simulated Preview Result
+  const activeTargetTemplateContent = useMemo(() => {
+    if (selectedTargetTemplateId) {
+      const found = templates.find(t => t.id === selectedTargetTemplateId);
+      if (found) return found.content;
+    }
+    const defaultTpl = templates.find(t => t.isDefault && t.status === 'ativo') || templates[0];
+    return defaultTpl ? defaultTpl.content : '';
+  }, [selectedTargetTemplateId, templates]);
+
   const simPreviewText = useMemo(() => {
     const rawText = isEditorOpen ? editorContent : activeSimTemplate;
     return processTemplateEngine(rawText, simData);
   }, [isEditorOpen, editorContent, activeSimTemplate, simData]);
 
-  // Handle AI Product Select
+  const aiAdaptedResultText = useMemo(() => {
+    return processTemplateEngine(activeTargetTemplateContent, currentSample.extracted);
+  }, [activeTargetTemplateContent, currentSample]);
+
   const handleProductSelect = (id: string) => {
     setSelectedProductId(id);
     const prod = products.find(p => p.id === id);
@@ -240,7 +312,6 @@ export const AiStudioView: React.FC = () => {
     addLog('success', 'Gerador IA', 'Cópia enviada diretamente para a fila de disparo!');
   };
 
-  // Helper to Insert Placeholder text into Editor Textarea at Cursor
   const insertTokenIntoEditor = (token: string) => {
     const textarea = editorTextareaRef.current;
     if (!textarea) {
@@ -264,7 +335,6 @@ export const AiStudioView: React.FC = () => {
     }, 50);
   };
 
-  // Open Editor for Creating or Editing
   const handleOpenEditor = (template?: CopyTemplate) => {
     if (template) {
       setEditingTemplateId(template.id);
@@ -284,7 +354,6 @@ export const AiStudioView: React.FC = () => {
     setIsEditorOpen(true);
   };
 
-  // Pre-fill Editor with Ready Example
   const handleFillExample = () => {
     setEditorTitle('Oferta com Condicionais de Frete e PIX');
     setEditorStore('Todas as Lojas');
@@ -293,7 +362,6 @@ export const AiStudioView: React.FC = () => {
     );
   };
 
-  // Save/Update Template
   const handleSaveEditorSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editorTitle.trim()) {
@@ -328,14 +396,12 @@ export const AiStudioView: React.FC = () => {
     setIsEditorOpen(false);
   };
 
-  // Delete Template Handler with confirmation
   const handleDeleteTemplate = (id: string, name: string) => {
     if (window.confirm(`Tem certeza que deseja excluir o template "${name}"?`)) {
       deleteTemplate(id);
     }
   };
 
-  // Reset Simulation Form Data
   const handleResetSimulation = () => {
     setSimData({
       cta: '🔥 *OFERTA EXCLUSIVA DO DIA!*',
@@ -357,7 +423,21 @@ export const AiStudioView: React.FC = () => {
     });
   };
 
-  // Group Templates by Store/Category
+  const handleSendAdaptedToQueue = () => {
+    const firstQueue = queues[0];
+    addQueueItem({
+      queueConfigId: firstQueue?.id || 'default',
+      productTitle: currentSample.extracted.produto,
+      productImage: 'https://images.unsplash.com/photo-1505740420928-5e560c06d30e?auto=format&fit=crop&w=600&q=80',
+      price: parseFloat(currentSample.extracted.preco),
+      originalPrice: parseFloat(currentSample.extracted.preco_original),
+      marketplace: currentSample.extracted.loja as any,
+      copyText: aiAdaptedResultText,
+      affiliateUrl: currentSample.extracted.link
+    });
+    addLog('success', 'IA Monitora', `Texto adaptado do ${currentSample.group} enviado direto para a fila!`);
+  };
+
   const storeGroups = ['Todas as Lojas', 'Amazon', 'Mercado Livre', 'Shopee', 'AliExpress'];
 
   const filteredTemplatesList = templates.filter(
@@ -477,10 +557,181 @@ export const AiStudioView: React.FC = () => {
       </div>
 
       {/* ==================================================================== */}
-      {/* TAB: BIBLIOTECA DE TEMPLATES                                          */}
+      {/* TAB: BIBLIOTECA DE TEMPLATES & IA MONITORA                             */}
       {/* ==================================================================== */}
       {selectedTemplateTab === 'templates' && activeTypeTab === 'texto' && (
         <div className="space-y-8">
+
+          {/* NEW SECTION: IA MONITORA DE GRUPOS & ADAPTADOR DE TEMPLATES */}
+          <div className="p-6 rounded-3xl bg-gradient-to-r from-indigo-950/80 via-slate-900 to-purple-950/60 border border-indigo-500/30 space-y-6 shadow-2xl relative overflow-hidden">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800/80 pb-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2.5">
+                  <Bot className="w-6 h-6 text-emerald-400" />
+                  <h2 className="text-base font-extrabold text-white">IA Monitora de Grupos & Adaptador Automático de Templates</h2>
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-ping"></span>
+                    🤖 IA Monitora Ativa
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300">
+                  A IA analisa as postagens dos grupos concorrentes monitorados, extrai os parâmetros e formata automaticamente para o template cadastrado por você no site.
+                </p>
+              </div>
+
+              <button
+                onClick={() => setSampleIndex(prev => prev + 1)}
+                className="px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition-all shrink-0"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Simular Próxima Captura
+              </button>
+            </div>
+
+            {/* Controls Bar for AI Monitor */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-xs">
+              <div>
+                <label className="text-slate-400 block mb-1 font-semibold">Grupo Concorrente Monitorado</label>
+                <select
+                  value={selectedMonitoredGroup}
+                  onChange={e => setSelectedMonitoredGroup(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="🔥 Grupo Ofertas Tech (Telegram)">🔥 Grupo Ofertas Tech (Telegram)</option>
+                  <option value="📱 Achadinhos VIP (WhatsApp)">📱 Achadinhos VIP (WhatsApp)</option>
+                  <option value="⚡ Promoções Relâmpago (Telegram)">⚡ Promoções Relâmpago (Telegram)</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="text-slate-400 block mb-1 font-semibold">Template Cadastrado Alvo</label>
+                <select
+                  value={selectedTargetTemplateId}
+                  onChange={e => setSelectedTargetTemplateId(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-medium text-emerald-400"
+                >
+                  <option value="">-- Usar Template Padrão Ativo --</option>
+                  {templates.map(t => (
+                    <option key={t.id} value={t.id}>
+                      {t.title} ({t.store || 'Geral'}) {t.isDefault ? '[Padrão]' : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="flex items-center pt-5">
+                <label className="flex items-center gap-2.5 cursor-pointer bg-slate-950 px-3.5 py-2 rounded-xl border border-slate-800 w-full">
+                  <input
+                    type="checkbox"
+                    checked={isAiAutoAdaptActive}
+                    onChange={e => setIsAiAutoAdaptActive(e.target.checked)}
+                    className="rounded bg-slate-900 border-slate-800 text-indigo-600 focus:ring-0"
+                  />
+                  <span className="text-xs font-bold text-slate-200">Reescrever postagens neste template ao capturar</span>
+                </label>
+              </div>
+            </div>
+
+            {/* 3-Column Live Conversion Display */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 pt-2">
+              {/* Col 1: Raw Competitor Post */}
+              <div className="lg:col-span-4 p-4 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-2 flex flex-col justify-between">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <span className="text-[10px] font-bold text-rose-400 flex items-center gap-1">
+                      <Radio className="w-3 h-3 animate-pulse" />
+                      Original Capturado do Concorrente
+                    </span>
+                    <span className="text-[9px] text-slate-500 font-mono">Ao Vivo</span>
+                  </div>
+                  <p className="text-[11px] font-mono text-slate-300 leading-relaxed whitespace-pre-wrap">
+                    {currentSample.rawText}
+                  </p>
+                </div>
+                <div className="text-[10px] text-slate-500 pt-2 border-t border-slate-900">
+                  Origem: {currentSample.group}
+                </div>
+              </div>
+
+              {/* Col 2: Extracted Variables by AI */}
+              <div className="lg:col-span-4 p-4 rounded-2xl bg-slate-950 border border-slate-800/80 space-y-2.5">
+                <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                  <span className="text-[10px] font-bold text-amber-400 flex items-center gap-1">
+                    <Sparkles className="w-3 h-3" />
+                    Parâmetros Extraídos pela IA
+                  </span>
+                  <span className="text-[9px] text-emerald-400 font-mono">100% Mapeado</span>
+                </div>
+
+                <div className="space-y-1 text-[11px] font-mono max-h-48 overflow-y-auto">
+                  <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/60">
+                    <span className="text-indigo-300 font-bold">{'{produto}'}</span>
+                    <span className="text-white truncate max-w-[140px]">{currentSample.extracted.produto}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/60">
+                    <span className="text-indigo-300 font-bold">{'{preco}'}</span>
+                    <span className="text-emerald-400 font-bold">R$ {currentSample.extracted.preco}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/60">
+                    <span className="text-indigo-300 font-bold">{'{cupom}'}</span>
+                    <span className="text-amber-300 font-bold">{currentSample.extracted.cupom || 'Nenhum'}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/60">
+                    <span className="text-indigo-300 font-bold">[se frete_gratis]</span>
+                    <span className="text-emerald-400">{currentSample.extracted.frete_gratis ? 'Sim (Verdadeiro)' : 'Não'}</span>
+                  </div>
+                  <div className="flex items-center justify-between p-1.5 rounded-lg bg-slate-900/60">
+                    <span className="text-indigo-300 font-bold">{'{link}'}</span>
+                    <span className="text-slate-400 text-[10px]">Tag Injetada ✓</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Col 3: Adapted Result using User Template */}
+              <div className="lg:col-span-4 p-4 rounded-2xl bg-[#0b141a] border border-emerald-500/30 space-y-3 flex flex-col justify-between shadow-xl">
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between border-b border-emerald-900/40 pb-2">
+                    <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                      Resultado Adaptado ao Seu Template
+                    </span>
+                    <span className="text-[9px] text-indigo-300 font-mono font-bold">Formatado</span>
+                  </div>
+
+                  <div className="p-3 rounded-xl bg-[#005c4b] text-white text-xs font-sans whitespace-pre-wrap leading-relaxed shadow-md">
+                    <div
+                      dangerouslySetInnerHTML={{
+                        __html: formatWhatsAppMarkdown(aiAdaptedResultText)
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-2 border-t border-emerald-900/40">
+                  <button
+                    onClick={() => {
+                      navigator.clipboard.writeText(aiAdaptedResultText);
+                      setAdaptedCopied(true);
+                      setTimeout(() => setAdaptedCopied(false), 2000);
+                    }}
+                    className="py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-[11px] font-semibold border border-slate-700 flex items-center justify-center gap-1 transition-colors"
+                  >
+                    {adaptedCopied ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {adaptedCopied ? 'Copiado!' : 'Copiar'}
+                  </button>
+
+                  <button
+                    onClick={handleSendAdaptedToQueue}
+                    className="py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[11px] font-bold flex items-center justify-center gap-1 shadow-md transition-all"
+                  >
+                    <Send className="w-3 h-3" />
+                    Enviar p/ Fila
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           {/* Search Bar */}
           <div className="relative">
             <Search className="w-4 h-4 text-slate-500 absolute left-4 top-1/2 -translate-y-1/2" />
