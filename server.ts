@@ -134,6 +134,41 @@ Retorne APENAS o JSON válido sem nenhum bloco de markdown ao redor.`;
   }
 });
 
+// OpenAI API Key Validation API
+app.post("/api/ai/validate-key", async (req, res) => {
+  try {
+    const { apiKey } = req.body;
+    if (!apiKey || typeof apiKey !== 'string' || !apiKey.trim()) {
+      return res.status(400).json({ valid: false, error: "Chave de API não informada." });
+    }
+
+    const trimmedKey = apiKey.trim();
+    if (!trimmedKey.startsWith("sk-")) {
+      return res.status(400).json({ valid: false, error: "Formato de chave inválido. As chaves da OpenAI começam com 'sk-'." });
+    }
+
+    const testRes = await fetch("https://api.openai.com/v1/models", {
+      method: "GET",
+      headers: {
+        "Authorization": `Bearer ${trimmedKey}`
+      }
+    });
+
+    if (testRes.status === 200) {
+      return res.json({ valid: true });
+    } else if (testRes.status === 401) {
+      return res.status(401).json({ valid: false, error: "Chave incorreta ou desativada na OpenAI." });
+    } else if (testRes.status === 429) {
+      return res.status(429).json({ valid: false, error: "Sua conta na OpenAI está sem saldo (cota excedida)." });
+    } else {
+      const errText = await testRes.text();
+      return res.status(testRes.status).json({ valid: false, error: `Erro na OpenAI (${testRes.status}): ${errText.slice(0, 100)}` });
+    }
+  } catch (error: any) {
+    return res.status(500).json({ valid: false, error: `Falha de conexão com a OpenAI: ${error.message}` });
+  }
+});
+
 // AI Chatbot Training API (ChatGPT / Gemini integration)
 app.post("/api/ai/chat-training", async (req, res) => {
   try {
@@ -202,6 +237,12 @@ DIRETRIZES DE RESPOSTA:
       } else {
         const errorText = await openAiRes.text();
         console.warn("OpenAI API request failed:", errorText);
+        if (userApiKey) {
+          return res.status(openAiRes.status).json({
+            source: "error",
+            error: `A chave de API da OpenAI falhou (${openAiRes.status}). Verifique seu saldo ou chave.`
+          });
+        }
       }
     }
 

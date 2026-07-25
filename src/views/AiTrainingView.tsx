@@ -17,7 +17,8 @@ import {
   MessageSquare,
   Settings,
   Key,
-  CheckCircle2
+  CheckCircle2,
+  Loader2
 } from 'lucide-react';
 
 // ─── WhatsApp-style markdown renderer (module-level, never recreated) ─────────
@@ -101,12 +102,50 @@ export const AiTrainingView: React.FC = () => {
   const [showReset, setShowReset]           = useState(false);
   const [showApiKeyModal, setShowApiKeyModal] = useState(false);
   const [tempKeyInput, setTempKeyInput]     = useState('');
+  const [isValidatingKey, setIsValidatingKey] = useState(false);
+  const [keyError, setKeyError]               = useState<string | null>(null);
   const [examples, setExamples]             = useState<string[]>([]);
   const [editIdx, setEditIdx]               = useState<number | null>(null);
   const [editText, setEditText]             = useState('');
   const [badIdx, setBadIdx]                 = useState<number | null>(null);
   const [badReason, setBadReason]           = useState('');
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  const handleTestAndSaveKey = async () => {
+    const keyToTest = tempKeyInput.trim();
+    if (!keyToTest) {
+      setKeyError('Por favor, digite a chave da OpenAI.');
+      return;
+    }
+    if (!keyToTest.startsWith('sk-')) {
+      setKeyError('Formato inválido. As chaves da OpenAI começam com "sk-".');
+      return;
+    }
+
+    setIsValidatingKey(true);
+    setKeyError(null);
+
+    try {
+      const res = await fetch('/api/ai/validate-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apiKey: keyToTest })
+      });
+      const data = await res.json();
+
+      if (data.valid) {
+        setOpenAiApiKey(keyToTest);
+        setShowApiKeyModal(false);
+        setKeyError(null);
+      } else {
+        setKeyError(data.error || 'A chave informada é inválida ou está sem saldo na OpenAI.');
+      }
+    } catch (err: any) {
+      setKeyError('Falha ao conectar com o servidor para validar a chave.');
+    } finally {
+      setIsValidatingKey(false);
+    }
+  };
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -185,7 +224,7 @@ export const AiTrainingView: React.FC = () => {
         {/* Header Right Actions */}
         <div className="flex items-center gap-2 self-start">
           <button
-            onClick={() => { setTempKeyInput(openAiApiKey); setShowApiKeyModal(true); }}
+            onClick={() => { setTempKeyInput(openAiApiKey); setKeyError(null); setShowApiKeyModal(true); }}
             className={`px-3.5 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 border transition-all shadow-md ${
               openAiApiKey
                 ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
@@ -547,39 +586,56 @@ export const AiTrainingView: React.FC = () => {
             </div>
 
             <p className="text-xs text-slate-300 leading-relaxed">
-              Insira sua chave da OpenAI (<code className="font-mono text-emerald-400">sk-...</code>). Quando configurada, o chat do Treinar minha IA e a geração de cópias usarão o modelo <strong>ChatGPT (GPT-4o-mini)</strong> em tempo real!
+              Insira sua chave da OpenAI (<code className="font-mono text-emerald-400">sk-...</code>). O sistema validará a chave em tempo real antes de conectar ao <strong>ChatGPT (GPT-4o-mini)</strong>!
             </p>
+
+            {keyError && (
+              <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2 animate-in fade-in duration-150">
+                <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
+                <div className="flex-1 leading-relaxed font-medium">{keyError}</div>
+              </div>
+            )}
 
             <div className="space-y-1">
               <label className="text-[11px] font-bold text-slate-400">Chave da API OpenAI</label>
               <input
                 type="password"
                 value={tempKeyInput}
-                onChange={e => setTempKeyInput(e.target.value)}
+                onChange={e => { setTempKeyInput(e.target.value); setKeyError(null); }}
                 placeholder="sk-proj-..."
                 className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-violet-500"
               />
             </div>
 
             <p className="text-[10px] text-slate-500 leading-normal">
-              🔒 Sua chave é salva exclusivamente no seu navegador (localStorage) e usada apenas para se comunicar diretamente com as APIs oficiais.
+              🔒 Sua chave é salva exclusivamente no seu navegador (localStorage) e usada apenas para se comunicar diretamente com a API oficial da OpenAI.
             </p>
 
             <div className="flex gap-2 pt-2">
               {openAiApiKey && (
                 <button
-                  onClick={() => { setOpenAiApiKey(''); setTempKeyInput(''); setShowApiKeyModal(false); }}
+                  onClick={() => { setOpenAiApiKey(''); setTempKeyInput(''); setKeyError(null); setShowApiKeyModal(false); }}
                   className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-bold border border-rose-500/20"
                 >
                   Remover Chave
                 </button>
               )}
               <button
-                onClick={() => { setOpenAiApiKey(tempKeyInput.trim()); setShowApiKeyModal(false); }}
-                className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1.5"
+                onClick={handleTestAndSaveKey}
+                disabled={isValidatingKey}
+                className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1.5 transition-all"
               >
-                <CheckCircle2 className="w-4 h-4" />
-                Salvar e Conectar
+                {isValidatingKey ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    Validando chave na OpenAI...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    Testar e Conectar
+                  </>
+                )}
               </button>
             </div>
           </div>
