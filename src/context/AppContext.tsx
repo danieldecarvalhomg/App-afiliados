@@ -558,14 +558,23 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       throw new Error(data.error || 'Erro ao gerar CTA');
     } catch (err: any) {
-      const fallbackCtas = [
-        "👉 RESGATE O SEU DESCONTO EXCLUSIVO NO LINK ABAIXO:",
-        "🔥 CORRE GALERA! GARANTA O SEU ANTES QUE ACABE O ESTOQUE NO LINK:",
-        "🛍️ CLIQUE AQUI E COMPRE COM MENOR PREÇO DO ANO:",
-        "⚡ DESCONTO ESPECIAL LIBERADO! ACESSE AGORA NO LINK:"
+      const emojis = ['🔥', '🚨', '🧡', '⚡', '🎁', '✨', '🛍️', '👉', '🛒'];
+      const e = emojis[Math.floor(Math.random() * emojis.length)];
+      const phrases = [
+        'GARANTA SEU DESCONTO EXCLUSIVO NO LINK:',
+        'COMPRE AGORA MESMO COM MENOR PREÇO DO ANO:',
+        'OFERTA IMPERDÍVEL DISPONÍVEL NO LINK ABAIXO:',
+        'CORRE ANTES QUE ACABE O ESTOQUE NO LINK:',
+        'RESGATE SEU CUPOM EXCLUSIVO NO LINK:'
       ];
-      const picked = fallbackCtas[Math.floor(Math.random() * fallbackCtas.length)];
-      return params.forceUppercaseCta ? picked.toUpperCase() : picked;
+      let customTag = '';
+      if (params.mustUseWords) {
+        const words = params.mustUseWords.split(',').filter(Boolean);
+        if (words.length > 0) customTag = words[Math.floor(Math.random() * words.length)].trim();
+      }
+      const pickedPhrase = phrases[Math.floor(Math.random() * phrases.length)];
+      let finalCta = customTag ? `${e} ${customTag}! ${pickedPhrase}` : `${e} ${pickedPhrase}`;
+      return params.forceUppercaseCta ? finalCta.toUpperCase() : finalCta;
     }
   };
 

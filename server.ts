@@ -106,6 +106,77 @@ Responda APENAS com a cópia final pronta para disparo.`;
   }
 });
 
+// Dynamic Fallback CTA Generator
+function buildDynamicFallbackCta(params: any): string {
+  const { tone = '', ctaInstructions = '', mustUseWords = '', forbiddenWords = '', forceUppercaseCta = false } = params;
+
+  const emojis = ['🔥', '🚨', '🧡', '⚡', '🎁', '✨', '🛍️', '👉', '🛒', '📢', '💎'];
+  const e1 = emojis[Math.floor(Math.random() * emojis.length)];
+
+  let intros = [
+    'OBA GEEENTE! ACHADINHO SENSACIONAL NO AR',
+    'CORRE GALERA! MENOR PREÇO DO ANO GARANTIDO',
+    'DESCONTO EXCLUSIVO LIBERADO AGORA',
+    'OFERTA IMPERDÍVEL DETECTADA COM SUCESSO',
+    'ESTOQUE LIMITADO! GARANTA O SEU JÁ',
+    'OPORTUNIDADE ÚNICA DISPONÍVEL NO LINK',
+    'PREÇO SURREAL DE BARATO PRA VOCÊ'
+  ];
+
+  if (tone.includes('Amigável')) {
+    intros = ['OBA GEEENTE! ACHADINHO SENSACIONAL', 'GALERA! OLHA ESSE DESCONTO INCRÍVEL', 'DICA DA HORA PRA VOCÊS'];
+  } else if (tone.includes('Urgente')) {
+    intros = ['CORRE ANTES QUE ACABE O ESTOQUE', 'ÚLTIMAS UNIDADES NESSE PREÇO', 'ALERTA DE PREÇO BAIXO DEMAIS'];
+  } else if (tone.includes('Direto')) {
+    intros = ['DESCONTO APLICADO NO LINK', 'MENOR PREÇO GARANTIDO DO DIA', 'COMPRE COM DESCONTO AQUI'];
+  } else if (tone.includes('Divertido')) {
+    intros = ['CORRE ANTES QUE O ESTOQUE SUMA', 'PREÇO TÃO BAIXO QUE PARECE MEME', 'ACHADINHO SURREAL DO DIA'];
+  }
+
+  const pickedIntro = intros[Math.floor(Math.random() * intros.length)];
+
+  const endings = [
+    'CLIQUE AQUI E GARANTA O SEU NO LINK:',
+    'ACESSE AGORA NO LINK OFICIAL ABAIXO:',
+    'RESGATE O SEU DESCONTO EXCLUSIVO NO LINK:',
+    'GARANTA A SUA UNIDADE NO LINK ABAIXO:',
+    'APROVEITE A PROMOÇÃO NO LINK OFICIAL:'
+  ];
+  const pickedEnding = endings[Math.floor(Math.random() * endings.length)];
+
+  let customWords = '';
+  if (mustUseWords && mustUseWords.trim().length > 0) {
+    const wordList = mustUseWords.split(',').map((w: string) => w.trim()).filter(Boolean);
+    if (wordList.length > 0) {
+      customWords = wordList[Math.floor(Math.random() * wordList.length)];
+    }
+  }
+
+  let resultCta = '';
+  if (customWords) {
+    resultCta = `${e1} ${customWords.toUpperCase()}! ${pickedEnding}`;
+  } else if (ctaInstructions && ctaInstructions.trim().length > 0) {
+    const cleanInst = ctaInstructions.replace(/[^\w\sà-úÀ-Ú]/gi, '').trim();
+    const parts = cleanInst.split(/\s+/).filter(Boolean);
+    const shortPhrase = parts.slice(0, 4).join(' ');
+    resultCta = `${e1} ${shortPhrase.toUpperCase()}! ${pickedEnding}`;
+  } else {
+    resultCta = `${e1} ${pickedIntro}! ${pickedEnding}`;
+  }
+
+  if (forbiddenWords && forbiddenWords.trim().length > 0) {
+    const forbiddenList = forbiddenWords.split(',').map((w: string) => w.trim().toLowerCase()).filter(Boolean);
+    forbiddenList.forEach((fw: string) => {
+      if (fw) {
+        const reg = new RegExp(fw, 'gi');
+        resultCta = resultCta.replace(reg, '');
+      }
+    });
+  }
+
+  return forceUppercaseCta ? resultCta.toUpperCase() : resultCta;
+}
+
 // AI Dynamic CTA Generator API
 app.post("/api/ai/generate-cta", async (req, res) => {
   try {
@@ -113,34 +184,34 @@ app.post("/api/ai/generate-cta", async (req, res) => {
 
     const ai = getGenAI();
     if (!ai) {
-      const fallbackCtas = [
-        "👉 RESGATE O SEU DESCONTO EXCLUSIVO NO LINK ABAIXO:",
-        "🔥 CORRE GALERA! GARANTA O SEU ANTES QUE ACABE O ESTOQUE NO LINK:",
-        "🛍️ CLIQUE AQUI E COMPRE COM MENOR PREÇO DO ANO:",
-        "⚡ DESCONTO ESPECIAL LIBERADO! ACESSE AGORA NO LINK:"
-      ];
-      const picked = fallbackCtas[Math.floor(Math.random() * fallbackCtas.length)];
-      return res.json({ cta: forceUppercaseCta ? picked.toUpperCase() : picked });
+      const fallbackCta = buildDynamicFallbackCta(req.body);
+      return res.json({ cta: fallbackCta });
     }
 
-    const prompt = `Você é um Copywriter Especialista em Marketing de Afiliados no Brasil.
-Crie APENAS uma Chamada para Ação (CTA) em 1 linha curta e impactante para Telegram/WhatsApp.
+    const prompt = `Você é um Copywriter de elite em Marketing de Afiliados no Brasil.
+Sintetize UMA NOVA E ÚNICA Chamada para Ação (CTA) em 1 linha curta e impactante para Telegram/WhatsApp.
 
-Orientações de Treinamento:
-- Tom de Voz/Personalidade: ${tone || "Amigável & Descontraído"}
-- Instruções Específicas para a CTA: ${ctaInstructions || "Crie uma CTA atrativa com emojis e foco no link de afiliado."}
-- Palavras/Expressões Recomendadas: ${mustUseWords || "Nenhuma"}
-- Palavras/Expressões Proibidas (NÃO USAR): ${forbiddenWords || "Nenhuma"}
+Parâmetros de Treinamento:
+- Personalidade/Tom de Voz: ${tone || "Amigável & Descontraído"}
+- Instruções Específicas do Usuário para a CTA: "${ctaInstructions || "Crie uma CTA atrativa com emojis e foco no link oficial"}"
+- Palavras/Expressões OBRIGATÓRIAS a incluir: ${mustUseWords || "Nenhuma"}
+- Palavras/Expressões PROIBIDAS (NÃO USAR DE FORMA ALGUMA): ${forbiddenWords || "Nenhuma"}
 
-Requisitos:
-- Escreva APENAS a linha de texto da CTA (máximo 15 palavras).
-- Deve terminar indicando o link (ex: "no link abaixo:" ou "no link:").
-${forceUppercaseCta ? "- OBRIGATÓRIO: ESCREVA A CTA TOTALMENTE EM CAIXA ALTA / LETRAS MAIÚSCULAS." : ""}
-- Responda APENAS com o texto da CTA pronta, sem aspas nem explicações adicionais.`;
+Regras Estritas:
+1. NUNCA repita a mesma CTA. Crie algo totalmente novo, dinâmico e variado.
+2. Respeite fielmente as instruções fornecidas pelo usuário.
+3. Mantenha em no máximo 12 a 15 palavras.
+4. Deve terminar indicando o link (ex: "no link abaixo:" ou "no link:").
+${forceUppercaseCta ? "5. OBRIGATÓRIO: A CTA DEVE ESTAR TOTALMENTE EM CAIXA ALTA / LETRAS MAIÚSCULAS." : ""}
+6. Responda APENAS com o texto da CTA pronta, sem aspas nem explicações adicionais.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
+      config: {
+        temperature: 1.0,
+        topP: 0.95
+      }
     });
 
     let generatedText = (response.text || "").trim().replace(/^["']|["']$/g, '');
@@ -151,7 +222,8 @@ ${forceUppercaseCta ? "- OBRIGATÓRIO: ESCREVA A CTA TOTALMENTE EM CAIXA ALTA / 
     return res.json({ cta: generatedText });
   } catch (error: any) {
     console.error("Erro na rota /api/ai/generate-cta:", error);
-    return res.status(500).json({ error: error.message || "Falha ao gerar CTA" });
+    const fallbackCta = buildDynamicFallbackCta(req.body);
+    return res.json({ cta: fallbackCta });
   }
 });
 
