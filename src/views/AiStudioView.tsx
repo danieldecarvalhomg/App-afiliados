@@ -420,7 +420,11 @@ export const AiStudioView: React.FC = () => {
         marketplace,
         tone: pickedTone || tone,
         forceUppercaseCta,
-        preferredCta: activeCta
+        preferredCta: activeCta,
+        ctaInstructions,
+        mustUseWords,
+        forbiddenWords,
+        exampleCopy
       });
       setGeneratedCopy(result);
       addLog('success', 'Gerador IA', `Cópia gerada com sucesso para "${productName}"`);

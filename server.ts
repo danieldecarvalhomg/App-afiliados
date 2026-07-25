@@ -60,6 +60,7 @@ app.post("/api/ai/generate-copy", async (req, res) => {
       customPromptSection = `
 INSTRUÇÕES ESPECÍFICAS DE TREINAMENTO E ESTILO DO USUÁRIO:
 - Tom de Voz Aplicado: ${activeTone}
+- Instruções Específicas do Usuário para a CTA / Chamada: "${customTraining.ctaInstructions || "Sem instruções específicas"}"
 - Palavras/Expressões OBRIGATÓRIAS a utilizar: ${customTraining.mustUseWords || "Nenhuma"}
 - Palavras/Expressões PROIBIDAS (NÃO UTILIZAR DE FORMA ALGUMA): ${customTraining.forbiddenWords || "Nenhuma"}
 - Estilo da Chamada para Ação (CTA): ${ctaText} ${customTraining.forceUppercaseCta ? "(ATENÇÃO: A CTA DEVE ESTAR TOTALMENTE EM CAIXA ALTA / LETRAS MAIÚSCULAS)" : ""}
@@ -86,10 +87,11 @@ ${customPromptSection}
 Requisitos da Cópia:
 1. Use formatação legível para Telegram e WhatsApp (negrito com *, tachado com ~).
 2. Inclua emojis relevantes e atraentes sem poluir excessivamente.
-3. Respeite as palavras obrigatórias e evite estritamente as palavras proibidas pelo usuário.
-4. Adicione a chamada para ação (CTA) personalizada no estilo solicitado.
-5. Mantenha espaço reservado para [LINK_AFILIADO].
-6. Crie também 3 hashtags estratégicas ao final.
+3. Obedeça rigorosamente às Instruções Específicas do Usuário para a CTA e ao tom de voz.
+4. Respeite as palavras obrigatórias e evite estritamente as palavras proibidas pelo usuário.
+5. Adicione a chamada para ação (CTA) personalizada no estilo solicitado.
+6. Mantenha espaço reservado para [LINK_AFILIADO].
+7. Crie também 3 hashtags estratégicas ao final.
 
 Responda APENAS com a cópia final pronta para disparo.`;
 
@@ -106,79 +108,105 @@ Responda APENAS com a cópia final pronta para disparo.`;
   }
 });
 
-// Dynamic Fallback CTA Generator
+// Dynamic Fallback CTA Generator with NLP Intent Parser
 function buildDynamicFallbackCta(params: any): string {
   const { tone = '', ctaInstructions = '', mustUseWords = '', forbiddenWords = '', forceUppercaseCta = false } = params;
 
-  const emojis = ['🔥', '🚨', '🧡', '⚡', '🎁', '✨', '🛍️', '👉', '🛒', '📢', '💎'];
+  const emojis = ['🔥', '🚨', '🧡', '⚡', '🎁', '✨', '🛍️', '👉', '🛒', '📢', '💎', '🚀'];
   const e1 = emojis[Math.floor(Math.random() * emojis.length)];
 
-  let baseText = '';
+  let generatedPhrase = '';
+  const textLower = (ctaInstructions + ' ' + tone + ' ' + mustUseWords).toLowerCase();
 
-  // 1. If user provided explicit ctaInstructions, transform the user's instructions into the main CTA sentence!
-  if (ctaInstructions && ctaInstructions.trim().length > 0) {
-    let cleanText = ctaInstructions.trim();
-    // Ensure it ends with link reference if not already containing link indicator
-    if (!cleanText.toLowerCase().includes('link')) {
-      const linkEndings = ['no link abaixo:', 'acessando o link:', 'no link oficial:'];
-      const end = linkEndings[Math.floor(Math.random() * linkEndings.length)];
-      cleanText = `${cleanText} ${end}`;
-    }
-    baseText = `${e1} ${cleanText}`;
-  } else {
-    let intros = [
-      'CORRE GALERA! MENOR PREÇO DO ANO GARANTIDO',
-      'DESCONTO EXCLUSIVO LIBERADO AGORA',
-      'OFERTA IMPERDÍVEL DETECTADA COM SUCESSO',
-      'ESTOQUE LIMITADO! GARANTA O SEU JÁ',
-      'OPORTUNIDADE ÚNICA DISPONÍVEL NO LINK',
-      'PREÇO SURREAL DE BARATO PRA VOCÊ'
-    ];
-
-    if (tone.includes('Amigável')) {
-      intros = ['OBA GEEENTE! ACHADINHO SENSACIONAL', 'GALERA! OLHA ESSE DESCONTO INCRÍVEL', 'DICA DA HORA PRA VOCÊS'];
-    } else if (tone.includes('Urgente')) {
-      intros = ['CORRE ANTES QUE ACABE O ESTOQUE', 'ÚLTIMAS UNIDADES NESSE PREÇO', 'ALERTA DE PREÇO BAIXO DEMAIS'];
-    } else if (tone.includes('Direto')) {
-      intros = ['DESCONTO APLICADO NO LINK', 'MENOR PREÇO GARANTIDO DO DIA', 'COMPRE COM DESCONTO AQUI'];
-    } else if (tone.includes('Divertido')) {
-      intros = ['CORRE ANTES QUE O ESTOQUE SUMA', 'PREÇO TÃO BAIXO QUE PARECE MEME', 'ACHADINHO SURREAL DO DIA'];
-    }
-
-    const pickedIntro = intros[Math.floor(Math.random() * intros.length)];
-    const endings = [
-      'CLIQUE AQUI E GARANTA O SEU NO LINK:',
-      'ACESSE AGORA NO LINK OFICIAL ABAIXO:',
-      'RESGATE O SEU DESCONTO EXCLUSIVO NO LINK:',
-      'GARANTA A SUA UNIDADE NO LINK ABAIXO:'
-    ];
-    const pickedEnding = endings[Math.floor(Math.random() * endings.length)];
-    baseText = `${e1} ${pickedIntro}! ${pickedEnding}`;
+  // Extract explicit quotes if user typed e.g. "Corre gente!" or 'Garantia VIP'
+  const quotesMatch = ctaInstructions.match(/['"“]([^'"”]+)['"”]/g);
+  let extractedQuote = '';
+  if (quotesMatch && quotesMatch.length > 0) {
+    extractedQuote = quotesMatch[Math.floor(Math.random() * quotesMatch.length)].replace(/['"“]/g, '').trim();
   }
 
-  // 2. Inject mustUseWords if specified
+  if (extractedQuote) {
+    generatedPhrase = `${extractedQuote.toUpperCase()}! GARANTA O SEU NO LINK`;
+  } else if (textLower.includes('frete') || textLower.includes('grátis') || textLower.includes('gratis')) {
+    const freteCtas = [
+      'APROVEITE O FRETE GRÁTIS E COMPRE NO LINK:',
+      'GARANTA COM FRETE GRÁTIS DISPONÍVEL NO LINK:',
+      'COMPRE AGORA COM FRETE GRÁTIS NO LINK ABAIXO:'
+    ];
+    generatedPhrase = freteCtas[Math.floor(Math.random() * freteCtas.length)];
+  } else if (textLower.includes('cupom') || textLower.includes('desconto')) {
+    const cupomCtas = [
+      'RESGATE SEU CUPOM DE DESCONTO EXCLUSIVO NO LINK:',
+      'USE O CUPOM E COMPRE COM MAIOR DESCONTO NO LINK:',
+      'APLIQUE O DESCONTO E GARANTA O SEU NO LINK ABAIXO:'
+    ];
+    generatedPhrase = cupomCtas[Math.floor(Math.random() * cupomCtas.length)];
+  } else if (textLower.includes('estoque') || textLower.includes('acabe') || textLower.includes('urgente')) {
+    const urgenteCtas = [
+      'CORRE ANTES QUE ACABE O ESTOQUE NO LINK:',
+      'ÚLTIMAS UNIDADES NESSE PREÇO NO LINK ABAIXO:',
+      'GARANTA O SEU ANTES QUE ESGOTE NO LINK:'
+    ];
+    generatedPhrase = urgenteCtas[Math.floor(Math.random() * urgenteCtas.length)];
+  } else if (textLower.includes('amigável') || textLower.includes('amigavel') || textLower.includes('gente')) {
+    const amigavelCtas = [
+      'OBA GEEENTE! CORRE PRA GARANTIR O SEU NO LINK:',
+      'GALERA, OLHA ESSE ACHADINHO SENSACIONAL NO LINK:',
+      'DICA DA HORA PRA VOCÊS! RESGATE NO LINK ABAIXO:'
+    ];
+    generatedPhrase = amigavelCtas[Math.floor(Math.random() * amigavelCtas.length)];
+  } else if (textLower.includes('pix')) {
+    const pixCtas = [
+      'GARANTA MAIS DESCONTO NO PIX ACESSANDO O LINK:',
+      'APROVEITE O DESCONTO EXCLUSIVO NO PIX NO LINK ABAIXO:'
+    ];
+    generatedPhrase = pixCtas[Math.floor(Math.random() * pixCtas.length)];
+  } else if (ctaInstructions && ctaInstructions.trim().length > 0) {
+    // Transform user's instructions into the main CTA text
+    let cleanText = ctaInstructions.trim();
+    if (!cleanText.toLowerCase().includes('link')) {
+      cleanText = `${cleanText} no link abaixo:`;
+    }
+    generatedPhrase = cleanText;
+  } else {
+    const generalCtas = [
+      'CORRE GALERA! COMPRE COM MAIOR DESCONTO NO LINK:',
+      'RESGATE O SEU DESCONTO EXCLUSIVO ACESSANDO O LINK:',
+      'GARANTA A SUA UNIDADE COM PREÇO ESPECIAL NO LINK:',
+      'CLIQUE AQUI E COMPRE COM MELHOR PREÇO DO ANO NO LINK:'
+    ];
+    generatedPhrase = generalCtas[Math.floor(Math.random() * generalCtas.length)];
+  }
+
+  // Inject mustUseWords if specified
   if (mustUseWords && mustUseWords.trim().length > 0) {
     const wordList = mustUseWords.split(',').map((w: string) => w.trim()).filter(Boolean);
     if (wordList.length > 0) {
       const extraWord = wordList[Math.floor(Math.random() * wordList.length)];
-      if (!baseText.toLowerCase().includes(extraWord.toLowerCase())) {
-        baseText = `${extraWord.toUpperCase()}! ${baseText}`;
+      if (!generatedPhrase.toLowerCase().includes(extraWord.toLowerCase())) {
+        generatedPhrase = `${extraWord.toUpperCase()}! ${generatedPhrase}`;
       }
     }
   }
 
-  // 3. Remove forbiddenWords
+  let fullResult = `${e1} ${generatedPhrase}`;
+
+  // Filter forbiddenWords
   if (forbiddenWords && forbiddenWords.trim().length > 0) {
     const forbiddenList = forbiddenWords.split(',').map((w: string) => w.trim().toLowerCase()).filter(Boolean);
     forbiddenList.forEach((fw: string) => {
       if (fw) {
         const reg = new RegExp(fw, 'gi');
-        baseText = baseText.replace(reg, '');
+        fullResult = fullResult.replace(reg, '');
       }
     });
   }
 
-  return forceUppercaseCta ? baseText.toUpperCase() : baseText;
+  if (!fullResult.toLowerCase().includes('link')) {
+    fullResult = `${fullResult.trim()} no link abaixo:`;
+  }
+
+  return forceUppercaseCta ? fullResult.toUpperCase() : fullResult;
 }
 
 // AI Dynamic CTA Generator API
