@@ -132,15 +132,39 @@ export const AiStudioView: React.FC = () => {
   const [copied, setCopied] = useState(false);
 
   // AI Training & Persona State
-  const [isAiTrainingOpen, setIsAiTrainingOpen] = useState(false);
+  const availablePersonalities = [
+    'Amigável & Descontraído (Gente, achadinho, corre!)',
+    'Urgente & Escassez extrema (Estoque baixo, corre antes que acabe!)',
+    'Direto & Objetivo (Preço sem enrolação e focado)',
+    'Consultivo & Review Tech (Prós, contras e garantia)',
+    'Divertido com Memes & Emojis otimizados'
+  ];
 
-  const [aiTone, setAiTone] = useState(() => {
+  const [selectedPersonalities, setSelectedPersonalities] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('affi_ai_training');
-      if (saved) return JSON.parse(saved).tone || 'Amigável & Descontraído';
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed.personalities)) return parsed.personalities;
+        if (parsed.tone) return [parsed.tone];
+      }
     } catch {}
-    return 'Amigável & Descontraído';
+    return ['Amigável & Descontraído (Gente, achadinho, corre!)'];
   });
+
+  const [ctaUppercase, setCtaUppercase] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('affi_ai_training');
+      if (saved) return !!JSON.parse(saved).ctaUppercase;
+    } catch {}
+    return false;
+  });
+
+  const aiTone = useMemo(() => {
+    if (selectedPersonalities.length === 0) return 'Personalizado';
+    if (selectedPersonalities.length === availablePersonalities.length) return 'Todas as Personalidades';
+    return selectedPersonalities.map(p => p.split(' (')[0]).join(', ');
+  }, [selectedPersonalities]);
 
   const [mustUseWords, setMustUseWords] = useState(() => {
     try {
@@ -161,9 +185,9 @@ export const AiStudioView: React.FC = () => {
   const [preferredCta, setPreferredCta] = useState(() => {
     try {
       const saved = localStorage.getItem('affi_ai_training');
-      if (saved) return JSON.parse(saved).preferredCta || '👉 Resgate o seu no link oficial abaixo:';
+      if (saved) return JSON.parse(saved).preferredCta || '👉 RESGATE O SEU NO LINK OFICIAL ABAIXO:';
     } catch {}
-    return '👉 Resgate o seu no link oficial abaixo:';
+    return '👉 RESGATE O SEU NO LINK OFICIAL ABAIXO:';
   });
 
   const [exampleCopy, setExampleCopy] = useState(() => {
@@ -175,6 +199,41 @@ export const AiStudioView: React.FC = () => {
   });
 
   const [isTrainingSaved, setIsTrainingSaved] = useState(false);
+
+  const togglePersonality = (p: string) => {
+    setSelectedPersonalities(prev =>
+      prev.includes(p) ? prev.filter(item => item !== p) : [...prev, p]
+    );
+  };
+
+  const handleSelectAllPersonalities = () => {
+    setSelectedPersonalities([...availablePersonalities]);
+  };
+
+  const handleClearPersonalities = () => {
+    setSelectedPersonalities([]);
+  };
+
+  const handleSaveAiTrainingSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalCta = ctaUppercase ? preferredCta.toUpperCase() : preferredCta;
+    const trainingObj = {
+      tone: aiTone,
+      personalities: selectedPersonalities,
+      mustUseWords,
+      forbiddenWords,
+      preferredCta: finalCta,
+      ctaUppercase,
+      exampleCopy
+    };
+    localStorage.setItem('affi_ai_training', JSON.stringify(trainingObj));
+    setIsTrainingSaved(true);
+    addLog('success', 'Treinamento IA', 'Personalidades e estilo de CTA em CAIXA ALTA atualizados com sucesso!');
+    setTimeout(() => {
+      setIsTrainingSaved(false);
+      setIsAiTrainingOpen(false);
+    }, 1200);
+  };
 
   // Template Management States
   const [searchTemplate, setSearchTemplate] = useState('');
@@ -1213,22 +1272,56 @@ De ~R$ {preco_original}~ por
             </div>
 
             <form onSubmit={handleSaveAiTrainingSubmit} className="space-y-4 text-xs">
-              <div>
-                <label className="text-slate-300 block mb-1 font-semibold flex items-center gap-1.5">
-                  <Sliders className="w-3.5 h-3.5 text-purple-400" />
-                  Tom de Voz & Personalidade Principal
-                </label>
-                <select
-                  value={aiTone}
-                  onChange={e => setAiTone(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-purple-500 font-medium"
-                >
-                  <option value="Amigável & Descontraído">Amigável & Descontraído (Gente, achadinho, corre!)</option>
-                  <option value="Urgente & Escassez extrema">Urgente & Escassez extrema (Estoque baixo, corre antes que acabe!)</option>
-                  <option value="Direto & Objetivo">Direto & Objetivo (Preço sem enrolação e focado)</option>
-                  <option value="Consultivo & Review Tech">Consultivo & Review Tech (Prós, contras e garantia)</option>
-                  <option value="Divertido com Memes & Emojis">Divertido com Memes & Emojis otimizados</option>
-                </select>
+              {/* Multi-select Personalities */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-purple-400" />
+                    Personalidades & Tom de Voz da IA (Selecione Múltiplas ou Todas)
+                  </label>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleSelectAllPersonalities}
+                      className="text-[10px] text-purple-400 hover:text-purple-300 font-bold underline"
+                    >
+                      Selecionar Todas
+                    </button>
+                    <span className="text-slate-700">•</span>
+                    <button
+                      type="button"
+                      onClick={handleClearPersonalities}
+                      className="text-[10px] text-slate-400 hover:text-slate-300 underline"
+                    >
+                      Limpar
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 rounded-2xl bg-slate-950 border border-slate-800 max-h-48 overflow-y-auto">
+                  {availablePersonalities.map(item => {
+                    const isSelected = selectedPersonalities.includes(item);
+                    return (
+                      <label
+                        key={item}
+                        onClick={() => togglePersonality(item)}
+                        className={`p-2.5 rounded-xl border text-xs font-medium cursor-pointer transition-all flex items-center gap-2.5 ${
+                          isSelected
+                            ? 'bg-purple-600/20 border-purple-500/50 text-purple-200 shadow-sm'
+                            : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
+                        }`}
+                      >
+                        <input
+                          type="checkbox"
+                          checked={isSelected}
+                          onChange={() => {}}
+                          className="rounded bg-slate-950 border-slate-700 text-purple-600 focus:ring-0 shrink-0"
+                        />
+                        <span className="leading-snug text-[11px]">{item}</span>
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1264,16 +1357,37 @@ De ~R$ {preco_original}~ por
               </div>
 
               <div>
-                <label className="text-slate-300 block mb-1 font-semibold flex items-center gap-1.5">
-                  <ArrowRight className="w-3.5 h-3.5 text-indigo-400" />
-                  Estilo da Chamada para Ação (CTA Preferida)
-                </label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-slate-300 font-semibold flex items-center gap-1.5">
+                    <ArrowRight className="w-3.5 h-3.5 text-indigo-400" />
+                    Estilo da Chamada para Ação (CTA Preferida)
+                  </label>
+                  <label className="flex items-center gap-1.5 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={ctaUppercase}
+                      onChange={e => {
+                        const checked = e.target.checked;
+                        setCtaUppercase(checked);
+                        if (checked && preferredCta) {
+                          setPreferredCta(prev => prev.toUpperCase());
+                        }
+                      }}
+                      className="rounded bg-slate-950 border-slate-800 text-amber-500 focus:ring-0"
+                    />
+                    <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">
+                      Gerar CTA em CAIXA ALTA
+                    </span>
+                  </label>
+                </div>
                 <input
                   type="text"
                   value={preferredCta}
-                  onChange={e => setPreferredCta(e.target.value)}
-                  placeholder="Ex: 👉 Resgate o seu desconto exclusivo no link abaixo:"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500"
+                  onChange={e => setPreferredCta(ctaUppercase ? e.target.value.toUpperCase() : e.target.value)}
+                  placeholder="Ex: 👉 RESGATE O SEU DESCONTO EXCLUSIVO NO LINK ABAIXO:"
+                  className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500 ${
+                    ctaUppercase ? 'uppercase font-bold tracking-wide text-amber-300' : ''
+                  }`}
                 />
               </div>
 

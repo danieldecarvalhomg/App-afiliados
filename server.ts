@@ -47,12 +47,13 @@ app.post("/api/ai/generate-copy", async (req, res) => {
 
     let customPromptSection = "";
     if (customTraining) {
+      const ctaUpperRule = customTraining.ctaUppercase ? " (MANTENHA A CTA 100% EM CAIXA ALTA/LETRAS MAIÚSCULAS!)" : "";
       customPromptSection = `
 INSTRUÇÕES ESPECÍFICAS DE TREINAMENTO E ESTILO DO USUÁRIO:
-- Tom de Voz Obrigatório: ${customTraining.tone || tone || "Personalizado"}
+- Tom de Voz Obrigatório (Múltiplas Personalidades): ${customTraining.tone || tone || "Personalizado"}
 - Palavras/Expressões OBRIGATÓRIAS a utilizar: ${customTraining.mustUseWords || "Nenhuma"}
 - Palavras/Expressões PROIBIDAS (NÃO UTILIZAR DE FORMA ALGUMA): ${customTraining.forbiddenWords || "Nenhuma"}
-- Estilo da Chamada para Ação (CTA) Preferida: ${customTraining.preferredCta || "Padrão"}
+- Estilo da Chamada para Ação (CTA) Preferida: ${customTraining.preferredCta || "Padrão"}${ctaUpperRule}
 - Exemplo do Estilo Pessoal do Usuário para ESPELHAR EXATAMENTE:
 """
 ${customTraining.exampleCopy || "Nenhum exemplo fornecido."}
