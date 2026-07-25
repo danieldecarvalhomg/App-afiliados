@@ -71,8 +71,8 @@ ${customTraining.exampleCopy || "Nenhum exemplo fornecido."}
 `;
     }
 
-    const prompt = `Você é um Copywriter Especialista em Marketing de Afiliados no Brasil.
-Crie uma cópia altamente persuasiva para publicar no ${destinationChannel || "Telegram e WhatsApp"}.
+    const prompt = `Você é um Copywriter Especialista em Marketing de Afiliados no Brasil com capacidade ilimitada de adaptação.
+Crie uma cópia altamente persuasiva e 100% personalizada para publicar no ${destinationChannel || "Telegram e WhatsApp"}.
 
 Informações da Oferta:
 - Produto: ${productName || "Oferta Especial"}
@@ -84,20 +84,23 @@ Informações da Oferta:
 - Detalhes/Destaques: ${keyFeatures || "Melhor custo-benefício do mercado!"}
 ${customPromptSection}
 
-Requisitos da Cópia:
-1. Use formatação legível para Telegram e WhatsApp (negrito com *, tachado com ~).
-2. Inclua emojis relevantes e atraentes sem poluir excessivamente.
-3. Obedeça rigorosamente às Instruções Específicas do Usuário para a CTA e ao tom de voz.
-4. Respeite as palavras obrigatórias e evite estritamente as palavras proibidas pelo usuário.
-5. Adicione a chamada para ação (CTA) personalizada no estilo solicitado.
-6. Mantenha espaço reservado para [LINK_AFILIADO].
-7. Crie também 3 hashtags estratégicas ao final.
+DIRETRIZES DE DESTRAVAMENTO E LIBERDADE DA IA:
+1. ADAPTAÇÃO TOTAL AO ESTILO DO USUÁRIO: Siga 100% o tom de voz, estilo, bordões, instruções de CTA e regras de formatação especificadas pelo usuário.
+2. SEM LIMITES RÍGIDOS DE TAMANHO: Crie uma cópia fluida, persuasiva e completa na extensão ideal (curta, média ou longa) de acordo com o pedido do usuário.
+3. ESTILIZAÇÃO PARA REDES: Use formatação legível para Telegram e WhatsApp (negrito com *, tachado com ~).
+4. EMOJIS E FORMATAÇÃO: Aplique emojis de forma estratégica e alinhada ao tom de voz.
+5. RESPEITO A REGRAS: Aplique rigorosamente as palavras obrigatórias e NUNCA utilize as palavras proibidas.
+6. LINK AFILIADO: Mantenha espaço reservado para [LINK_AFILIADO].
 
 Responda APENAS com a cópia final pronta para disparo.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
       contents: prompt,
+      config: {
+        temperature: 1.0,
+        topP: 0.95
+      }
     });
 
     const generatedText = response.text || "Erro ao gerar cópia.";
