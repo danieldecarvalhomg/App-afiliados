@@ -174,3 +174,60 @@ export interface SubscriptionPlan {
   iaGenerationsLimit: number;
   iaGenerationsUsed: number;
 }
+
+export interface GroupRules {
+  mandatoryKeywords: string[];
+  forbiddenKeywords: string[];
+  minPrice?: number;
+  maxPrice?: number;
+  enableOCR: boolean;
+  maxPerHour: number;
+  dedupHours: number;
+  autoApproveConfidence: number;
+}
+
+export interface MonitoredGroup {
+  id: string;
+  name: string;
+  platform: 'WhatsApp' | 'Telegram';
+  externalIdOrUrl: string;
+  linkedStore: 'Todas as Lojas' | 'Amazon' | 'Mercado Livre' | 'Shopee' | 'AliExpress' | string;
+  status: 'ativo' | 'pausado';
+  capturedCount: number;
+  approvedCount: number;
+  lastActivity: string;
+  rules: GroupRules;
+}
+
+export interface ExtractedDataJSON {
+  produto: string;
+  loja: string;
+  preco: string;
+  preco_original: string | null;
+  cupom: string | null;
+  cupom_desconto: string | null;
+  cupom_link: string | null;
+  link: string;
+  condicoes_pagamento: string | null;
+  preco_unitario: string | null;
+  preco_recorrencia: string | null;
+  frete_gratis: boolean;
+  internacional: boolean;
+  pix: boolean;
+  confianca: number;
+}
+
+export interface CapturedMessage {
+  id: string;
+  groupId: string;
+  groupName: string;
+  platform: 'WhatsApp' | 'Telegram';
+  rawContent: string;
+  imageUrl?: string;
+  extractedJson: ExtractedDataJSON | null;
+  confidence: number;
+  status: 'Pendente' | 'Aprovada' | 'Rejeitada' | 'Falhou na extração';
+  templateUsedId?: string;
+  finalText?: string;
+  createdAt: string;
+}

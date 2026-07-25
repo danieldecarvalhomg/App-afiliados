@@ -215,3 +215,78 @@ export const INITIAL_SUBSCRIPTION: SubscriptionPlan = {
     'Rastreamento avançado de cliques e comissões'
   ]
 };
+
+export const INITIAL_MONITORED_GROUPS: MonitoredGroup[] = [
+  {
+    id: 'grp-1',
+    name: 'Radar de Ofertas Tech (Telegram)',
+    platform: 'Telegram',
+    externalIdOrUrl: 'https://t.me/radar_ofertas_br',
+    linkedStore: 'Todas as Lojas',
+    status: 'ativo',
+    capturedCount: 12,
+    approvedCount: 9,
+    lastActivity: 'Há 5 min',
+    rules: {
+      mandatoryKeywords: [],
+      forbiddenKeywords: ['esgotado', 'vazio'],
+      minPrice: 10,
+      enableOCR: true,
+      maxPerHour: 30,
+      dedupHours: 12,
+      autoApproveConfidence: 0.7
+    }
+  },
+  {
+    id: 'grp-2',
+    name: 'Achados da Shopee VIP (WhatsApp)',
+    platform: 'WhatsApp',
+    externalIdOrUrl: 'https://chat.whatsapp.com/achados-shopee-vip',
+    linkedStore: 'Shopee',
+    status: 'ativo',
+    capturedCount: 8,
+    approvedCount: 7,
+    lastActivity: 'Há 18 min',
+    rules: {
+      mandatoryKeywords: [],
+      forbiddenKeywords: [],
+      minPrice: 5,
+      enableOCR: true,
+      maxPerHour: 20,
+      dedupHours: 24,
+      autoApproveConfidence: 0.65
+    }
+  }
+];
+
+export const INITIAL_CAPTURED_MESSAGES: CapturedMessage[] = [
+  {
+    id: 'cap-1',
+    groupId: 'grp-1',
+    groupName: 'Radar de Ofertas Tech (Telegram)',
+    platform: 'Telegram',
+    rawContent: '🔥 GENTE CORRE! Air Fryer Philips Walita 4.1L De R$ 499 por apenas R$ 279,90 no PIX com frete grátis! Usar cupom WALITA10 https://amzn.to/airfryer-deal',
+    extractedJson: {
+      produto: 'Air Fryer Philips Walita 4.1L',
+      loja: 'Amazon',
+      preco: '279.90',
+      preco_original: '499.00',
+      cupom: 'WALITA10',
+      cupom_desconto: '10% OFF',
+      cupom_link: null,
+      link: 'https://amzn.to/airfryer-deal',
+      condicoes_pagamento: 'no PIX com desconto',
+      preco_unitario: null,
+      preco_recorrencia: null,
+      frete_gratis: true,
+      internacional: false,
+      pix: true,
+      confianca: 0.94
+    },
+    confidence: 0.94,
+    status: 'Pendente',
+    templateUsedId: 'tpl-2',
+    finalText: `🚨 *OFERTA ESPECIAL AMAZON*\n\n*Air Fryer Philips Walita 4.1L*\n\nDe ~R$ 499.00~ por\nPor apenas: *R$ 279.90*\n📦 Frete Grátis Prime!\n\n👇 Garanta antes que acabe:\nhttps://amzn.to/airfryer-deal`,
+    createdAt: 'Há 5 min'
+  }
+];

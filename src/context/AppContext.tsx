@@ -11,7 +11,10 @@ import {
   CopyTemplate,
   LandingPageItem,
   SystemLog,
-  SubscriptionPlan
+  SubscriptionPlan,
+  MonitoredGroup,
+  CapturedMessage,
+  ExtractedDataJSON
 } from '../types';
 import {
   INITIAL_PRODUCTS,
@@ -25,7 +28,9 @@ import {
   INITIAL_LANDING_PAGES,
   INITIAL_LEADS,
   INITIAL_LOGS,
-  INITIAL_SUBSCRIPTION
+  INITIAL_SUBSCRIPTION,
+  INITIAL_MONITORED_GROUPS,
+  INITIAL_CAPTURED_MESSAGES
 } from '../data/mockData';
 import { supabaseService } from '../services/supabaseService';
 import { checkSupabaseConnection } from '../lib/supabase';
@@ -63,6 +68,22 @@ interface AppContextType {
   deleteTemplate: (id: string) => void;
   setDefaultTemplate: (id: string) => void;
   toggleTemplateStatus: (id: string) => void;
+
+  // Group Monitoring System
+  monitoredGroups: MonitoredGroup[];
+  setMonitoredGroups: React.Dispatch<React.SetStateAction<MonitoredGroup[]>>;
+  addMonitoredGroup: (data: Partial<MonitoredGroup>) => MonitoredGroup;
+  updateMonitoredGroup: (id: string, updates: Partial<MonitoredGroup>) => void;
+  deleteMonitoredGroup: (id: string) => void;
+  toggleMonitoredGroupStatus: (id: string) => void;
+
+  capturedMessages: CapturedMessage[];
+  setCapturedMessages: React.Dispatch<React.SetStateAction<CapturedMessage[]>>;
+  addCapturedMessage: (msgData: Partial<CapturedMessage>) => CapturedMessage;
+  approveCapturedMessage: (id: string, editedData?: Partial<ExtractedDataJSON>) => void;
+  rejectCapturedMessage: (id: string) => void;
+  processCapturedMessageAI: (rawText: string, groupId: string, imageUrl?: string) => Promise<CapturedMessage>;
+
   landingPages: LandingPageItem[];
   leads: CRMLead[];
   logs: SystemLog[];
@@ -194,6 +215,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return INITIAL_TEMPLATES;
     }
   });
+  const [monitoredGroups, setMonitoredGroups] = useState<MonitoredGroup[]>(() => {
+    try {
+      const saved = localStorage.getItem('affi_monitored_groups_v1');
+      return saved ? JSON.parse(saved) : INITIAL_MONITORED_GROUPS;
+    } catch {
+      return INITIAL_MONITORED_GROUPS;
+    }
+  });
+
+  const [capturedMessages, setCapturedMessages] = useState<CapturedMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('affi_captured_messages_v1');
+      return saved ? JSON.parse(saved) : INITIAL_CAPTURED_MESSAGES;
+    } catch {
+      return INITIAL_CAPTURED_MESSAGES;
+    }
+  });
+
   const [landingPages, setLandingPages] = useState<LandingPageItem[]>([]);
   const [leads, setLeads] = useState<CRMLead[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
@@ -236,6 +275,253 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem('affi_integrations', JSON.stringify(integrations));
   }, [integrations]);
+
+  useEffect(() => {
+    localStorage.setItem('affi_templates_v2', JSON.stringify(templates));
+  }, [templates]);
+
+  useEffect(() => {
+    localStorage.setItem('affi_monitored_groups_v1', JSON.stringify(monitoredGroups));
+  }, [monitoredGroups]);
+
+  useEffect(() => {
+    localStorage.setItem('affi_captured_messages_v1', JSON.stringify(capturedMessages));
+  }, [capturedMessages]);
+
+  const addMonitoredGroup = (data: Partial<MonitoredGroup>): MonitoredGroup => {
+    const newGrp: MonitoredGroup = {
+      id: 'grp-' + Date.now(),
+      name: data.name || 'Novo Grupo Monitorado',
+      platform: data.platform || 'Telegram',
+      externalIdOrUrl: data.externalIdOrUrl || '',
+      linkedStore: data.linkedStore || 'Todas as Lojas',
+      status: 'ativo',
+      capturedCount: 0,
+      approvedCount: 0,
+      lastActivity: 'Agora mesmo',
+      rules: data.rules || {
+        mandatoryKeywords: [],
+        forbiddenKeywords: [],
+        enableOCR: true,
+        maxPerHour: 30,
+        dedupHours: 12,
+        autoApproveConfidence: 0.65
+      }
+    };
+    setMonitoredGroups(prev => [newGrp, ...prev]);
+    addLog('success', 'Monitor de Grupos', `Novo grupo adicionado: "${newGrp.name}"`);
+    return newGrp;
+  };
+
+  const updateMonitoredGroup = (id: string, updates: Partial<MonitoredGroup>) => {
+    setMonitoredGroups(prev => prev.map(g => g.id === id ? { ...g, ...updates } : g));
+    addLog('info', 'Monitor de Grupos', `Grupo #${id} atualizado.`);
+  };
+
+  const deleteMonitoredGroup = (id: string) => {
+    setMonitoredGroups(prev => prev.filter(g => g.id !== id));
+    addLog('warning', 'Monitor de Grupos', `Grupo #${id} removido.`);
+  };
+
+  const toggleMonitoredGroupStatus = (id: string) => {
+    setMonitoredGroups(prev => prev.map(g => {
+      if (g.id === id) {
+        const nextStatus = g.status === 'ativo' ? 'pausado' : 'ativo';
+        return { ...g, status: nextStatus };
+      }
+      return g;
+    }));
+  };
+
+  const addCapturedMessage = (msgData: Partial<CapturedMessage>): CapturedMessage => {
+    const newMsg: CapturedMessage = {
+      id: 'cap-' + Date.now(),
+      groupId: msgData.groupId || 'grp-1',
+      groupName: msgData.groupName || 'Grupo Monitorado',
+      platform: msgData.platform || 'Telegram',
+      rawContent: msgData.rawContent || '',
+      imageUrl: msgData.imageUrl,
+      extractedJson: msgData.extractedJson || null,
+      confidence: msgData.confidence || 0,
+      status: msgData.status || 'Pendente',
+      templateUsedId: msgData.templateUsedId,
+      finalText: msgData.finalText,
+      createdAt: 'Agora mesmo'
+    };
+    setCapturedMessages(prev => [newMsg, ...prev]);
+    return newMsg;
+  };
+
+  const approveCapturedMessage = (id: string, editedData?: Partial<ExtractedDataJSON>) => {
+    const targetMsg = capturedMessages.find(m => m.id === id);
+    if (!targetMsg) return;
+
+    const mergedJson = editedData ? { ...targetMsg.extractedJson, ...editedData } : targetMsg.extractedJson;
+
+    const firstQueue = queues[0];
+    const priceNum = parseFloat(mergedJson?.preco || '0') || 0;
+    const origPriceNum = parseFloat(mergedJson?.preco_original || '0') || 0;
+    const market = (mergedJson?.loja || 'Amazon') as any;
+
+    addQueueItem({
+      queueConfigId: firstQueue?.id || 'default',
+      productTitle: mergedJson?.produto || 'Oferta Monitorada',
+      productImage: targetMsg.imageUrl || 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
+      price: priceNum,
+      originalPrice: origPriceNum,
+      marketplace: market,
+      copyText: targetMsg.finalText || targetMsg.rawContent,
+      affiliateUrl: convertAffiliateUrl(mergedJson?.link || 'https://affi.link/custom', market)
+    });
+
+    setCapturedMessages(prev => prev.map(m => m.id === id ? {
+      ...m,
+      status: 'Aprovada',
+      extractedJson: mergedJson as any
+    } : m));
+
+    setMonitoredGroups(prev => prev.map(g => g.id === targetMsg.groupId ? {
+      ...g,
+      approvedCount: g.approvedCount + 1,
+      lastActivity: 'Agora mesmo'
+    } : g));
+
+    addLog('success', 'Monitor de Grupos', `Oferta #${id} aprovada e enviada para a Fila de Disparo!`);
+  };
+
+  const rejectCapturedMessage = (id: string) => {
+    setCapturedMessages(prev => prev.map(m => m.id === id ? { ...m, status: 'Rejeitada' } : m));
+    addLog('info', 'Monitor de Grupos', `Mensagem #${id} descartada.`);
+  };
+
+  const processCapturedMessageAI = async (rawText: string, groupId: string, imageUrl?: string): Promise<CapturedMessage> => {
+    const grp = monitoredGroups.find(g => g.id === groupId) || monitoredGroups[0];
+    
+    const textLower = rawText.toLowerCase();
+    const isNonOffer = textLower.length < 10 || textLower.includes('[figurinha]') || textLower.includes('[áudio]');
+    
+    if (isNonOffer) {
+      const failedMsg = addCapturedMessage({
+        groupId: grp?.id || 'grp-1',
+        groupName: grp?.name || 'Grupo Monitorado',
+        platform: grp?.platform || 'Telegram',
+        rawContent: rawText,
+        imageUrl,
+        extractedJson: null,
+        confidence: 0,
+        status: 'Rejeitada'
+      });
+      return failedMsg;
+    }
+
+    let extracted: ExtractedDataJSON = {
+      produto: 'Produto Extraído por IA',
+      loja: grp?.linkedStore !== 'Todas as Lojas' ? grp?.linkedStore || 'Amazon' : 'Amazon',
+      preco: '99.90',
+      preco_original: '149.90',
+      cupom: null,
+      cupom_desconto: null,
+      cupom_link: null,
+      link: 'https://amzn.to/exemplo',
+      condicoes_pagamento: 'em até 3x sem juros',
+      preco_unitario: null,
+      preco_recorrencia: null,
+      frete_gratis: true,
+      internacional: false,
+      pix: true,
+      confianca: 0.88
+    };
+
+    const priceMatch = rawText.match(/r\$\s*([\d\.,]+)/i);
+    if (priceMatch) {
+      extracted.preco = priceMatch[1].replace(',', '.');
+    }
+    const linkMatch = rawText.match(/https?:\/\/[^\s]+/i);
+    if (linkMatch) {
+      extracted.link = linkMatch[0];
+    }
+    const couponMatch = rawText.match(/cupom[:\s]*([a-zA-Z0-9_-]+)/i);
+    if (couponMatch) {
+      extracted.cupom = couponMatch[1];
+    }
+
+    const storeTemplate = templates.find(t => t.store === extracted.loja && t.status === 'ativo' && t.isDefault) ||
+                          templates.find(t => t.store === extracted.loja && t.status === 'ativo') ||
+                          templates.find(t => (t.store === 'Todas as Lojas' || !t.store) && t.status === 'ativo' && t.isDefault) ||
+                          templates.find(t => t.status === 'ativo');
+
+    let finalText = '';
+    let templateId = storeTemplate?.id;
+
+    if (storeTemplate) {
+      const renderData = {
+        cta: '🔥 *OFERTA CAPTURADA DO MONITOR*',
+        produto: extracted.produto,
+        loja: extracted.loja,
+        preco: extracted.preco,
+        preco_original: extracted.preco_original,
+        cupom: extracted.cupom,
+        link: extracted.link,
+        condicoes_pagamento: extracted.condicoes_pagamento,
+        cupom_desconto: extracted.cupom_desconto,
+        cupom_link: extracted.cupom_link,
+        frete_gratis: extracted.frete_gratis,
+        internacional: extracted.internacional,
+        pix: extracted.pix
+      };
+
+      let res = storeTemplate.content;
+      const conditionalRegex = /\[se\s+([a-zA-Z0-9_]+)\]([\s\S]*?)(?:\[senão\]([\s\S]*?))?\[fim\]/g;
+      let prev = '';
+      let iter = 0;
+      while (res !== prev && iter < 5) {
+        prev = res;
+        iter++;
+        res = res.replace(conditionalRegex, (_, vName, ifC, elseC = '') => {
+          const val = (renderData as any)[vName];
+          const isT = val === true || (typeof val === 'string' && val.trim().length > 0) || (typeof val === 'number' && val > 0);
+          return isT ? ifC : elseC;
+        });
+      }
+      res = res.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, vName) => {
+        const val = (renderData as any)[vName];
+        if (val === undefined || val === null || val === false) return '';
+        if (val === true) return 'Sim';
+        return String(val);
+      });
+      finalText = res;
+    } else {
+      finalText = `[Sem template disponível para ${extracted.loja}]\n${rawText}`;
+    }
+
+    const threshold = grp?.rules?.autoApproveConfidence || 0.65;
+    const isAutoApproved = extracted.confianca >= threshold;
+
+    const newMsg = addCapturedMessage({
+      groupId: grp?.id || 'grp-1',
+      groupName: grp?.name || 'Grupo Monitorado',
+      platform: grp?.platform || 'Telegram',
+      rawContent: rawText,
+      imageUrl,
+      extractedJson: extracted,
+      confidence: extracted.confianca,
+      status: isAutoApproved ? 'Aprovada' : 'Pendente',
+      templateUsedId: templateId,
+      finalText
+    });
+
+    if (isAutoApproved) {
+      approveCapturedMessage(newMsg.id);
+    }
+
+    setMonitoredGroups(prev => prev.map(g => g.id === grp?.id ? {
+      ...g,
+      capturedCount: g.capturedCount + 1,
+      lastActivity: 'Agora mesmo'
+    } : g));
+
+    return newMsg;
+  };
 
   useEffect(() => {
     localStorage.setItem('affi_templates_v2', JSON.stringify(templates));
@@ -622,6 +908,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         deleteTemplate,
         setDefaultTemplate,
         toggleTemplateStatus,
+        monitoredGroups,
+        setMonitoredGroups,
+        addMonitoredGroup,
+        updateMonitoredGroup,
+        deleteMonitoredGroup,
+        toggleMonitoredGroupStatus,
+        capturedMessages,
+        setCapturedMessages,
+        addCapturedMessage,
+        approveCapturedMessage,
+        rejectCapturedMessage,
+        processCapturedMessageAI,
         landingPages,
         leads,
         logs,

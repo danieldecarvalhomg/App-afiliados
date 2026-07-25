@@ -23,6 +23,7 @@ import { AnalyticsView } from './views/AnalyticsView';
 import { LibraryView } from './views/LibraryView';
 import { ProfileView } from './views/ProfileView';
 import { TeamSubscriptionView } from './views/TeamSubscriptionView';
+import { GroupMonitoringView } from './views/GroupMonitoringView';
 import { HelpCenterView } from './views/HelpCenterView';
 
 const MainContent: React.FC = () => {
@@ -46,6 +47,8 @@ const MainContent: React.FC = () => {
         return <CampaignsAutomationsView />;
       case 'ia':
         return <AiStudioView />;
+      case 'monitoramento':
+        return <GroupMonitoringView />;
       case 'landing-pages':
         return <LandingPagesView />;
       case 'integracoes':
