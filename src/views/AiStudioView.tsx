@@ -43,6 +43,23 @@ import {
 export function processTemplateEngine(templateText: string, data: Record<string, any>): string {
   if (!templateText) return '';
 
+  // Retrieve trained AI persona & CTA settings from localStorage
+  let trainedCta = data.cta;
+  try {
+    const saved = localStorage.getItem('affi_ai_training');
+    if (saved) {
+      const training = JSON.parse(saved);
+      if (training.preferredCta) {
+        trainedCta = training.forceUppercaseCta ? training.preferredCta.toUpperCase() : training.preferredCta;
+      }
+    }
+  } catch (e) {}
+
+  const mergedData = {
+    ...data,
+    cta: trainedCta || data.cta || '🚨 *OFERTA IMPERDÍVEL DETECTADA!*'
+  };
+
   let result = templateText;
 
   // 1. Resolve Conditional Blocks: [se var]ifTrue[senão]ifFalse[fim] or [se var]ifTrue[fim]
@@ -54,7 +71,7 @@ export function processTemplateEngine(templateText: string, data: Record<string,
     previousResult = result;
     iterations++;
     result = result.replace(conditionalRegex, (_, varName, ifContent, elseContent = '') => {
-      const val = data[varName];
+      const val = mergedData[varName];
       const isTruthy =
         val === true ||
         (typeof val === 'string' && val.trim().length > 0) ||
@@ -65,7 +82,7 @@ export function processTemplateEngine(templateText: string, data: Record<string,
 
   // 2. Replace Variables {var}
   result = result.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, varName) => {
-    const val = data[varName];
+    const val = mergedData[varName];
     if (val === undefined || val === null || val === false) return '';
     if (val === true) return 'Sim';
     return String(val);

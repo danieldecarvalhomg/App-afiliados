@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import { processTemplateEngine } from './AiStudioView';
 import { 
   Bot, 
   Send, 
@@ -37,7 +38,7 @@ interface MonitoredMessage {
 }
 
 export const GroupMonitoringView: React.FC = () => {
-  const { addLog, convertAffiliateUrl, addQueueItem, queues } = useApp();
+  const { addLog, convertAffiliateUrl, addQueueItem, queues, templates } = useApp();
 
   const [sourcePlatform, setSourcePlatform] = useState<'telegram' | 'whatsapp'>('telegram');
   const [sourceGroup, setSourceGroup] = useState('@promos_concorrente_top');
@@ -121,11 +122,37 @@ export const GroupMonitoringView: React.FC = () => {
       // 1. Convert link using real tags
       const myAffiliateLink = convertAffiliateUrl(msg.originalLink, msg.marketplace);
       
-      // 2. Rewrite text with AI copywriting and optimized CTA
-      const betterCtaText = `🚨 *OFERTA IMPERDÍVEL DETECTADA!* 🚨\n\n` +
-        `🔥 *${msg.extractedTitle.toUpperCase()}*\n\n` +
-        `De ~R$ ${msg.originalPrice.toFixed(2)}~ por apenas *R$ ${msg.price.toFixed(2)}*! 😱\n\n` +
-        `🛒 *Garanta o seu com desconto exclusivo aqui:* 👉 ${myAffiliateLink}`;
+      // 2. Rewrite text with Trained AI Engine & Active Template
+      const matchedTemplate = templates.find(t => t.isDefault && t.status === 'ativo') || templates[0];
+      
+      let betterCtaText = '';
+      if (matchedTemplate) {
+        betterCtaText = processTemplateEngine(matchedTemplate.content, {
+          produto: msg.extractedTitle,
+          loja: msg.marketplace,
+          preco: msg.price.toFixed(2),
+          preco_original: msg.originalPrice > 0 ? msg.originalPrice.toFixed(2) : '',
+          link: myAffiliateLink,
+          frete_gratis: true,
+          pix: true
+        });
+      } else {
+        let trainedCta = '🚨 *OFERTA IMPERDÍVEL DETECTADA!*';
+        try {
+          const saved = localStorage.getItem('affi_ai_training');
+          if (saved) {
+            const training = JSON.parse(saved);
+            if (training.preferredCta) {
+              trainedCta = training.forceUppercaseCta ? training.preferredCta.toUpperCase() : training.preferredCta;
+            }
+          }
+        } catch (e) {}
+
+        betterCtaText = `${trainedCta}\n\n` +
+          `🔥 *${msg.extractedTitle.toUpperCase()}*\n\n` +
+          `De ~R$ ${msg.originalPrice.toFixed(2)}~ por apenas *R$ ${msg.price.toFixed(2)}*!\n\n` +
+          `🛒 *Garanta o seu aqui:* 👉 ${myAffiliateLink}`;
+      }
 
       setMessages(prev => prev.map(m => {
         if (m.id === id) {
@@ -148,14 +175,14 @@ export const GroupMonitoringView: React.FC = () => {
               copyText: betterCtaText,
               affiliateUrl: myAffiliateLink,
             });
-            addLog('success', 'Monitor de Grupo', `[PILOTO AUTOMÁTICO] Oferta "${msg.extractedTitle}" postada automaticamente na fila.`);
+            addLog('success', 'Monitor de Grupo', `[PILOTO AUTOMÁTICO] Oferta "${msg.extractedTitle}" postada com IA Treinada.`);
           }
           return updated;
         }
         return m;
       }));
 
-      addLog('success', 'Monitor de Grupo', `Mensagem #${id} reescrita e link convertido para: ${msg.marketplace}`);
+      addLog('success', 'Monitor de Grupo', `Mensagem #${id} reescrita pela IA Treinada com link convertido para ${msg.marketplace}`);
     }, 2000);
   };
 
