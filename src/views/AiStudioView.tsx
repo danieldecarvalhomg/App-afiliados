@@ -94,6 +94,14 @@ export function formatWhatsAppMarkdown(text: string): string {
   return formatted;
 }
 
+const AVAILABLE_PERSONALITIES = [
+  'Amigável & Descontraído (Gente, achadinho, corre!)',
+  'Urgente & Escassez extrema (Estoque baixo, corre antes que acabe!)',
+  'Direto & Objetivo (Preço sem enrolação e focado)',
+  'Consultivo & Review Tech (Prós, contras e garantia)',
+  'Divertido com Memes & Emojis otimizados'
+];
+
 // ============================================================================
 // MAIN VIEW COMPONENT
 // ============================================================================
@@ -105,7 +113,7 @@ export const AiStudioView: React.FC = () => {
     addQueueItem,
     addLog,
     generateCopyWithAI,
-    templates,
+    templates = [],
     addTemplate,
     updateTemplate,
     deleteTemplate,
@@ -132,14 +140,6 @@ export const AiStudioView: React.FC = () => {
   const [copied, setCopied] = useState(false);
 
   // AI Training & Persona State
-  const availablePersonalities = [
-    'Amigável & Descontraído (Gente, achadinho, corre!)',
-    'Urgente & Escassez extrema (Estoque baixo, corre antes que acabe!)',
-    'Direto & Objetivo (Preço sem enrolação e focado)',
-    'Consultivo & Review Tech (Prós, contras e garantia)',
-    'Divertido com Memes & Emojis otimizados'
-  ];
-
   const [selectedPersonalities, setSelectedPersonalities] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('affi_ai_training');
@@ -161,9 +161,9 @@ export const AiStudioView: React.FC = () => {
   });
 
   const aiTone = useMemo(() => {
-    if (selectedPersonalities.length === 0) return 'Personalizado';
-    if (selectedPersonalities.length === availablePersonalities.length) return 'Todas as Personalidades';
-    return selectedPersonalities.map(p => p.split(' (')[0]).join(', ');
+    if (!selectedPersonalities || selectedPersonalities.length === 0) return 'Personalizado';
+    if (selectedPersonalities.length === AVAILABLE_PERSONALITIES.length) return 'Todas as Personalidades';
+    return selectedPersonalities.map(p => (p || '').split(' (')[0]).filter(Boolean).join(', ');
   }, [selectedPersonalities]);
 
   const [mustUseWords, setMustUseWords] = useState(() => {
@@ -207,7 +207,7 @@ export const AiStudioView: React.FC = () => {
   };
 
   const handleSelectAllPersonalities = () => {
-    setSelectedPersonalities([...availablePersonalities]);
+    setSelectedPersonalities([...AVAILABLE_PERSONALITIES]);
   };
 
   const handleClearPersonalities = () => {
@@ -1281,7 +1281,7 @@ De ~R$ {preco_original}~ por
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 rounded-2xl bg-slate-950 border border-slate-800 max-h-48 overflow-y-auto">
-                  {availablePersonalities.map(item => {
+                  {AVAILABLE_PERSONALITIES.map(item => {
                     const isSelected = selectedPersonalities.includes(item);
                     return (
                       <label
