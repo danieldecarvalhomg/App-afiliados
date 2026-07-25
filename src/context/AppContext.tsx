@@ -217,7 +217,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   });
   const [monitoredGroups, setMonitoredGroups] = useState<MonitoredGroup[]>(() => {
     try {
-      const saved = localStorage.getItem('affi_monitored_groups_v1');
+      const saved = localStorage.getItem('affi_monitored_groups_v2');
       return saved ? JSON.parse(saved) : INITIAL_MONITORED_GROUPS;
     } catch {
       return INITIAL_MONITORED_GROUPS;
@@ -226,7 +226,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [capturedMessages, setCapturedMessages] = useState<CapturedMessage[]>(() => {
     try {
-      const saved = localStorage.getItem('affi_captured_messages_v1');
+      const saved = localStorage.getItem('affi_captured_messages_v2');
       return saved ? JSON.parse(saved) : INITIAL_CAPTURED_MESSAGES;
     } catch {
       return INITIAL_CAPTURED_MESSAGES;
@@ -281,11 +281,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, [templates]);
 
   useEffect(() => {
-    localStorage.setItem('affi_monitored_groups_v1', JSON.stringify(monitoredGroups));
+    localStorage.setItem('affi_monitored_groups_v2', JSON.stringify(monitoredGroups));
   }, [monitoredGroups]);
 
   useEffect(() => {
-    localStorage.setItem('affi_captured_messages_v1', JSON.stringify(capturedMessages));
+    localStorage.setItem('affi_captured_messages_v2', JSON.stringify(capturedMessages));
   }, [capturedMessages]);
 
   const addMonitoredGroup = (data: Partial<MonitoredGroup>): MonitoredGroup => {
@@ -414,8 +414,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return failedMsg;
     }
 
+    // Extract a clean candidate product title from the message
+    let cleanProd = '';
+    const firstLine = rawText.split('\n')[0] || '';
+    let candidate = firstLine
+      .replace(/^[🚨🔥🎯📣📌⚡⏰🛒❗\s]+/g, '')
+      .replace(/(CORRE|GENTE|PROMOÇÃO|OFERTA|IMPERDÍVEL|EXCLUSIVA|OFERTAÇO|BAIXOU|ATENÇÃO|ACHADINHO)/gi, '')
+      .replace(/^[\s\*\-\:\!\,\.\?\(\)]+/g, '')
+      .replace(/\*/g, '')
+      .trim();
+
+    if (candidate.length > 3 && candidate.length < 80) {
+      cleanProd = candidate;
+    } else {
+      cleanProd = 'Smartphone Galaxy S24 Ultra';
+    }
+
     let extracted: ExtractedDataJSON = {
-      produto: 'Produto Extraído por IA',
+      produto: cleanProd,
       loja: grp?.linkedStore !== 'Todas as Lojas' ? grp?.linkedStore || 'Amazon' : 'Amazon',
       preco: '99.90',
       preco_original: '149.90',
@@ -455,7 +471,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     if (storeTemplate) {
       const renderData = {
-        cta: '🔥 *OFERTA CAPTURADA DO MONITOR*',
+        cta: '🔥 *SUPER DESCONTO DO DIA!*',
         produto: extracted.produto,
         loja: extracted.loja,
         preco: extracted.preco,
