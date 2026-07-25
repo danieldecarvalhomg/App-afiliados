@@ -439,18 +439,13 @@ export const AiStudioView: React.FC = () => {
     e.preventDefault();
     const finalCta = forceUppercaseCta ? preferredCta.toUpperCase() : preferredCta;
     const trainingObj = {
-      tones: selectedTones,
-      tone: selectedTones[0] || 'Amigável & Descontraído',
       forceUppercaseCta,
-      mustUseWords,
-      forbiddenWords,
       preferredCta: finalCta,
-      ctaInstructions,
-      exampleCopy
+      ctaInstructions
     };
     localStorage.setItem('affi_ai_training', JSON.stringify(trainingObj));
     setIsTrainingSaved(true);
-    addLog('success', 'Treinamento IA', `Instruções de CTA e personalidade da IA salvas com sucesso!`);
+    addLog('success', 'Instruções IA', `Instruções da IA salvas com sucesso!`);
     setTimeout(() => {
       setIsTrainingSaved(false);
       setIsAiTrainingOpen(false);
@@ -1314,112 +1309,32 @@ De ~R$ {preco_original}~ por
             </div>
 
             <form onSubmit={handleSaveAiTrainingSubmit} className="space-y-4 text-xs">
-              {/* Multi-Tone Selection Checklist */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="text-slate-300 font-semibold flex items-center gap-1.5">
-                    <Sliders className="w-3.5 h-3.5 text-purple-400" />
-                    Personalidades & Tom de Voz
-                  </label>
-
-                  <button
-                    type="button"
-                    onClick={handleSelectAllTones}
-                    className="text-[10px] font-bold text-purple-300 hover:text-white bg-purple-500/20 px-2.5 py-1 rounded-xl border border-purple-500/40 transition-colors"
-                  >
-                    {selectedTones.length === ALL_TONE_OPTIONS.length ? 'Desmarcar Todas' : '✓ Marcar Todas'}
-                  </button>
-                </div>
-
-                <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 max-h-48 overflow-y-auto">
-                  {ALL_TONE_OPTIONS.map((tOption) => {
-                    const isChecked = selectedTones.includes(tOption);
-                    return (
-                      <label
-                        key={tOption}
-                        className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer ${
-                          isChecked
-                            ? 'bg-purple-500/15 border-purple-500/50 text-white font-semibold'
-                            : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:text-slate-200'
-                        }`}
-                      >
-                        <input
-                          type="checkbox"
-                          checked={isChecked}
-                          onChange={() => handleToggleTone(tOption)}
-                          className="rounded bg-slate-950 border-slate-700 text-purple-600 focus:ring-0"
-                        />
-                        <span className="text-xs">{tOption}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-
-                <span className="text-[10px] text-slate-400 block font-mono">
-                  {selectedTones.length > 1
-                    ? `${selectedTones.length} personalidades selecionadas.`
-                    : `📌 1 personalidade ativa.`}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-slate-300 block mb-1 font-semibold flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                    Palavras / Expressões Recomendadas (Obrigatórias)
-                  </label>
-                  <input
-                    type="text"
-                    value={mustUseWords}
-                    onChange={e => setMustUseWords(e.target.value)}
-                    placeholder="Ex: Corre!, Gente!, Achadinho, Garantia"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-emerald-500 font-mono text-[11px]"
-                  />
-                  <span className="text-[10px] text-slate-500 mt-1 block">Separe por vírgulas as palavras que a IA deve usar.</span>
-                </div>
-
-                <div>
-                  <label className="text-slate-300 block mb-1 font-semibold flex items-center gap-1.5">
-                    <AlertOctagon className="w-3.5 h-3.5 text-rose-400" />
-                    Palavras / Expressões Proibidas (A Evitar)
-                  </label>
-                  <input
-                    type="text"
-                    value={forbiddenWords}
-                    onChange={e => setForbiddenWords(e.target.value)}
-                    placeholder="Ex: Não perca, Compre já, Imperdível"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-rose-500 font-mono text-[11px]"
-                  />
-                  <span className="text-[10px] text-slate-500 mt-1 block">A IA evitará estritamente essas palavras.</span>
-                </div>
-              </div>
-
               {/* Instructions for AI CTA Creation */}
-              <div className="space-y-1 border-t border-slate-800/80 pt-3">
-                <label className="text-slate-300 font-semibold flex items-center gap-1.5">
-                  <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <div className="space-y-1.5">
+                <label className="text-slate-300 font-semibold flex items-center gap-1.5 text-sm">
+                  <Sparkles className="w-4 h-4 text-amber-400" />
                   Instruções Específicas para a IA Criar CTAs
                 </label>
                 <textarea
-                  rows={2}
+                  rows={5}
                   value={ctaInstructions}
                   onChange={e => setCtaInstructions(e.target.value)}
-                  placeholder="Ex: Use bordões como 'Corre gente!', coloque emojis de fogo, traga tom super entusiasmado e foque no link oficial..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500 leading-relaxed"
+                  placeholder="Digite aqui qualquer comando, regra ou ideia para a IA (Ex: 'Quero uma chamada longa, animada, com emojis de fogo no final pedindo para resgatar cupom de R$ 50 no PIX')..."
+                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3.5 text-xs text-slate-200 focus:outline-none focus:border-amber-500 leading-relaxed font-mono"
                 />
-                <span className="text-[10px] text-slate-500 block">
-                  A IA usará estas instruções específicas para sintetizar chamadas para ação.
+                <span className="text-[11px] text-slate-400 block">
+                  A IA interpretará este campo com 100% de liberdade criativa para sintetizar suas chamadas para ação.
                 </span>
               </div>
 
               {/* CTA Input with Uppercase Checkbox & Regenerate Button */}
-              <div className="space-y-1.5">
+              <div className="space-y-2 border-t border-slate-800/80 pt-4">
                 <div className="flex items-center justify-between">
-                  <label className="text-slate-300 font-semibold flex items-center gap-1.5">
-                    <ArrowRight className="w-3.5 h-3.5 text-indigo-400" />
+                  <label className="text-slate-300 font-semibold flex items-center gap-1.5 text-sm">
+                    <ArrowRight className="w-4 h-4 text-indigo-400" />
                     Chamada para Ação Gerada (CTA Atual)
                   </label>
-                  <label className="flex items-center gap-2 cursor-pointer bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/30">
+                  <label className="flex items-center gap-2 cursor-pointer bg-amber-500/10 px-3 py-1.5 rounded-xl border border-amber-500/30">
                     <input
                       type="checkbox"
                       checked={forceUppercaseCta}
@@ -1432,53 +1347,36 @@ De ~R$ {preco_original}~ por
                       }}
                       className="rounded bg-slate-950 border-amber-500/40 text-amber-500 focus:ring-0"
                     />
-                    <span className="text-[11px] font-bold text-amber-300">FORÇAR CTA EM CAIXA ALTA</span>
+                    <span className="text-xs font-bold text-amber-300">FORÇAR CTA EM CAIXA ALTA</span>
                   </label>
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <input
-                    type="text"
+                  <textarea
+                    rows={3}
                     value={preferredCta}
                     onChange={e => {
                       const val = e.target.value;
                       setPreferredCta(forceUppercaseCta ? val.toUpperCase() : val);
                     }}
-                    placeholder="Ex: 👉 RESGATE O SEU DESCONTO EXCLUSIVO NO LINK ABAIXO:"
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-xs"
+                    placeholder="Sua CTA gerada pela IA aparecerá aqui..."
+                    className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-xs leading-relaxed"
                   />
 
                   <button
                     type="button"
                     onClick={handleRegenerateCtaWithAI}
                     disabled={isGeneratingCta}
-                    className="px-4 py-2.5 rounded-xl bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shrink-0 shadow-md transition-all hover:scale-105"
+                    className="px-5 py-4 rounded-2xl bg-gradient-to-r from-amber-600 to-indigo-600 hover:from-amber-500 hover:to-indigo-500 text-white font-bold text-xs flex items-center gap-2 shrink-0 shadow-lg transition-all hover:scale-105"
                   >
                     {isGeneratingCta ? (
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <RefreshCw className="w-4 h-4 animate-spin" />
                     ) : (
-                      <Sparkles className="w-3.5 h-3.5 text-amber-300" />
+                      <Sparkles className="w-4 h-4 text-amber-300" />
                     )}
                     {isGeneratingCta ? 'Gerando...' : 'Regenerar CTA'}
                   </button>
                 </div>
-              </div>
-
-              <div>
-                <label className="text-slate-300 block mb-1 font-semibold flex items-center gap-1.5">
-                  <MessageSquareQuote className="w-3.5 h-3.5 text-amber-400" />
-                  Exemplo de Postagem no Seu Estilo (Treinamento Few-Shot)
-                </label>
-                <textarea
-                  rows={4}
-                  value={exampleCopy}
-                  onChange={e => setExampleCopy(e.target.value)}
-                  placeholder="Cole um exemplo de texto ou CTA que você escreveu para a IA espelhar o seu estilo exato..."
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3.5 text-xs font-mono text-slate-200 focus:outline-none focus:border-purple-500 leading-relaxed"
-                />
-                <span className="text-[10px] text-slate-500 mt-1 block">
-                  A IA analisará a estrutura de frases, emojis e ritmo do seu texto de exemplo.
-                </span>
               </div>
 
               {isTrainingSaved && (

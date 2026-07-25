@@ -47,27 +47,15 @@ app.post("/api/ai/generate-copy", async (req, res) => {
 
     let customPromptSection = "";
     if (customTraining) {
-      let activeTone = customTraining.tone || tone || "Personalizado";
-      if (Array.isArray(customTraining.tones) && customTraining.tones.length > 0) {
-        activeTone = customTraining.tones[Math.floor(Math.random() * customTraining.tones.length)];
-      }
-
-      let ctaText = customTraining.preferredCta || "Padrão";
+      let ctaText = customTraining.preferredCta || "";
       if (customTraining.forceUppercaseCta && ctaText) {
         ctaText = ctaText.toUpperCase();
       }
 
       customPromptSection = `
-INSTRUÇÕES ESPECÍFICAS DE TREINAMENTO E ESTILO DO USUÁRIO:
-- Tom de Voz Aplicado: ${activeTone}
-- Instruções Específicas do Usuário para a CTA / Chamada: "${customTraining.ctaInstructions || "Sem instruções específicas"}"
-- Palavras/Expressões OBRIGATÓRIAS a utilizar: ${customTraining.mustUseWords || "Nenhuma"}
-- Palavras/Expressões PROIBIDAS (NÃO UTILIZAR DE FORMA ALGUMA): ${customTraining.forbiddenWords || "Nenhuma"}
-- Estilo da Chamada para Ação (CTA): ${ctaText} ${customTraining.forceUppercaseCta ? "(ATENÇÃO: A CTA DEVE ESTAR TOTALMENTE EM CAIXA ALTA / LETRAS MAIÚSCULAS)" : ""}
-- Exemplo do Estilo Pessoal do Usuário para ESPELHAR EXATAMENTE:
-"""
-${customTraining.exampleCopy || "Nenhum exemplo fornecido."}
-"""
+INSTRUÇÕES E DIRETRIZES LIVRES DO USUÁRIO:
+- Instruções de Comando para a IA: "${customTraining.ctaInstructions || "Sem instruções específicas, crie uma cópia super persuasiva."}"
+${ctaText ? `- Estilo / Texto de CTA Preferido: ${ctaText}` : ""}
 `;
     }
 
