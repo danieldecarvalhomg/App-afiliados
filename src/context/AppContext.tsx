@@ -1094,105 +1094,159 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   // ─── CTA GENERATION ENGINE ───────────────────────────────────────────────
+  // Generates ONLY the call-to-action phrase — NOT the full offer.
+  // Product, price, link etc. are template variables handled separately.
+  // Context is used only as flavor hints (urgency level, extras mention).
   const generateCtaFromProfile = (context: CtaContext = {}): string => {
     const prof = ctaProfile;
-    const { produto, loja, preco, preco_original, cupom, frete_gratis, pix, internacional } = context;
+    const { cupom, frete_gratis, pix } = context;
 
-    const aberturas = {
-      urgente: ['CORRE!', 'SÓ AGORA!', 'ÚLTIMA CHANCE!', 'VENCE HOJE!', 'ATENÇÃO!', 'NÃO PERDE!'],
-      descontraido: ['Oi, sumido!', 'Tava faltando isso:', 'Olha que achado...', 'Peraí, viu isso?', 'Calma que tem mais:'],
-      formal: ['Oportunidade especial:', 'Produto em destaque:', 'Oferta selecionada:', 'Condição especial:'],
-      divertido: ['Pow, que preço é esse?!', 'TÁ DE ZUEIRA?!', 'Alô alô!', 'TA BARATÃO!', 'Bora aproveitar!'],
-      luxuoso: ['Exclusividade para você:', 'Peça premium em oferta:', 'Curadoria especial:', 'Seleção premium:']
+    // ── Abertura (hook) ────────────────────────────────────────────────────
+    const aberturas: Record<string, string[]> = {
+      urgente: [
+        'CORRE!', 'SÓ AGORA!', 'ÚLTIMA CHANCE!', 'VENCE HOJE!',
+        'NÃO PERDE!', 'ESQUENTA!', 'HOJE É O DIA!', 'AGORA OU NUNCA!'
+      ],
+      descontraido: [
+        'Oi, gente!', 'Peraí, olha isso:', 'Calma que tem mais:',
+        'Vem ver o que eu achei:', 'Isso aqui tá bom demais:', 'Olha só!'
+      ],
+      formal: [
+        'Oportunidade especial:', 'Oferta selecionada:',
+        'Condição exclusiva:', 'Destaque do dia:'
+      ],
+      divertido: [
+        'TÁ DE BRINCADEIRA?!', 'Pow, que preço!', 'QUE ISSO!',
+        'Bora aproveitar!', 'Alô alô!', 'Isso tá doido!'
+      ],
+      luxuoso: [
+        'Exclusividade para você:', 'Seleção premium:',
+        'Curadoria especial:', 'Peça única em oferta:'
+      ]
     };
 
-    const fimPhrases: Record<string, string[]> = {
-      curto: ['Pega logo!', 'Corre lá!', 'Garanta já!', 'Não fica de fora!'],
-      medio: ['Garante o seu antes que acabe!', 'Aproveita enquanto tem estoque!', 'Clica no link e confere!', 'Não perde essa oportunidade!'],
-      longo: ['Corre para o link e garante o seu antes que o estoque acabe — essa condição não dura para sempre!', 'Acessa o link agora mesmo e aproveita essa condição especial antes que o preço volte ao normal!']
+    // ── Gancho central (o coração do CTA) ─────────────────────────────────
+    const ganchos: Record<string, string[]> = {
+      urgente: [
+        'O estoque tá acabando!',
+        'Promoção com tempo limitado!',
+        'Preço vai subir a qualquer hora!',
+        'Aproveita enquanto ainda tem!',
+        'Essa condição não dura para sempre!',
+        'Tá voando do carrinho!'
+      ],
+      descontraido: [
+        'Vale muito a pena conferir!',
+        'Achei e precisei compartilhar!',
+        'Uma das melhores condições que vi hoje!',
+        'Tá com um precinho muito bom!'
+      ],
+      formal: [
+        'Condição especial por tempo limitado.',
+        'Oportunidade de economia real.',
+        'Oferta válida enquanto durar o estoque.',
+        'Avalie e aproveite.'
+      ],
+      divertido: [
+        'Tá barato que dói!',
+        'Minha carteira agradeço e desculpe ao mesmo tempo!',
+        'Isso é crime de preço bom!',
+        'Comprei, cheguei, amei — você vai também!'
+      ],
+      luxuoso: [
+        'Uma raridade nessa faixa de preço.',
+        'Qualidade premium ao alcance.',
+        'Sofisticação com condição especial.',
+        'Para quem não abre mão do melhor.'
+      ]
+    };
+
+    // ── Fechamento / CTA final ─────────────────────────────────────────────
+    const fechamentos: Record<string, string[]> = {
+      curto: ['Pega logo!', 'Corre lá!', 'Garanta já!', 'Clica no link!', 'Vai!'],
+      medio: [
+        'Garante o seu antes que acabe!',
+        'Clica no link e aproveita!',
+        'Não deixa passar não!',
+        'Acessa e confere!'
+      ],
+      longo: [
+        'Clica no link agora e garante o seu antes que o estoque esgote — essa condição não vai durar muito!',
+        'Acessa pelo link e aproveita essa condição especial antes que o preço volte ao normal!'
+      ]
     };
 
     const tom = prof.tom as string;
-    const aberturaList = (aberturas as any)[tom] || aberturas.urgente;
-    const fimList = (fimPhrases as any)[prof.tamanhoPreferido] || fimPhrases.medio;
+    const abList  = aberturas[tom]   || aberturas.urgente;
+    const gaList  = ganchos[tom]     || ganchos.urgente;
+    const fecList = fechamentos[prof.tamanhoPreferido] || fechamentos.medio;
+    const favs    = (prof.palavrasFavoritas || []).filter(w => w.length > 0);
+    const emojis  = prof.usaEmoji ? (prof.emojisPreferidos || ['🔥', '🚨', '💥']) : [];
 
-    // Pick different entries per attempt to vary CTAs
     const pick = <T,>(arr: T[], seed = 0): T => arr[(Date.now() + seed) % arr.length];
+
+    // ── Extras contextuais (menção opcional no CTA) ────────────────────────
+    const extras: string[] = [];
+    if (frete_gratis) extras.push('frete grátis incluso');
+    if (pix)          extras.push('desconto no PIX');
+    if (cupom)        extras.push('cupom de desconto disponível');
 
     const tentativas: string[] = [];
 
     for (let attempt = 0; attempt < 5; attempt++) {
-      const abertura = pick(aberturaList, attempt);
-      const fim = pick(fimList, attempt + 10);
+      const e0  = emojis.length ? emojis[attempt % emojis.length]         : '';
+      const e1  = emojis.length ? emojis[(attempt + 1) % emojis.length]   : '';
+      const ab  = pick(abList,  attempt);
+      const ga  = pick(gaList,  attempt + 3);
+      const fec = pick(fecList, attempt + 7);
 
-      const emojiBolha = prof.usaEmoji
-        ? (prof.emojisPreferidos[(attempt) % prof.emojisPreferidos.length] || '🔥')
-        : '';
+      const partes: string[] = [];
 
-      const emojiExtra = prof.usaEmoji
-        ? (prof.emojisPreferidos[(attempt + 1) % prof.emojisPreferidos.length] || '💥')
-        : '';
+      // 1. Abertura com emoji
+      partes.push(`${e0 ? e0 + ' ' : ''}${prof.usaCaixaAlta ? ab.toUpperCase() : ab}`);
 
-      let linhas: string[] = [];
+      // 2. Gancho central
+      partes.push(ga);
 
-      // Abertura
-      linhas.push(`${emojiBolha} ${abertura}`);
-
-      // Produto
-      if (produto) {
-        linhas.push(prof.usaCaixaAlta ? produto.toUpperCase() : `*${produto}*`);
+      // 3. Extra contextual (apenas no tamanho médio/longo)
+      if (extras.length && prof.tamanhoPreferido !== 'curto') {
+        partes.push(`(${pick(extras, attempt + 5)})`);
       }
 
-      // Preço
-      if (preco_original && preco) {
-        linhas.push(`De ~R$ ${preco_original}~ por apenas *R$ ${preco}*`);
-      } else if (preco) {
-        linhas.push(`Por *R$ ${preco}*`);
+      // 4. Palavra favorita (tamanho médio/longo)
+      if (favs.length && prof.tamanhoPreferido !== 'curto') {
+        const fav = favs[attempt % favs.length];
+        partes.push(prof.usaCaixaAlta ? fav.toUpperCase() : fav);
       }
 
-      // Condições extras
-      const extras: string[] = [];
-      if (frete_gratis) extras.push('📦 Frete Grátis');
-      if (pix) extras.push('💳 Desconto no PIX');
-      if (cupom) extras.push(`🏷️ Cupom: *${cupom}*`);
-      if (internacional) extras.push('🌍 Produto Internacional');
-      if (extras.length) linhas.push(extras.join(' | '));
+      // 5. Fechamento com emoji
+      partes.push(`${e1 ? e1 + ' ' : ''}${fec}`);
 
-      // Palavras favoritas
-      const fav = prof.palavrasFavoritas.filter(w => w.length > 0);
-      if (fav.length > 0 && prof.tamanhoPreferido !== 'curto') {
-        linhas.push(`⚡ ${fav[attempt % fav.length]}`);
-      }
+      // Separador: curto = espaço inline, outros = nova linha
+      const sep = prof.tamanhoPreferido === 'curto' ? ' ' : '\n';
+      let cta = partes.join(sep).trim();
 
-      // Fechamento + emoji extra
-      linhas.push(`${emojiExtra} ${fim}`);
-
-      let cta = linhas.join('\n');
-
-      // Filter palavras proibidas
-      prof.palavrasProibidas.forEach(w => {
-        if (w) cta = cta.replace(new RegExp(w, 'gi'), '');
+      // Remove palavras proibidas
+      (prof.palavrasProibidas || []).forEach(w => {
+        if (w) cta = cta.replace(new RegExp(w, 'gi'), '').trim();
       });
-
-      cta = cta.trim();
 
       tentativas.push(cta);
 
-      // Anti-repetição
       if (!isCtaRepeated(cta, prof.ctasGerados)) {
         saveCtaToHistory(cta);
         return cta;
       }
     }
 
-    // After 5 attempts, return last generated and log
     const fallback = tentativas[tentativas.length - 1];
     saveCtaToHistory(fallback);
-    addLog('info', 'IA Training', 'Anti-repetição: CTA aceito após 5 tentativas (alta similaridade histórica).');
+    addLog('info', 'IA Training', 'Anti-repetição: CTA aceito após 5 tentativas.');
     return fallback;
   };
 
   // ─── NLP COMMAND INTERPRETER ─────────────────────────────────────────────
+
   type IntencaoCmd =
     | 'adicionar' | 'remover' | 'ajustar' | 'consultar'
     | 'gerar_exemplo' | 'feedback' | 'reset' | 'ambiguo';
