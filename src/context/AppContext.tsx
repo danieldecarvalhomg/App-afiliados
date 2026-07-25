@@ -93,7 +93,6 @@ interface AppContextType {
   
   // AI helpers
   generateCopyWithAI: (params: any) => Promise<string>;
-  generateCtaWithAI: (params: any) => Promise<string>;
   extractOfferFromUrl: (url: string) => Promise<any>;
   
   // Global Search
@@ -518,20 +517,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const generateCopyWithAI = async (params: any): Promise<string> => {
     try {
-      let customTraining = null;
-      try {
-        const savedTraining = localStorage.getItem('affi_ai_training');
-        if (savedTraining) customTraining = JSON.parse(savedTraining);
-      } catch (e) {}
-
       const res = await fetch('/api/ai/generate-copy', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...params, customTraining }),
+        body: JSON.stringify(params),
       });
       const data = await res.json();
       if (data.copy) {
-        addLog('info', 'IA Copywriter', `Cópia gerada com sucesso com estilo da IA para ${params.productName || 'Oferta'}`);
+        addLog('info', 'IA Copywriter', `Cópia gerada com sucesso para ${params.productName || 'Oferta'}`);
         return data.copy;
       }
       throw new Error(data.error || 'Erro na IA');
@@ -541,139 +534,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         `De ~R$ ${params.originalPrice || '299,00'}~ por apenas *R$ ${params.price || '149,90'}*!\n` +
         (params.couponCode ? `🎟️ Cupom: *${params.couponCode}*\n` : '') +
         `\n👇 Garanta a sua compra com preço promocional:\n[LINK_AFILIADO]`;
-    }
-  };
-
-  const generateCtaWithAI = async (params: any): Promise<string> => {
-    try {
-      const res = await fetch('/api/ai/generate-cta', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      });
-      const data = await res.json();
-      if (data.cta) {
-        addLog('info', 'IA CTA', 'Nova chamada para ação (CTA) sintetizada com sucesso!');
-        return data.cta;
-      }
-      throw new Error(data.error || 'Erro ao gerar CTA');
-    } catch (err: any) {
-      const { tone = '', ctaInstructions = '', mustUseWords = '', forbiddenWords = '', forceUppercaseCta = false } = params;
-
-      const rawInst = (ctaInstructions || '').trim();
-      const instLower = rawInst.toLowerCase();
-
-      // 1. Detect Negative Constraints & Directives
-      const noEmojiRequested = instLower.includes('sem emoji') || instLower.includes('sem emojis') || instLower.includes('sem ícone') || instLower.includes('sem icones') || instLower.includes('não use emoji') || instLower.includes('nao use emoji') || instLower.includes('sem figura');
-      const isSeriousRequested = instLower.includes('sério') || instLower.includes('serio') || instLower.includes('formal') || instLower.includes('profissional') || instLower.includes('sem achadinho') || instLower.includes('sem gíria') || instLower.includes('sem giria');
-
-      // 2. Detect Requested Length Intent
-      const isLong = instLower.includes('longa') || instLower.includes('longo') || instLower.includes('extensa') || instLower.includes('detalhada') || instLower.includes('grande') || instLower.includes('completa');
-      const isShort = instLower.includes('curta') || instLower.includes('curto') || instLower.includes('direta') || instLower.includes('objetiva');
-
-      // 3. Detect Requested Mood / Energy Intent
-      const isAnimated = !isSeriousRequested && (instLower.includes('animad') || instLower.includes('empolgad') || instLower.includes('alegre') || instLower.includes('energia'));
-      const isPersuasive = instLower.includes('convenç') || instLower.includes('convenc') || instLower.includes('persuasiv') || instLower.includes('vender') || instLower.includes('comprar');
-
-      // 4. Emoji Position & Type Rules
-      let emojiPos: 'start' | 'end' | 'both' = 'start';
-      if (instLower.includes('no final') || instLower.includes('no fim') || instLower.includes('ao final') || instLower.includes('ao fim')) {
-        emojiPos = 'end';
-      } else if (isAnimated || isLong) {
-        emojiPos = 'both';
-      }
-
-      let selectedEmoji = noEmojiRequested ? '' : '🔥';
-      if (!noEmojiRequested) {
-        if (isAnimated) selectedEmoji = '🎉';
-        else if (isSeriousRequested) selectedEmoji = '';
-        else if (instLower.includes('raio') || instLower.includes('trovão')) selectedEmoji = '⚡';
-        else if (instLower.includes('sirene') || instLower.includes('alerta') || instLower.includes('urgente')) selectedEmoji = '🚨';
-        else if (instLower.includes('coração') || instLower.includes('coracao')) selectedEmoji = '🧡';
-        else if (tone.includes('Amigável')) selectedEmoji = '🧡';
-        else if (tone.includes('Direto')) selectedEmoji = '💰';
-      }
-
-      // 5. Topic & Phrase Synthesis
-      let phrase = '';
-
-      const quoteMatches = rawInst.match(/['"“]([^'"”]+)['"”]/g);
-      let extractedQuote = '';
-      if (quoteMatches && quoteMatches.length > 0) {
-        extractedQuote = quoteMatches[Math.floor(Math.random() * quoteMatches.length)].replace(/['"“]/g, '').trim();
-      }
-
-      if (isSeriousRequested) {
-        if (extractedQuote) {
-          phrase = `APLIQUE O CUPOM OFICIAL "${extractedQuote.toUpperCase()}" E GARANTA O SEU DESCONTO NO LINK ABAIXO:`;
-        } else if (isLong) {
-          phrase = `OFERTA EXCLUSIVA DISPONÍVEL POR TEMPO LIMITADO. PRODUTO COM GARANTIA E CONDIÇÕES ESPECIAIS DE COMPRA. CLIQUE NO LINK OFICIAL ABAIXO PARA GARANTIR A SUA UNIDADE:`;
-        } else {
-          phrase = `DESCONTO EXCLUSIVO LIBERADO. GARANTA A SUA UNIDADE NO LINK OFICIAL ABAIXO:`;
-        }
-      } else if (isLong) {
-        if (extractedQuote) {
-          phrase = `OBAAA GEEENTE! ESSA É A SUA OPORTUNIDADE DE OURO PRA COMPRAR COM DESCONTO SURREAL! APLIQUE O CUPOM EXCLUSIVO "${extractedQuote.toUpperCase()}", GARANTA SEU DESCONTO E APROVEITE O MENOR PREÇO DO ANO. NÃO DEIXE PRA DEPOIS, CLIQUE AGORA MESMO E RESGATE NO LINK OFICIAL ABAIXO:`;
-        } else if (isAnimated || isPersuasive) {
-          phrase = `🎉 OBAAA GEEENTE! ESSA É A SUA CHANCE ÚNICA PRA GARANTIR O PRODUTO DOS SEUS SONHOS COM UM DESCONTO SIMPLESMENTE SURREAL! QUALIDADE COMPROVADA, ESTOQUE SUPER LIMITADO E MENOR PREÇO DO ANO GARANTIDO. NÃO PERCA TEMPO, CLIQUE AGORA MESMO E GARANTA O SEU NO LINK OFICIAL ABAIXO:`;
-        } else {
-          phrase = `ATENÇÃO GALERA! SE VOCÊ ESTAVA ESPERANDO O MOMENTO CERTO PRA COMPRAR, A HORA É AGORA! OPORTUNIDADE IMPERDÍVEL COM DESCONTO EXCLUSIVO LIBERADO POR TEMPO LIMITADO. CLIQUE NO LINK ABAIXO E GARANTA JÁ O SEU:`;
-        }
-      } else if (isShort) {
-        phrase = extractedQuote ? `USE O CUPOM ${extractedQuote.toUpperCase()} E COMPRE NO LINK:` : `PREÇO DE CUSTO! COMPRE AGORA NO LINK ABAIXO:`;
-      } else {
-        if (extractedQuote) {
-          phrase = `APLIQUE O CUPOM EXCLUSIVO "${extractedQuote.toUpperCase()}" E GARANTA MAIOR DESCONTO NO LINK OFICIAL:`;
-        } else if (instLower.includes('cupom') || instLower.includes('desconto')) {
-          phrase = `RESGATE SEU CUPOM DE DESCONTO EXCLUSIVO E GARANTA O MENOR PREÇO NO LINK ABAIXO:`;
-        } else if (instLower.includes('frete')) {
-          phrase = `GARANTA A SUA UNIDADE COM FRETE GRÁTIS DISPONÍVEL NO LINK ABAIXO:`;
-        } else if (instLower.includes('pix')) {
-          phrase = `APROVEITE O DESCONTO EXCLUSIVO NO PIX ACESSANDO O LINK ABAIXO:`;
-        } else if (instLower.includes('estoque') || instLower.includes('urgente')) {
-          phrase = `CORRE ANTES QUE ACABE O ESTOQUE! GARANTA A SUA UNIDADE NO LINK ABAIXO:`;
-        } else if (tone.includes('Amigável')) {
-          phrase = `OBA GEEENTE! OLHA ESSE ACHADINHO SENSACIONAL QUE SEPARAI NO LINK ABAIXO:`;
-        } else {
-          phrase = `DESCONTO EXCLUSIVO LIBERADO! GARANTA O SEU AGORA MESMO NO LINK ABAIXO:`;
-        }
-      }
-
-      // 6. Assemble Emoji Position
-      let fullCta = '';
-      if (noEmojiRequested || !selectedEmoji) {
-        fullCta = phrase;
-      } else if (emojiPos === 'end') {
-        fullCta = `${phrase} ${selectedEmoji}`;
-      } else if (emojiPos === 'both') {
-        fullCta = `${selectedEmoji} ${phrase} 🔥🚀`;
-      } else {
-        fullCta = `${selectedEmoji} ${phrase}`;
-      }
-
-      // 7. Inject Must-Use Words
-      if (mustUseWords && mustUseWords.trim().length > 0) {
-        const wordList = mustUseWords.split(',').map((w: string) => w.trim()).filter(Boolean);
-        if (wordList.length > 0) {
-          const extraWord = wordList[Math.floor(Math.random() * wordList.length)];
-          if (!fullCta.toLowerCase().includes(extraWord.toLowerCase())) {
-            fullCta = `${extraWord.toUpperCase()}! ${fullCta}`;
-          }
-        }
-      }
-
-      // 8. Filter Forbidden Words
-      if (forbiddenWords && forbiddenWords.trim().length > 0) {
-        const forbiddenList = forbiddenWords.split(',').map((w: string) => w.trim()).filter(Boolean);
-        forbiddenList.forEach((fw: string) => {
-          if (fw) {
-            const reg = new RegExp(fw, 'gi');
-            fullCta = fullCta.replace(reg, '');
-          }
-        });
-      }
-
-      return forceUppercaseCta ? fullCta.toUpperCase() : fullCta;
     }
   };
 
@@ -785,7 +645,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         updateIntegrationConfig,
         addLog,
         generateCopyWithAI,
-        generateCtaWithAI,
         extractOfferFromUrl,
         isSearchOpen,
         setIsSearchOpen,
