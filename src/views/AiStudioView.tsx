@@ -397,24 +397,6 @@ export const AiStudioView: React.FC = () => {
     }
   };
 
-  const handleSaveAiTrainingSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const trainingObj = {
-      tone: aiTone,
-      mustUseWords,
-      forbiddenWords,
-      preferredCta,
-      exampleCopy
-    };
-    localStorage.setItem('affi_ai_training', JSON.stringify(trainingObj));
-    setIsTrainingSaved(true);
-    addLog('success', 'Treinamento IA', 'Personalidade e estilo da IA atualizados com sucesso!');
-    setTimeout(() => {
-      setIsTrainingSaved(false);
-      setIsAiTrainingOpen(false);
-    }, 1200);
-  };
-
   const handleCopyText = () => {
     navigator.clipboard.writeText(generatedCopy);
     setCopied(true);
