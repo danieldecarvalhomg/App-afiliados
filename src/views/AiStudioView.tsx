@@ -183,33 +183,33 @@ export const AiStudioView: React.FC = () => {
   const [mustUseWords, setMustUseWords] = useState(() => {
     try {
       const saved = localStorage.getItem('affi_ai_training');
-      if (saved) return JSON.parse(saved).mustUseWords || 'Gente!, Achadinho, Corre!';
+      if (saved && JSON.parse(saved).mustUseWords !== undefined) return JSON.parse(saved).mustUseWords;
     } catch {}
-    return 'Gente!, Achadinho, Corre!';
+    return '';
   });
 
   const [forbiddenWords, setForbiddenWords] = useState(() => {
     try {
       const saved = localStorage.getItem('affi_ai_training');
-      if (saved) return JSON.parse(saved).forbiddenWords || 'Não perca, Compre já';
+      if (saved && JSON.parse(saved).forbiddenWords !== undefined) return JSON.parse(saved).forbiddenWords;
     } catch {}
-    return 'Não perca, Compre já';
+    return '';
   });
 
   const [preferredCta, setPreferredCta] = useState(() => {
     try {
       const saved = localStorage.getItem('affi_ai_training');
-      if (saved) return JSON.parse(saved).preferredCta || '👉 RESGATE O SEU NO LINK OFICIAL ABAIXO:';
+      if (saved && JSON.parse(saved).preferredCta !== undefined) return JSON.parse(saved).preferredCta;
     } catch {}
-    return '👉 RESGATE O SEU NO LINK OFICIAL ABAIXO:';
+    return '';
   });
 
   const [ctaInstructions, setCtaInstructions] = useState(() => {
     try {
       const saved = localStorage.getItem('affi_ai_training');
-      if (saved) return JSON.parse(saved).ctaInstructions || 'Crie uma CTA atrativa com emojis e foco no link de afiliado oficial';
+      if (saved && JSON.parse(saved).ctaInstructions !== undefined) return JSON.parse(saved).ctaInstructions;
     } catch {}
-    return 'Crie uma CTA atrativa com emojis e foco no link de afiliado oficial';
+    return '';
   });
 
   const [isGeneratingCta, setIsGeneratingCta] = useState(false);
@@ -217,9 +217,9 @@ export const AiStudioView: React.FC = () => {
   const [exampleCopy, setExampleCopy] = useState(() => {
     try {
       const saved = localStorage.getItem('affi_ai_training');
-      if (saved) return JSON.parse(saved).exampleCopy || 'Gente, olha que achadinho surreal! Fone Bluetooth com bateria monstra por R$ 99! Corre antes que acabe: [LINK]';
+      if (saved && JSON.parse(saved).exampleCopy !== undefined) return JSON.parse(saved).exampleCopy;
     } catch {}
-    return 'Gente, olha que achadinho surreal! Fone Bluetooth com bateria monstra por R$ 99! Corre antes que acabe: [LINK]';
+    return '';
   });
 
   const [isTrainingSaved, setIsTrainingSaved] = useState(false);

@@ -558,54 +558,77 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       throw new Error(data.error || 'Erro ao gerar CTA');
     } catch (err: any) {
-      const tone = params.tone || '';
-      let emoji = '🔥';
-      let phrases = ['CORRE ANTES QUE ACABE O ESTOQUE NO LINK:'];
+      const { tone = '', ctaInstructions = '', mustUseWords = '', forbiddenWords = '', forceUppercaseCta = false } = params;
 
-      if (tone.includes('Amigável')) {
-        emoji = '🧡';
-        phrases = [
-          'OBA GEEENTE! OLHA ESSE ACHADINHO SENSACIONAL NO LINK:',
-          'GALERA, DICA DA HORA PRA VOCÊS! RESGATE NO LINK ABAIXO:',
-          'ACHADINHO INCRÍVEL DEMAIS! COMPRE NO LINK OFICIAL:'
-        ];
-      } else if (tone.includes('Direto')) {
-        emoji = '💰';
-        phrases = [
-          'PREÇO DE CUSTO! COMPRE AGORA ACESSANDO O LINK:',
-          'DESCONTO EXCLUSIVO APLICADO! GARANTA NO LINK:',
-          'MENOR PREÇO GARANTIDO DO DIA NO LINK ABAIXO:'
-        ];
-      } else if (tone.includes('Consultivo')) {
-        emoji = '⭐';
-        phrases = [
-          'REVIEW TECH: EXCELENTE CUSTO-BENEFÍCIO NO LINK:',
-          'PRODUTO COM GARANTIA E MELHOR PREÇO NO LINK ABAIXO:',
-          'QUALIDADE COMPROVADA! GARANTA O SEU NO LINK:'
-        ];
-      } else if (tone.includes('Divertido')) {
-        emoji = '🚀';
-        phrases = [
-          'PREÇO TÃO BAIXO QUE PARECE MEME! CORRE NO LINK:',
-          'SURREAL DE BARATO! GARANTA O SEU ANTES QUE SUMA NO LINK:'
-        ];
+      let emojis = ['🔥', '🚨', '⚡', '🧡', '🎁', '✨', '🛍️', '👉', '🛒'];
+      if (tone.includes('Amigável')) emojis = ['🧡', '✨', '🥰', '🎁'];
+      else if (tone.includes('Direto')) emojis = ['💰', '🛒', '👉', '🎯'];
+      else if (tone.includes('Consultivo')) emojis = ['⭐', '🛡️', '💎', '📌'];
+      else if (tone.includes('Divertido')) emojis = ['🔥', '🎉', '🤪', '🚀'];
+      else if (tone.includes('Urgente')) emojis = ['🚨', '⚠️', '⚡', '🔥'];
+
+      const e1 = emojis[Math.floor(Math.random() * emojis.length)];
+      let resultText = '';
+
+      const cleanInst = (ctaInstructions || '').trim();
+
+      if (cleanInst.length > 0) {
+        let text = cleanInst;
+
+        // Clean prompt command verbs (e.g. "diga que", "escreva que", "faça um texto", etc.)
+        text = text.replace(/^(escreva|faça|faca|crie|diga|avisa|avise|manda|peça|peca|quero|foca|foco|use)\s+(que|uma|um|em|para|sobre)?\s+/gi, '');
+        text = text.replace(/^(um|uma|texto|chamada|cta|mensagem|post)\s+(para|sobre|com|de)?\s+/gi, '');
+
+        // Capitalize first letter
+        text = text.charAt(0).toUpperCase() + text.slice(1);
+
+        // If text doesn't indicate link, append link CTA suffix
+        if (!text.toLowerCase().includes('link')) {
+          text = `${text}! COMPRE NO LINK OFICIAL:`;
+        }
+
+        resultText = `${e1} ${text}`;
       } else {
-        emoji = '🚨';
-        phrases = [
+        let pool = [
           'CORRE ANTES QUE ACABE O ESTOQUE NO LINK:',
-          'ÚLTIMAS UNIDADES NESSE PREÇO NO LINK ABAIXO:',
-          'ALERTA DE PREÇO BAIXO! GARANTA O SEU NO LINK:'
+          'DESCONTO EXCLUSIVO LIBERADO AGORA NO LINK:',
+          'GARANTA A SUA UNIDADE NO LINK ABAIXO:'
         ];
+        if (tone.includes('Amigável')) {
+          pool = [
+            'OBA GEEENTE! ACHADINHO INCRÍVEL NO LINK:',
+            'GALERA, DICA DA HORA PRA VOCÊS! RESGATE NO LINK ABAIXO:'
+          ];
+        } else if (tone.includes('Direto')) {
+          pool = [
+            'PREÇO DE CUSTO! COMPRE AGORA ACESSANDO O LINK:',
+            'MENOR PREÇO GARANTIDO DO DIA NO LINK ABAIXO:'
+          ];
+        }
+        resultText = `${e1} ${pool[Math.floor(Math.random() * pool.length)]}`;
       }
 
-      let customTag = '';
-      if (params.mustUseWords) {
-        const words = params.mustUseWords.split(',').filter(Boolean);
-        if (words.length > 0) customTag = words[Math.floor(Math.random() * words.length)].trim();
+      if (mustUseWords && mustUseWords.trim().length > 0) {
+        const wordList = mustUseWords.split(',').map((w: string) => w.trim()).filter(Boolean);
+        if (wordList.length > 0) {
+          const extraWord = wordList[Math.floor(Math.random() * wordList.length)];
+          if (!resultText.toLowerCase().includes(extraWord.toLowerCase())) {
+            resultText = `${extraWord.toUpperCase()}! ${resultText}`;
+          }
+        }
       }
-      const pickedPhrase = phrases[Math.floor(Math.random() * phrases.length)];
-      let finalCta = customTag ? `${emoji} ${customTag}! ${pickedPhrase}` : `${emoji} ${pickedPhrase}`;
-      return params.forceUppercaseCta ? finalCta.toUpperCase() : finalCta;
+
+      if (forbiddenWords && forbiddenWords.trim().length > 0) {
+        const forbiddenList = forbiddenWords.split(',').map((w: string) => w.trim().toLowerCase()).filter(Boolean);
+        forbiddenList.forEach((fw: string) => {
+          if (fw) {
+            const reg = new RegExp(fw, 'gi');
+            resultText = resultText.replace(reg, '');
+          }
+        });
+      }
+
+      return forceUppercaseCta ? resultText.toUpperCase() : resultText;
     }
   };
 
