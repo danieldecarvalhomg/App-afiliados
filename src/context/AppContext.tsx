@@ -15,8 +15,11 @@ import {
   MonitoredGroup,
   CapturedMessage,
   ExtractedDataJSON,
-  AICtaProfile,
-  TrainChatMessage
+  CtaProfile,
+  CtaProfileChange,
+  TrainingMessage,
+  CtaFeedback,
+  CtaContext
 } from '../types';
 import {
   INITIAL_PRODUCTS,
@@ -32,9 +35,7 @@ import {
   INITIAL_LOGS,
   INITIAL_SUBSCRIPTION,
   INITIAL_MONITORED_GROUPS,
-  INITIAL_CAPTURED_MESSAGES,
-  INITIAL_CTA_PROFILE,
-  INITIAL_TRAIN_CHAT
+  INITIAL_CAPTURED_MESSAGES
 } from '../data/mockData';
 import { supabaseService } from '../services/supabaseService';
 import { checkSupabaseConnection } from '../lib/supabase';
@@ -88,16 +89,6 @@ interface AppContextType {
   rejectCapturedMessage: (id: string) => void;
   processCapturedMessageAI: (rawText: string, groupId: string, imageUrl?: string) => Promise<CapturedMessage>;
 
-  // AI Training System
-  ctaProfile: AICtaProfile;
-  setCtaProfile: React.Dispatch<React.SetStateAction<AICtaProfile>>;
-  updateCtaProfile: (updates: Partial<AICtaProfile>) => void;
-  trainChat: TrainChatMessage[];
-  setTrainChat: React.Dispatch<React.SetStateAction<TrainChatMessage[]>>;
-  sendTrainChatMessage: (content: string) => Promise<void>;
-  resetTrainAi: () => void;
-  generateCtaSample: (productName?: string) => Promise<string[]>;
-
   landingPages: LandingPageItem[];
   leads: CRMLead[];
   logs: SystemLog[];
@@ -130,6 +121,18 @@ interface AppContextType {
   generateCopyWithAI: (params: any) => Promise<string>;
   extractOfferFromUrl: (url: string) => Promise<any>;
   
+  // Central CTA Profile (AI Training)
+  ctaProfile: CtaProfile;
+  updateCtaProfile: (changes: Partial<CtaProfile>, triggeredBy?: string) => void;
+  generateCtaFromProfile: (context: CtaContext) => string;
+  resetCtaProfile: () => void;
+  trainingMessages: TrainingMessage[];
+  addTrainingMessage: (msg: Partial<TrainingMessage>) => TrainingMessage;
+  clearTrainingHistory: () => void;
+  ctaFeedbacks: CtaFeedback[];
+  addCtaFeedback: (feedback: Partial<CtaFeedback>) => void;
+  sendTrainingMessage: (userText: string) => Promise<void>;
+
   // Global Search
   isSearchOpen: boolean;
   setIsSearchOpen: (open: boolean) => void;
@@ -141,6 +144,50 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+
+  // ─── DEFAULT CENTRAL CTA PROFILE ─────────────────────────────────────────
+  const DEFAULT_CTA_PROFILE: CtaProfile = {
+    tom: 'urgente',
+    usaEmoji: true,
+    emojisPreferidos: ['🔥', '🚨', '💥'],
+    tamanhoPreferido: 'medio',
+    palavrasProibidas: [],
+    palavrasFavoritas: ['corre', 'só hoje', 'últimas unidades'],
+    usaCaixaAlta: false,
+    exemplosBons: [],
+    exemplosRuins: [],
+    observacoesLivres: '',
+    ctasGerados: [],
+    changelog: [],
+    updatedAt: new Date().toISOString()
+  };
+
+  const [ctaProfile, setCtaProfile] = useState<CtaProfile>(() => {
+    try {
+      const saved = localStorage.getItem('affi_cta_profile_v1');
+      return saved ? JSON.parse(saved) : DEFAULT_CTA_PROFILE;
+    } catch {
+      return DEFAULT_CTA_PROFILE;
+    }
+  });
+
+  const [trainingMessages, setTrainingMessages] = useState<TrainingMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('affi_training_messages_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  const [ctaFeedbacks, setCtaFeedbacks] = useState<CtaFeedback[]>(() => {
+    try {
+      const saved = localStorage.getItem('affi_cta_feedbacks_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Purge legacy demo data from localStorage on load if present
   useEffect(() => {
@@ -246,32 +293,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return INITIAL_CAPTURED_MESSAGES;
     }
   });
-
-  const [ctaProfile, setCtaProfile] = useState<AICtaProfile>(() => {
-    try {
-      const saved = localStorage.getItem('affi_cta_profile_v1');
-      return saved ? JSON.parse(saved) : INITIAL_CTA_PROFILE;
-    } catch {
-      return INITIAL_CTA_PROFILE;
-    }
-  });
-
-  const [trainChat, setTrainChat] = useState<TrainChatMessage[]>(() => {
-    try {
-      const saved = localStorage.getItem('affi_train_chat_v1');
-      return saved ? JSON.parse(saved) : INITIAL_TRAIN_CHAT;
-    } catch {
-      return INITIAL_TRAIN_CHAT;
-    }
-  });
-
-  useEffect(() => {
-    localStorage.setItem('affi_cta_profile_v1', JSON.stringify(ctaProfile));
-  }, [ctaProfile]);
-
-  useEffect(() => {
-    localStorage.setItem('affi_train_chat_v1', JSON.stringify(trainChat));
-  }, [trainChat]);
 
   const [landingPages, setLandingPages] = useState<LandingPageItem[]>([]);
   const [leads, setLeads] = useState<CRMLead[]>([]);
@@ -577,141 +598,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } : g));
 
     return newMsg;
-  };
-
-  const updateCtaProfile = (updates: Partial<AICtaProfile>) => {
-    setCtaProfile(prev => ({ ...prev, ...updates }));
-    addLog('info', 'Treinamento IA', 'Perfil de preferências de CTA atualizado.');
-  };
-
-  const sendTrainChatMessage = async (content: string) => {
-    const userMsg: TrainChatMessage = {
-      id: 'msg-' + Date.now(),
-      role: 'user',
-      content,
-      createdAt: 'Agora mesmo'
-    };
-    
-    setTrainChat(prev => [...prev, userMsg]);
-
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-    const lower = content.toLowerCase();
-    const updates: Partial<AICtaProfile> = {};
-
-    if (lower.includes('urgente') || lower.includes('pressa') || lower.includes('acabando')) {
-      updates.tom = 'urgente';
-    } else if (lower.includes('formal') || lower.includes('sério') || lower.includes('profissional')) {
-      updates.tom = 'formal';
-    } else if (lower.includes('descontraído') || lower.includes('amigável') || lower.includes('leve')) {
-      updates.tom = 'descontraído';
-    } else if (lower.includes('luxuoso') || lower.includes('premium') || lower.includes('sofisticado')) {
-      updates.tom = 'luxuoso';
-    } else if (lower.includes('divertido') || lower.includes('engraçado')) {
-      updates.tom = 'divertido';
-    }
-
-    if (lower.includes('sem emoji') || lower.includes('não use emoji') || lower.includes('remover emoji')) {
-      updates.usa_emoji = false;
-    } else if (lower.includes('emoji') || lower.includes('usar emoji')) {
-      updates.usa_emoji = true;
-      const emojis = content.match(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g);
-      if (emojis && emojis.length > 0) {
-        updates.emojis_preferidos = Array.from(new Set([...(ctaProfile.emojis_preferidos || []), ...emojis]));
-      }
-    }
-
-    if (lower.includes('curto') || lower.includes('pequeno') || lower.includes('direto')) {
-      updates.tamanho_preferido = 'curto';
-    } else if (lower.includes('longo') || lower.includes('detalhado') || lower.includes('comprido')) {
-      updates.tamanho_preferido = 'longo';
-    } else if (lower.includes('médio') || lower.includes('moderado')) {
-      updates.tamanho_preferido = 'médio';
-    }
-
-    if (lower.includes('nunca use') || lower.includes('palavras proibidas') || lower.includes('proibir') || lower.includes('evitar')) {
-      const forbiddenMatch = content.match(/(?:use|proibir|proibidas|evitar)\s+["']?([^"']+)["']?/i);
-      if (forbiddenMatch) {
-        const words = forbiddenMatch[1].split(/,|-|\s+/).map(w => w.trim().toLowerCase()).filter(Boolean);
-        updates.palavras_proibidas = Array.from(new Set([...(ctaProfile.palavras_proibidas || []), ...words]));
-      }
-    }
-
-    if (lower.includes('exemplo') || lower.includes('como') || content.includes('"') || content.includes('“')) {
-      const quoteMatch = content.match(/["“]([^"”]+)["”]/g);
-      if (quoteMatch) {
-        const examples = quoteMatch.map(q => q.replace(/["“”]/g, '').trim());
-        updates.exemplos_bons = Array.from(new Set([...(ctaProfile.exemplos_bons || []), ...examples]));
-      }
-    }
-
-    if (Object.keys(updates).length > 0) {
-      setCtaProfile(prev => {
-        const next = { ...prev, ...updates };
-        localStorage.setItem('affi_cta_profile_v1', JSON.stringify(next));
-        return next;
-      });
-    }
-
-    let assistantReply = '';
-    if (Object.keys(updates).length > 0) {
-      assistantReply = `Perfeito! Entendi as novas preferências. Analisei sua mensagem e aprendi mais sobre o estilo ideal:\n\n` +
-        (updates.tom ? `• Tom atualizado para: *${updates.tom}*\n` : '') +
-        (updates.usa_emoji !== undefined ? `• Uso de emojis: *${updates.usa_emoji ? 'Ativo' : 'Inativo'}*\n` : '') +
-        (updates.tamanho_preferido ? `• Tamanho preferencial: *${updates.tamanho_preferido}*\n` : '') +
-        (updates.exemplos_bons ? `• Adicionados *${updates.exemplos_bons.length}* novos exemplos práticos!\n` : '') +
-        `\nO que acha de clicar no botão "Gerar exemplos de CTA" abaixo para testarmos esse ajuste em tempo real?`;
-    } else {
-      assistantReply = `Legal! Anotei essas observações livres no perfil de treinamento para a geração de Copies. \n\nVocê tem algum exemplo real de CTA que você já utilizou e teve bons resultados? Coloque entre aspas (ex: "CORRE AQUI") para eu cadastrá-lo como referência!`;
-    }
-
-    const assistantMsg: TrainChatMessage = {
-      id: 'msg-' + Date.now() + '-ai',
-      role: 'assistant',
-      content: assistantReply,
-      createdAt: 'Agora mesmo'
-    };
-
-    setTrainChat(prev => [...prev, assistantMsg]);
-  };
-
-  const resetTrainAi = () => {
-    setCtaProfile(INITIAL_CTA_PROFILE);
-    setTrainChat(INITIAL_TRAIN_CHAT);
-    localStorage.setItem('affi_cta_profile_v1', JSON.stringify(INITIAL_CTA_PROFILE));
-    localStorage.setItem('affi_train_chat_v1', JSON.stringify(INITIAL_TRAIN_CHAT));
-    addLog('warning', 'Treinamento IA', 'Treinamento reiniciado para as preferências originais.');
-  };
-
-  const generateCtaSample = async (productName?: string): Promise<string[]> => {
-    const pName = productName || 'Smart TV 4K QLED 55"';
-    const emojis = ctaProfile.usa_emoji ? (ctaProfile.emojis_preferidos.join(' ') || '🔥 🚨') : '';
-    const size = ctaProfile.tamanho_preferido;
-    const tom = ctaProfile.tom;
-
-    let cta1 = '', cta2 = '', cta3 = '';
-
-    if (tom === 'urgente') {
-      cta1 = `${emojis} ÚLTIMAS UNIDADES! Garanta sua ${pName} antes que o estoque acabe!`;
-      cta2 = `🚨 CORRE! ${pName} com preço mínimo histórico só nas próximas horas!`;
-      cta3 = `${emojis} O cronômetro está rodando! Garanta sua ${pName} pelo link exclusivo!`;
-    } else if (tom === 'formal') {
-      cta1 = `Adquira agora a nova ${pName} com condições especiais de lançamento.`;
-      cta2 = `Aproveite esta oportunidade única para obter sua ${pName} através do canal oficial.`;
-      cta3 = `Confira a análise e garanta a melhor oferta para a sua ${pName} hoje.`;
-    } else {
-      cta1 = `${emojis} Se eu fosse você, não deixaria passar: sua nova ${pName} te espera no link!`;
-      cta2 = `🔥 Menor preço do mês! Compre a ${pName} com desconto especial!`;
-      cta3 = `🚨 Alerta de achado: ${pName} com frete rápido e desconto ativado!`;
-    }
-
-    if (size === 'curto') {
-      cta1 = cta1.substring(0, 50) + ` ${emojis}`.trim();
-      cta2 = cta2.substring(0, 50) + ` ${emojis}`.trim();
-      cta3 = cta3.substring(0, 50) + ` ${emojis}`.trim();
-    }
-
-    return [cta1, cta2, cta3];
   };
 
   useEffect(() => {
@@ -1073,6 +959,490 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.clear();
   };
 
+  // ─── AI TRAINING PERSISTENCE ─────────────────────────────────────────────
+  useEffect(() => {
+    localStorage.setItem('affi_cta_profile_v1', JSON.stringify(ctaProfile));
+  }, [ctaProfile]);
+
+  useEffect(() => {
+    localStorage.setItem('affi_training_messages_v1', JSON.stringify(trainingMessages));
+  }, [trainingMessages]);
+
+  useEffect(() => {
+    localStorage.setItem('affi_cta_feedbacks_v1', JSON.stringify(ctaFeedbacks));
+  }, [ctaFeedbacks]);
+
+  // ─── CTA PROFILE CRUD ────────────────────────────────────────────────────
+  const updateCtaProfile = (changes: Partial<CtaProfile>, triggeredBy = '') => {
+    setCtaProfile(prev => {
+      const changeEntries: CtaProfileChange[] = Object.entries(changes)
+        .filter(([k]) => k !== 'changelog' && k !== 'ctasGerados' && k !== 'updatedAt')
+        .map(([field, newValue]) => ({
+          id: 'chg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          timestamp: new Date().toISOString(),
+          field,
+          previousValue: (prev as any)[field],
+          newValue,
+          triggeredByMessage: triggeredBy
+        }));
+
+      return {
+        ...prev,
+        ...changes,
+        changelog: [...(prev.changelog || []), ...changeEntries].slice(-100),
+        updatedAt: new Date().toISOString()
+      };
+    });
+  };
+
+  const resetCtaProfile = () => {
+    const blank: CtaProfile = {
+      tom: 'urgente',
+      usaEmoji: true,
+      emojisPreferidos: ['🔥', '🚨', '💥'],
+      tamanhoPreferido: 'medio',
+      palavrasProibidas: [],
+      palavrasFavoritas: ['corre', 'só hoje', 'últimas unidades'],
+      usaCaixaAlta: false,
+      exemplosBons: [],
+      exemplosRuins: [],
+      observacoesLivres: '',
+      ctasGerados: [],
+      changelog: [],
+      updatedAt: new Date().toISOString()
+    };
+    setCtaProfile(blank);
+    setTrainingMessages([]);
+    addLog('warning', 'IA Training', 'Treinamento da IA foi reiniciado do zero.');
+  };
+
+  const addTrainingMessage = (msg: Partial<TrainingMessage>): TrainingMessage => {
+    const newMsg: TrainingMessage = {
+      id: 'msg-' + Date.now(),
+      role: msg.role || 'user',
+      content: msg.content || '',
+      timestamp: new Date().toISOString(),
+      profileChanges: msg.profileChanges,
+      generatedCtas: msg.generatedCtas
+    };
+    setTrainingMessages(prev => [...prev, newMsg]);
+    return newMsg;
+  };
+
+  const clearTrainingHistory = () => {
+    setTrainingMessages([]);
+  };
+
+  const addCtaFeedback = (feedback: Partial<CtaFeedback>) => {
+    const newFb: CtaFeedback = {
+      id: 'fb-' + Date.now(),
+      ctaText: feedback.ctaText || '',
+      rating: feedback.rating || 'good',
+      editedVersion: feedback.editedVersion,
+      reason: feedback.reason,
+      origin: feedback.origin || 'training',
+      createdAt: new Date().toISOString()
+    };
+    setCtaFeedbacks(prev => [...prev, newFb]);
+
+    if (newFb.rating === 'good') {
+      const cta = newFb.editedVersion || newFb.ctaText;
+      setCtaProfile(prev => ({
+        ...prev,
+        exemplosBons: [...prev.exemplosBons, cta].slice(-20)
+      }));
+    } else if (newFb.rating === 'bad') {
+      setCtaProfile(prev => ({
+        ...prev,
+        exemplosRuins: [...prev.exemplosRuins, newFb.ctaText].slice(-20)
+      }));
+    }
+  };
+
+  // ─── ANTI-REPETITION ENGINE ──────────────────────────────────────────────
+  const normalizeCtaFingerprint = (text: string): string => {
+    return text
+      .toLowerCase()
+      .replace(/[\u{1F300}-\u{1FFFF}]/gu, '')
+      .replace(/[^a-záàãâéêíóôõúüç\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 60);
+  };
+
+  const simScore = (a: string, b: string): number => {
+    if (a === b) return 1;
+    const len = Math.max(a.length, b.length);
+    if (len === 0) return 1;
+    let matches = 0;
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+      if (a[i] === b[i]) matches++;
+    }
+    return matches / len;
+  };
+
+  const isCtaRepeated = (candidate: string, history: string[]): boolean => {
+    const fp = normalizeCtaFingerprint(candidate);
+    return history.some(h => simScore(fp, normalizeCtaFingerprint(h)) >= 0.8);
+  };
+
+  const saveCtaToHistory = (cta: string) => {
+    setCtaProfile(prev => ({
+      ...prev,
+      ctasGerados: [...prev.ctasGerados, cta].slice(-200)
+    }));
+  };
+
+  // ─── CTA GENERATION ENGINE ───────────────────────────────────────────────
+  const generateCtaFromProfile = (context: CtaContext = {}): string => {
+    const prof = ctaProfile;
+    const { produto, loja, preco, preco_original, cupom, frete_gratis, pix, internacional } = context;
+
+    const aberturas = {
+      urgente: ['CORRE!', 'SÓ AGORA!', 'ÚLTIMA CHANCE!', 'VENCE HOJE!', 'ATENÇÃO!', 'NÃO PERDE!'],
+      descontraido: ['Oi, sumido!', 'Tava faltando isso:', 'Olha que achado...', 'Peraí, viu isso?', 'Calma que tem mais:'],
+      formal: ['Oportunidade especial:', 'Produto em destaque:', 'Oferta selecionada:', 'Condição especial:'],
+      divertido: ['Pow, que preço é esse?!', 'TÁ DE ZUEIRA?!', 'Alô alô!', 'TA BARATÃO!', 'Bora aproveitar!'],
+      luxuoso: ['Exclusividade para você:', 'Peça premium em oferta:', 'Curadoria especial:', 'Seleção premium:']
+    };
+
+    const fimPhrases: Record<string, string[]> = {
+      curto: ['Pega logo!', 'Corre lá!', 'Garanta já!', 'Não fica de fora!'],
+      medio: ['Garante o seu antes que acabe!', 'Aproveita enquanto tem estoque!', 'Clica no link e confere!', 'Não perde essa oportunidade!'],
+      longo: ['Corre para o link e garante o seu antes que o estoque acabe — essa condição não dura para sempre!', 'Acessa o link agora mesmo e aproveita essa condição especial antes que o preço volte ao normal!']
+    };
+
+    const tom = prof.tom as string;
+    const aberturaList = (aberturas as any)[tom] || aberturas.urgente;
+    const fimList = (fimPhrases as any)[prof.tamanhoPreferido] || fimPhrases.medio;
+
+    // Pick different entries per attempt to vary CTAs
+    const pick = <T,>(arr: T[], seed = 0): T => arr[(Date.now() + seed) % arr.length];
+
+    const tentativas: string[] = [];
+
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const abertura = pick(aberturaList, attempt);
+      const fim = pick(fimList, attempt + 10);
+
+      const emojiBolha = prof.usaEmoji
+        ? (prof.emojisPreferidos[(attempt) % prof.emojisPreferidos.length] || '🔥')
+        : '';
+
+      const emojiExtra = prof.usaEmoji
+        ? (prof.emojisPreferidos[(attempt + 1) % prof.emojisPreferidos.length] || '💥')
+        : '';
+
+      let linhas: string[] = [];
+
+      // Abertura
+      linhas.push(`${emojiBolha} ${abertura}`);
+
+      // Produto
+      if (produto) {
+        linhas.push(prof.usaCaixaAlta ? produto.toUpperCase() : `*${produto}*`);
+      }
+
+      // Preço
+      if (preco_original && preco) {
+        linhas.push(`De ~R$ ${preco_original}~ por apenas *R$ ${preco}*`);
+      } else if (preco) {
+        linhas.push(`Por *R$ ${preco}*`);
+      }
+
+      // Condições extras
+      const extras: string[] = [];
+      if (frete_gratis) extras.push('📦 Frete Grátis');
+      if (pix) extras.push('💳 Desconto no PIX');
+      if (cupom) extras.push(`🏷️ Cupom: *${cupom}*`);
+      if (internacional) extras.push('🌍 Produto Internacional');
+      if (extras.length) linhas.push(extras.join(' | '));
+
+      // Palavras favoritas
+      const fav = prof.palavrasFavoritas.filter(w => w.length > 0);
+      if (fav.length > 0 && prof.tamanhoPreferido !== 'curto') {
+        linhas.push(`⚡ ${fav[attempt % fav.length]}`);
+      }
+
+      // Fechamento + emoji extra
+      linhas.push(`${emojiExtra} ${fim}`);
+
+      let cta = linhas.join('\n');
+
+      // Filter palavras proibidas
+      prof.palavrasProibidas.forEach(w => {
+        if (w) cta = cta.replace(new RegExp(w, 'gi'), '');
+      });
+
+      cta = cta.trim();
+
+      tentativas.push(cta);
+
+      // Anti-repetição
+      if (!isCtaRepeated(cta, prof.ctasGerados)) {
+        saveCtaToHistory(cta);
+        return cta;
+      }
+    }
+
+    // After 5 attempts, return last generated and log
+    const fallback = tentativas[tentativas.length - 1];
+    saveCtaToHistory(fallback);
+    addLog('info', 'IA Training', 'Anti-repetição: CTA aceito após 5 tentativas (alta similaridade histórica).');
+    return fallback;
+  };
+
+  // ─── NLP COMMAND INTERPRETER ─────────────────────────────────────────────
+  type IntencaoCmd =
+    | 'adicionar' | 'remover' | 'ajustar' | 'consultar'
+    | 'gerar_exemplo' | 'feedback' | 'reset' | 'ambiguo';
+
+  const detectarIntencao = (texto: string): IntencaoCmd => {
+    const t = texto.toLowerCase();
+
+    if (/começa(r)? do zero|reinicia(r)?|apaga(r)? tudo|esquece tudo|zera(r)? tudo/.test(t)) return 'reset';
+    if (/o que (você|vc) (sabe|aprendeu)|resume(r)?|minhas prefer|perfil atual|o que (você|vc) tem/.test(t)) return 'consultar';
+    if (/gera(r)?|cria(r)?|mostra(r)?|faz um|quero ver|me d[aá]\s*(um|uns)|exemplos de cta/.test(t)) return 'gerar_exemplo';
+    if (/gostei|ficou (bom|ótimo|perfeito)|amei|esse (tá|está) (bom|ótimo)|aprovo/.test(t)) return 'feedback';
+    if (/não (gostei|presta|gosto mais)|ficou (ruim|horrível|péssimo|forçado)|esse não/.test(t)) return 'feedback';
+    if (/\b(não|nunca|remove(r)?|tira(r)?|esquece(r)?|para de|deixa de|sem)\b/.test(t)) return 'remover';
+    if (/só muda(r)?|apenas |menos |mais |diminui(r)?|aumenta(r)?|ajusta(r)?/.test(t)) return 'ajustar';
+    if (/\b(usa(r)?|quero|adiciona(r)?|prefer[oi]|sempre|a partir|coloca(r)?|inclui(r)?)\b/.test(t)) return 'adicionar';
+    return 'ambiguo';
+  };
+
+  const interpretarPreferencias = (texto: string, intencao: IntencaoCmd): {
+    changes: Partial<CtaProfile>,
+    confirmacao: string,
+    requerConfirmacao: boolean
+  } => {
+    const t = texto.toLowerCase();
+    const changes: Partial<CtaProfile> = {};
+    let confirmacao = '';
+    let requerConfirmacao = false;
+
+    // === TOM ===
+    if (/\b(urgente|urgência|pressão|corre)\b/.test(t)) {
+      changes.tom = 'urgente';
+      confirmacao = 'Combinado! Vou usar um tom de *urgência* nos seus CTAs a partir de agora. ⚡';
+    } else if (/\b(descontraído|casual|leve|tranquilo|informal)\b/.test(t)) {
+      changes.tom = 'descontraido';
+      confirmacao = 'Perfeito! Tom *descontraído e casual* salvo. Sem pressão nos textos! 😊';
+    } else if (/\b(formal|profissional|sério|elegante)\b/.test(t)) {
+      changes.tom = 'formal';
+      confirmacao = 'Entendido! Vou usar um tom mais *formal e profissional*. ✅';
+    } else if (/\b(divertido|engraçado|brincalhão|animado|descontraído)\b/.test(t)) {
+      changes.tom = 'divertido';
+      confirmacao = 'Anotado! CTAs *divertidos e animados* para você! 🎉';
+    } else if (/\b(luxo|luxuoso|premium|sofisticado|exclusivo)\b/.test(t)) {
+      changes.tom = 'luxuoso';
+      confirmacao = 'Registrado! Tom *premium e sofisticado* ativado. ✨';
+    }
+
+    // === TAMANHO ===
+    if (/\b(curto|curtinho|pequeno|breve|rápido|conciso)\b/.test(t)) {
+      changes.tamanhoPreferido = 'curto';
+      confirmacao = confirmacao || 'Ótimo! CTAs *curtos e diretos* a partir de agora. 🎯';
+    } else if (/\b(longo|detalhado|completo|extenso)\b/.test(t)) {
+      changes.tamanhoPreferido = 'longo';
+      confirmacao = confirmacao || 'Entendido! Vou fazer CTAs mais *completos e detalhados*. 📝';
+    } else if (/\b(médio|normal|equilibrado)\b/.test(t)) {
+      changes.tamanhoPreferido = 'medio';
+      confirmacao = confirmacao || 'Anotado! Vou manter um tamanho *médio e equilibrado*.';
+    }
+
+    // === EMOJI ===
+    if (/\b(sem emoji|não (usa(r)?|quero) emoji|menos emoji|evita(r)? emoji)\b/.test(t)) {
+      if (intencao === 'remover' || intencao === 'ajustar') {
+        changes.usaEmoji = false;
+        confirmacao = confirmacao || 'Perfeito! Vou parar de usar emojis nos seus CTAs. ✅';
+      }
+    } else if (/\b(com emoji|usa(r)? emoji|mais emoji|adora(r)? emoji|quero emoji)\b/.test(t)) {
+      changes.usaEmoji = true;
+      confirmacao = confirmacao || 'Combinado! Emojis ativados! 🎉';
+    }
+
+    // === EMOJIS PREFERIDOS (detectar emojis na mensagem) ===
+    const emojiRegex = /[\u{1F300}-\u{1FFFF}]/gu;
+    const emojisEncontrados = texto.match(emojiRegex);
+    if (emojisEncontrados && emojisEncontrados.length > 0 && intencao !== 'remover') {
+      const currentProfile = ctaProfile;
+      const novos = [...new Set([...currentProfile.emojisPreferidos, ...emojisEncontrados])].slice(0, 8);
+      changes.emojisPreferidos = novos;
+      confirmacao = confirmacao || `Emojis ${emojisEncontrados.join('')} adicionados às suas preferências! ✅`;
+    }
+
+    // === CAIXA ALTA ===
+    if (/\b(caixa alta|maiúsculo|tudo maiúsculo)\b/.test(t)) {
+      if (intencao === 'remover' || /\b(sem|não|nunca)\b/.test(t)) {
+        changes.usaCaixaAlta = false;
+        confirmacao = confirmacao || 'Entendido! Não vou mais usar caixa alta. ✅';
+      } else {
+        changes.usaCaixaAlta = true;
+        confirmacao = confirmacao || 'Combinado! Vou usar CAIXA ALTA nos seus CTAs. 🔊';
+      }
+    }
+
+    // === PALAVRAS PROIBIDAS ===
+    const proibidaMatch = t.match(/\b(não usa(r)?|proibid[ao]s?|sem a palavra|nunca escrev[ae]|para de usar|remove(r)? a palavra)\b[:\s]+(.+)/);
+    if (proibidaMatch || (intencao === 'remover' && /palavra|termo|expressão/.test(t))) {
+      const palavraAlvo = proibidaMatch?.[3]?.trim().split(/[,\s]/)[0];
+      if (palavraAlvo && palavraAlvo.length > 2) {
+        const curr = ctaProfile.palavrasProibidas;
+        if (!curr.includes(palavraAlvo)) {
+          changes.palavrasProibidas = [...curr, palavraAlvo];
+          confirmacao = `Combinado! Nunca mais vou usar a palavra *"${palavraAlvo}"* nos seus CTAs. 🚫`;
+        }
+      }
+    }
+
+    // === PALAVRAS FAVORITAS ===
+    const favMatch = t.match(/\b(usa(r)?|inclui(r)?|adiciona(r)?|coloca(r)?)\b.*(a (palavra|frase)|expressão)[:\s]+["']?(.+?)["']?$/);
+    if (favMatch) {
+      const palavra = favMatch[6]?.trim().split(/[,;]/)[0];
+      if (palavra && palavra.length > 2) {
+        const curr = ctaProfile.palavrasFavoritas;
+        if (!curr.includes(palavra)) {
+          changes.palavrasFavoritas = [...curr, palavra];
+          confirmacao = `Ótimo! Vou usar *"${palavra}"* com frequência nos seus CTAs. ✅`;
+        }
+      }
+    }
+
+    // === OBSERVAÇÕES LIVRES ===
+    if (intencao === 'ambiguo' && texto.length > 20) {
+      requerConfirmacao = true;
+      confirmacao = `Quase entendi! Você quer dizer que prefere: *"${texto.trim()}"*? Confirma que eu salvo essa preferência nas observações do seu perfil!`;
+    }
+
+    if (!confirmacao && Object.keys(changes).length > 0) {
+      confirmacao = 'Preferência salva com sucesso! O seu perfil de CTA foi atualizado. ✅';
+    }
+
+    return { changes, confirmacao, requerConfirmacao };
+  };
+
+  const gerarRespostaConsulta = (): string => {
+    const p = ctaProfile;
+    const linhas = [
+      '📋 *Aqui está o que aprendi sobre você até agora:*\n',
+      `🎭 *Tom:* ${p.tom}`,
+      `📏 *Tamanho:* ${p.tamanhoPreferido}`,
+      `😀 *Emojis:* ${p.usaEmoji ? `Sim (${p.emojisPreferidos.join(' ')})` : 'Não'}`,
+      `🔠 *Caixa alta:* ${p.usaCaixaAlta ? 'Sim' : 'Não'}`,
+      p.palavrasFavoritas.length > 0 ? `✅ *Palavras favoritas:* ${p.palavrasFavoritas.join(', ')}` : null,
+      p.palavrasProibidas.length > 0 ? `🚫 *Palavras proibidas:* ${p.palavrasProibidas.join(', ')}` : null,
+      p.exemplosBons.length > 0 ? `👍 *Exemplos aprovados:* ${p.exemplosBons.length} salvos` : null,
+      p.observacoesLivres ? `📌 *Observações:* ${p.observacoesLivres}` : null,
+    ].filter(Boolean);
+
+    return linhas.join('\n');
+  };
+
+  const sendTrainingMessage = async (userText: string): Promise<void> => {
+    // Save user message
+    addTrainingMessage({ role: 'user', content: userText });
+
+    const intencao = detectarIntencao(userText);
+
+    // Simulate typing delay
+    await new Promise(r => setTimeout(r, 800 + Math.random() * 600));
+
+    // Handle each intent
+    if (intencao === 'reset') {
+      addTrainingMessage({
+        role: 'ai',
+        content: '🔄 Tudo certo! Acabei de apagar todas as suas preferências e estou começando do zero. Pode me contar como você gosta dos seus CTAs!'
+      });
+      setCtaProfile(prev => ({
+        tom: 'urgente',
+        usaEmoji: true,
+        emojisPreferidos: ['🔥', '🚨', '💥'],
+        tamanhoPreferido: 'medio',
+        palavrasProibidas: [],
+        palavrasFavoritas: [],
+        usaCaixaAlta: false,
+        exemplosBons: [],
+        exemplosRuins: [],
+        observacoesLivres: '',
+        ctasGerados: prev.ctasGerados,
+        changelog: [],
+        updatedAt: new Date().toISOString()
+      }));
+      setTrainingMessages([]);
+      return;
+    }
+
+    if (intencao === 'consultar') {
+      addTrainingMessage({ role: 'ai', content: gerarRespostaConsulta() });
+      return;
+    }
+
+    if (intencao === 'gerar_exemplo') {
+      const contexto: CtaContext = {
+        produto: 'Produto em Destaque',
+        preco: '99,90',
+        preco_original: '149,90',
+        frete_gratis: true
+      };
+      const ctas = [
+        generateCtaFromProfile(contexto),
+        generateCtaFromProfile({ ...contexto, frete_gratis: false, pix: true }),
+        generateCtaFromProfile({ ...contexto, cupom: 'MEGA10' })
+      ];
+
+      addTrainingMessage({
+        role: 'ai',
+        content: `🧪 *Aqui estão 3 exemplos de CTA no seu estilo atual:*\n\n---\n**Opção 1:**\n${ctas[0]}\n\n---\n**Opção 2:**\n${ctas[1]}\n\n---\n**Opção 3:**\n${ctas[2]}\n\n---\nCurte algum? Diz o número e eu salvo como exemplo bom! Ou me fala o que não gostou para eu ajustar. 👇`,
+        generatedCtas: ctas
+      });
+      return;
+    }
+
+    if (intencao === 'feedback') {
+      const t = userText.toLowerCase();
+      if (/gostei|bom|ótimo|perfeito|amei|aprovo/.test(t)) {
+        addTrainingMessage({
+          role: 'ai',
+          content: '👍 Que ótimo! Salvei esse estilo como preferência. Continue me treinando para eu ficar cada vez mais alinhado com o seu jeito!'
+        });
+      } else {
+        addTrainingMessage({
+          role: 'ai',
+          content: '👎 Entendido! Vou evitar esse estilo. Pode me dizer especificamente o que não gostou? (muito formal, muito longo, palavras específicas etc.) Assim consigo corrigir com mais precisão.'
+        });
+      }
+      return;
+    }
+
+    // Default: try to extract preference
+    const { changes, confirmacao, requerConfirmacao } = interpretarPreferencias(userText, intencao);
+
+    if (requerConfirmacao) {
+      addTrainingMessage({ role: 'ai', content: confirmacao });
+      return;
+    }
+
+    if (Object.keys(changes).length > 0) {
+      updateCtaProfile(changes, userText);
+      addTrainingMessage({
+        role: 'ai',
+        content: confirmacao,
+        profileChanges: changes
+      });
+    } else {
+      // Fallback: save as free observation
+      const obs = ctaProfile.observacoesLivres
+        ? ctaProfile.observacoesLivres + '\n• ' + userText
+        : '• ' + userText;
+      updateCtaProfile({ observacoesLivres: obs }, userText);
+      addTrainingMessage({
+        role: 'ai',
+        content: `✍️ Anotei nas minhas observações: *"${userText}"*. Vou levar isso em conta ao gerar seus CTAs. Se quiser ser mais específico sobre algum ponto (tom, tamanho, emojis, palavras específicas), pode falar!`
+      });
+    }
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -1111,14 +1481,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approveCapturedMessage,
         rejectCapturedMessage,
         processCapturedMessageAI,
-        ctaProfile,
-        setCtaProfile,
-        updateCtaProfile,
-        trainChat,
-        setTrainChat,
-        sendTrainChatMessage,
-        resetTrainAi,
-        generateCtaSample,
         landingPages,
         leads,
         logs,
@@ -1143,6 +1505,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addLog,
         generateCopyWithAI,
         extractOfferFromUrl,
+        ctaProfile,
+        updateCtaProfile,
+        generateCtaFromProfile,
+        resetCtaProfile,
+        trainingMessages,
+        addTrainingMessage,
+        clearTrainingHistory,
+        ctaFeedbacks,
+        addCtaFeedback,
+        sendTrainingMessage,
         isSearchOpen,
         setIsSearchOpen,
       }}

@@ -232,22 +232,63 @@ export interface CapturedMessage {
   createdAt: string;
 }
 
-export interface AICtaProfile {
-  tom: string;
-  usa_emoji: boolean;
-  emojis_preferidos: string[];
-  tamanho_preferido: 'curto' | 'médio' | 'longo';
-  palavras_proibidas: string[];
-  palavras_favoritas: string[];
-  usa_caixa_alta: boolean;
-  exemplos_bons: string[];
-  exemplos_ruins: string[];
-  observacoes_livres: string;
+// ============================================================================
+// AI TRAINING — CENTRAL CTA PREFERENCES PROFILE
+// ============================================================================
+
+export interface CtaProfileChange {
+  id: string;
+  timestamp: string;
+  field: string;
+  previousValue: any;
+  newValue: any;
+  triggeredByMessage: string;
 }
 
-export interface TrainChatMessage {
+export interface CtaProfile {
+  tom: 'descontraido' | 'urgente' | 'formal' | 'divertido' | 'luxuoso' | string;
+  usaEmoji: boolean;
+  emojisPreferidos: string[];
+  tamanhoPreferido: 'curto' | 'medio' | 'longo';
+  palavrasProibidas: string[];
+  palavrasFavoritas: string[];
+  usaCaixaAlta: boolean;
+  exemplosBons: string[];
+  exemplosRuins: string[];
+  observacoesLivres: string;
+  ctasGerados: string[];
+  changelog: CtaProfileChange[];
+  updatedAt: string;
+}
+
+export interface TrainingMessage {
   id: string;
-  role: 'user' | 'assistant';
+  role: 'user' | 'ai';
   content: string;
+  timestamp: string;
+  profileChanges?: Partial<CtaProfile>;
+  generatedCtas?: string[];
+}
+
+export interface CtaFeedback {
+  id: string;
+  ctaText: string;
+  rating: 'good' | 'bad' | 'edited';
+  editedVersion?: string;
+  reason?: string;
+  origin: 'training' | 'templates' | 'monitoring';
   createdAt: string;
 }
+
+export interface CtaContext {
+  produto?: string;
+  loja?: string;
+  preco?: string;
+  preco_original?: string;
+  cupom?: string;
+  link?: string;
+  frete_gratis?: boolean;
+  pix?: boolean;
+  internacional?: boolean;
+}
+

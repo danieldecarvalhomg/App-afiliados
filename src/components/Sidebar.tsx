@@ -66,7 +66,7 @@ export const Sidebar: React.FC = () => {
         { id: 'automacoes', label: 'Automações & Regras', icon: Zap },
         { id: 'ia', label: 'Gerador IA & Templates', icon: Wand2, badge: 'PRO', badgeColor: 'bg-indigo-500/20 text-indigo-300 border border-indigo-500/30' },
         { id: 'monitoramento', label: 'Monitor de Grupos IA', icon: Bot, badge: 'NOVO', badgeColor: 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' },
-        { id: 'treinar-ia', label: 'Treinar minha IA', icon: Brain, badge: 'PRO', badgeColor: 'bg-violet-500/20 text-violet-300 border border-violet-500/30' },
+        { id: 'ai-training', label: 'Treinar minha IA', icon: Brain, badge: 'BETA', badgeColor: 'bg-violet-500/20 text-violet-300 border border-violet-500/30' },
         { id: 'landing-pages', label: 'Landing Pages', icon: Globe },
       ]
     },
