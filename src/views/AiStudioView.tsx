@@ -374,7 +374,7 @@ export const AiStudioView: React.FC = () => {
         preferredCta: activeCta
       });
       setGeneratedCopy(result);
-      addLog('success', 'Gerador IA', `Cópia gerada com tom sorteado ("${pickedTone}") para "${productName}"`);
+      addLog('success', 'Gerador IA', `Cópia gerada com sucesso para "${productName}"`);
     } catch (e) {
       addLog('error', 'Gerador IA', 'Falha ao gerar cópia via IA.');
     } finally {
@@ -649,7 +649,7 @@ export const AiStudioView: React.FC = () => {
                     </h3>
                     <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
                       <Brain className="w-3 h-3 text-amber-400" />
-                      Estilo: {selectedTones.length > 1 ? `🎲 IA Sorteando (${selectedTones.length} Tons)` : selectedTones[0] || 'Personalizado'}
+                      Estilo: {selectedTones.length > 1 ? `${selectedTones.length} Tons Ativos` : selectedTones[0] || 'Personalizado'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
@@ -1265,7 +1265,7 @@ De ~R$ {preco_original}~ por
                 <div className="flex items-center justify-between">
                   <label className="text-slate-300 font-semibold flex items-center gap-1.5">
                     <Sliders className="w-3.5 h-3.5 text-purple-400" />
-                    Personalidades & Tom de Voz (Selecione Várias ou Todas para Sorteio)
+                    Personalidades & Tom de Voz
                   </label>
 
                   <button
@@ -1273,7 +1273,7 @@ De ~R$ {preco_original}~ por
                     onClick={handleSelectAllTones}
                     className="text-[10px] font-bold text-purple-300 hover:text-white bg-purple-500/20 px-2.5 py-1 rounded-xl border border-purple-500/40 transition-colors"
                   >
-                    {selectedTones.length === ALL_TONE_OPTIONS.length ? 'Desmarcar Todas' : '✓ Marcar Todas (Sortear)'}
+                    {selectedTones.length === ALL_TONE_OPTIONS.length ? 'Desmarcar Todas' : '✓ Marcar Todas'}
                   </button>
                 </div>
 
@@ -1303,8 +1303,8 @@ De ~R$ {preco_original}~ por
 
                 <span className="text-[10px] text-slate-400 block font-mono">
                   {selectedTones.length > 1
-                    ? `🎲 A IA fará um sorteio aleatório entre os ${selectedTones.length} tons selecionados a cada geração!`
-                    : `📌 Apenas 1 tom ativo.`}
+                    ? `${selectedTones.length} personalidades selecionadas.`
+                    : `📌 1 personalidade ativa.`}
                 </span>
               </div>
 
