@@ -14,7 +14,9 @@ import {
   SubscriptionPlan,
   MonitoredGroup,
   CapturedMessage,
-  ExtractedDataJSON
+  ExtractedDataJSON,
+  AICtaProfile,
+  TrainChatMessage
 } from '../types';
 import {
   INITIAL_PRODUCTS,
@@ -30,7 +32,9 @@ import {
   INITIAL_LOGS,
   INITIAL_SUBSCRIPTION,
   INITIAL_MONITORED_GROUPS,
-  INITIAL_CAPTURED_MESSAGES
+  INITIAL_CAPTURED_MESSAGES,
+  INITIAL_CTA_PROFILE,
+  INITIAL_TRAIN_CHAT
 } from '../data/mockData';
 import { supabaseService } from '../services/supabaseService';
 import { checkSupabaseConnection } from '../lib/supabase';
@@ -83,6 +87,16 @@ interface AppContextType {
   approveCapturedMessage: (id: string, editedData?: Partial<ExtractedDataJSON>) => void;
   rejectCapturedMessage: (id: string) => void;
   processCapturedMessageAI: (rawText: string, groupId: string, imageUrl?: string) => Promise<CapturedMessage>;
+
+  // AI Training System
+  ctaProfile: AICtaProfile;
+  setCtaProfile: React.Dispatch<React.SetStateAction<AICtaProfile>>;
+  updateCtaProfile: (updates: Partial<AICtaProfile>) => void;
+  trainChat: TrainChatMessage[];
+  setTrainChat: React.Dispatch<React.SetStateAction<TrainChatMessage[]>>;
+  sendTrainChatMessage: (content: string) => Promise<void>;
+  resetTrainAi: () => void;
+  generateCtaSample: (productName?: string) => Promise<string[]>;
 
   landingPages: LandingPageItem[];
   leads: CRMLead[];
@@ -232,6 +246,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return INITIAL_CAPTURED_MESSAGES;
     }
   });
+
+  const [ctaProfile, setCtaProfile] = useState<AICtaProfile>(() => {
+    try {
+      const saved = localStorage.getItem('affi_cta_profile_v1');
+      return saved ? JSON.parse(saved) : INITIAL_CTA_PROFILE;
+    } catch {
+      return INITIAL_CTA_PROFILE;
+    }
+  });
+
+  const [trainChat, setTrainChat] = useState<TrainChatMessage[]>(() => {
+    try {
+      const saved = localStorage.getItem('affi_train_chat_v1');
+      return saved ? JSON.parse(saved) : INITIAL_TRAIN_CHAT;
+    } catch {
+      return INITIAL_TRAIN_CHAT;
+    }
+  });
+
+  useEffect(() => {
+    localStorage.setItem('affi_cta_profile_v1', JSON.stringify(ctaProfile));
+  }, [ctaProfile]);
+
+  useEffect(() => {
+    localStorage.setItem('affi_train_chat_v1', JSON.stringify(trainChat));
+  }, [trainChat]);
 
   const [landingPages, setLandingPages] = useState<LandingPageItem[]>([]);
   const [leads, setLeads] = useState<CRMLead[]>([]);
@@ -537,6 +577,141 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } : g));
 
     return newMsg;
+  };
+
+  const updateCtaProfile = (updates: Partial<AICtaProfile>) => {
+    setCtaProfile(prev => ({ ...prev, ...updates }));
+    addLog('info', 'Treinamento IA', 'Perfil de preferências de CTA atualizado.');
+  };
+
+  const sendTrainChatMessage = async (content: string) => {
+    const userMsg: TrainChatMessage = {
+      id: 'msg-' + Date.now(),
+      role: 'user',
+      content,
+      createdAt: 'Agora mesmo'
+    };
+    
+    setTrainChat(prev => [...prev, userMsg]);
+
+    await new Promise(resolve => setTimeout(resolve, 800));
+
+    const lower = content.toLowerCase();
+    const updates: Partial<AICtaProfile> = {};
+
+    if (lower.includes('urgente') || lower.includes('pressa') || lower.includes('acabando')) {
+      updates.tom = 'urgente';
+    } else if (lower.includes('formal') || lower.includes('sério') || lower.includes('profissional')) {
+      updates.tom = 'formal';
+    } else if (lower.includes('descontraído') || lower.includes('amigável') || lower.includes('leve')) {
+      updates.tom = 'descontraído';
+    } else if (lower.includes('luxuoso') || lower.includes('premium') || lower.includes('sofisticado')) {
+      updates.tom = 'luxuoso';
+    } else if (lower.includes('divertido') || lower.includes('engraçado')) {
+      updates.tom = 'divertido';
+    }
+
+    if (lower.includes('sem emoji') || lower.includes('não use emoji') || lower.includes('remover emoji')) {
+      updates.usa_emoji = false;
+    } else if (lower.includes('emoji') || lower.includes('usar emoji')) {
+      updates.usa_emoji = true;
+      const emojis = content.match(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDD10-\uDDFF]/g);
+      if (emojis && emojis.length > 0) {
+        updates.emojis_preferidos = Array.from(new Set([...(ctaProfile.emojis_preferidos || []), ...emojis]));
+      }
+    }
+
+    if (lower.includes('curto') || lower.includes('pequeno') || lower.includes('direto')) {
+      updates.tamanho_preferido = 'curto';
+    } else if (lower.includes('longo') || lower.includes('detalhado') || lower.includes('comprido')) {
+      updates.tamanho_preferido = 'longo';
+    } else if (lower.includes('médio') || lower.includes('moderado')) {
+      updates.tamanho_preferido = 'médio';
+    }
+
+    if (lower.includes('nunca use') || lower.includes('palavras proibidas') || lower.includes('proibir') || lower.includes('evitar')) {
+      const forbiddenMatch = content.match(/(?:use|proibir|proibidas|evitar)\s+["']?([^"']+)["']?/i);
+      if (forbiddenMatch) {
+        const words = forbiddenMatch[1].split(/,|-|\s+/).map(w => w.trim().toLowerCase()).filter(Boolean);
+        updates.palavras_proibidas = Array.from(new Set([...(ctaProfile.palavras_proibidas || []), ...words]));
+      }
+    }
+
+    if (lower.includes('exemplo') || lower.includes('como') || content.includes('"') || content.includes('“')) {
+      const quoteMatch = content.match(/["“]([^"”]+)["”]/g);
+      if (quoteMatch) {
+        const examples = quoteMatch.map(q => q.replace(/["“”]/g, '').trim());
+        updates.exemplos_bons = Array.from(new Set([...(ctaProfile.exemplos_bons || []), ...examples]));
+      }
+    }
+
+    if (Object.keys(updates).length > 0) {
+      setCtaProfile(prev => {
+        const next = { ...prev, ...updates };
+        localStorage.setItem('affi_cta_profile_v1', JSON.stringify(next));
+        return next;
+      });
+    }
+
+    let assistantReply = '';
+    if (Object.keys(updates).length > 0) {
+      assistantReply = `Perfeito! Entendi as novas preferências. Analisei sua mensagem e aprendi mais sobre o estilo ideal:\n\n` +
+        (updates.tom ? `• Tom atualizado para: *${updates.tom}*\n` : '') +
+        (updates.usa_emoji !== undefined ? `• Uso de emojis: *${updates.usa_emoji ? 'Ativo' : 'Inativo'}*\n` : '') +
+        (updates.tamanho_preferido ? `• Tamanho preferencial: *${updates.tamanho_preferido}*\n` : '') +
+        (updates.exemplos_bons ? `• Adicionados *${updates.exemplos_bons.length}* novos exemplos práticos!\n` : '') +
+        `\nO que acha de clicar no botão "Gerar exemplos de CTA" abaixo para testarmos esse ajuste em tempo real?`;
+    } else {
+      assistantReply = `Legal! Anotei essas observações livres no perfil de treinamento para a geração de Copies. \n\nVocê tem algum exemplo real de CTA que você já utilizou e teve bons resultados? Coloque entre aspas (ex: "CORRE AQUI") para eu cadastrá-lo como referência!`;
+    }
+
+    const assistantMsg: TrainChatMessage = {
+      id: 'msg-' + Date.now() + '-ai',
+      role: 'assistant',
+      content: assistantReply,
+      createdAt: 'Agora mesmo'
+    };
+
+    setTrainChat(prev => [...prev, assistantMsg]);
+  };
+
+  const resetTrainAi = () => {
+    setCtaProfile(INITIAL_CTA_PROFILE);
+    setTrainChat(INITIAL_TRAIN_CHAT);
+    localStorage.setItem('affi_cta_profile_v1', JSON.stringify(INITIAL_CTA_PROFILE));
+    localStorage.setItem('affi_train_chat_v1', JSON.stringify(INITIAL_TRAIN_CHAT));
+    addLog('warning', 'Treinamento IA', 'Treinamento reiniciado para as preferências originais.');
+  };
+
+  const generateCtaSample = async (productName?: string): Promise<string[]> => {
+    const pName = productName || 'Smart TV 4K QLED 55"';
+    const emojis = ctaProfile.usa_emoji ? (ctaProfile.emojis_preferidos.join(' ') || '🔥 🚨') : '';
+    const size = ctaProfile.tamanho_preferido;
+    const tom = ctaProfile.tom;
+
+    let cta1 = '', cta2 = '', cta3 = '';
+
+    if (tom === 'urgente') {
+      cta1 = `${emojis} ÚLTIMAS UNIDADES! Garanta sua ${pName} antes que o estoque acabe!`;
+      cta2 = `🚨 CORRE! ${pName} com preço mínimo histórico só nas próximas horas!`;
+      cta3 = `${emojis} O cronômetro está rodando! Garanta sua ${pName} pelo link exclusivo!`;
+    } else if (tom === 'formal') {
+      cta1 = `Adquira agora a nova ${pName} com condições especiais de lançamento.`;
+      cta2 = `Aproveite esta oportunidade única para obter sua ${pName} através do canal oficial.`;
+      cta3 = `Confira a análise e garanta a melhor oferta para a sua ${pName} hoje.`;
+    } else {
+      cta1 = `${emojis} Se eu fosse você, não deixaria passar: sua nova ${pName} te espera no link!`;
+      cta2 = `🔥 Menor preço do mês! Compre a ${pName} com desconto especial!`;
+      cta3 = `🚨 Alerta de achado: ${pName} com frete rápido e desconto ativado!`;
+    }
+
+    if (size === 'curto') {
+      cta1 = cta1.substring(0, 50) + ` ${emojis}`.trim();
+      cta2 = cta2.substring(0, 50) + ` ${emojis}`.trim();
+      cta3 = cta3.substring(0, 50) + ` ${emojis}`.trim();
+    }
+
+    return [cta1, cta2, cta3];
   };
 
   useEffect(() => {
@@ -936,6 +1111,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         approveCapturedMessage,
         rejectCapturedMessage,
         processCapturedMessageAI,
+        ctaProfile,
+        setCtaProfile,
+        updateCtaProfile,
+        trainChat,
+        setTrainChat,
+        sendTrainChatMessage,
+        resetTrainAi,
+        generateCtaSample,
         landingPages,
         leads,
         logs,

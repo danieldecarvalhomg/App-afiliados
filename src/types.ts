@@ -231,3 +231,23 @@ export interface CapturedMessage {
   finalText?: string;
   createdAt: string;
 }
+
+export interface AICtaProfile {
+  tom: string;
+  usa_emoji: boolean;
+  emojis_preferidos: string[];
+  tamanho_preferido: 'curto' | 'médio' | 'longo';
+  palavras_proibidas: string[];
+  palavras_favoritas: string[];
+  usa_caixa_alta: boolean;
+  exemplos_bons: string[];
+  exemplos_ruins: string[];
+  observacoes_livres: string;
+}
+
+export interface TrainChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: string;
+}

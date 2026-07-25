@@ -27,7 +27,8 @@ import {
   HelpCircle,
   RotateCcw,
   CheckCircle2,
-  AlertCircle
+  AlertCircle,
+  Brain
 } from 'lucide-react';
 
 // ============================================================================
@@ -99,6 +100,7 @@ export const AiStudioView: React.FC = () => {
     addQueueItem,
     addLog,
     generateCopyWithAI,
+    generateCtaSample,
     templates,
     addTemplate,
     updateTemplate,
@@ -262,6 +264,17 @@ export const AiStudioView: React.FC = () => {
       textarea.focus();
       textarea.setSelectionRange(start + token.length, start + token.length);
     }, 50);
+  };
+
+  const handleGenerateCtaWithAi = async () => {
+    try {
+      const ctas = await generateCtaSample(editorTitle || 'Produto Promocional');
+      const selectedCta = ctas[Math.floor(Math.random() * ctas.length)] || '🔥 CORRE APROVEITAR!';
+      insertTokenIntoEditor(selectedCta);
+      addLog('success', 'Treinamento IA', 'CTA gerado a partir do seu perfil de treino inserido no editor!');
+    } catch {
+      addLog('error', 'Treinamento IA', 'Não foi possível gerar o CTA.');
+    }
   };
 
   // Open Editor for Creating or Editing
@@ -952,10 +965,20 @@ De ~R$ {preco_original}~ por
 
               {/* 4. Variáveis de Texto (Chips Clicáveis) */}
               <div className="space-y-2 border-t border-slate-800 pt-3">
-                <h4 className="text-xs font-bold text-white flex items-center gap-2">
-                  <Tag className="w-3.5 h-3.5 text-indigo-400" />
-                  Variáveis de Texto (Clique para Inserir)
-                </h4>
+                <div className="flex items-center justify-between">
+                  <h4 className="text-xs font-bold text-white flex items-center gap-2">
+                    <Tag className="w-3.5 h-3.5 text-indigo-400" />
+                    Variáveis de Texto (Clique para Inserir)
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={handleGenerateCtaWithAi}
+                    className="px-2.5 py-1 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-bold text-[10px] flex items-center gap-1 shadow-md shadow-violet-600/10 transition-colors"
+                  >
+                    <Brain className="w-3.5 h-3.5 text-white" />
+                    Gerar CTA com IA
+                  </button>
+                </div>
 
                 <div className="flex flex-wrap gap-1.5">
                   {[

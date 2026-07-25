@@ -10,7 +10,9 @@ import {
   CopyTemplate,
   LandingPageItem,
   SystemLog,
-  SubscriptionPlan
+  SubscriptionPlan,
+  AICtaProfile,
+  TrainChatMessage
 } from '../types';
 
 export const INITIAL_PRODUCTS: Product[] = [];
@@ -287,6 +289,31 @@ export const INITIAL_CAPTURED_MESSAGES: CapturedMessage[] = [
     status: 'Pendente',
     templateUsedId: 'tpl-2',
     finalText: `🚨 *OFERTA ESPECIAL AMAZON*\n\n*Air Fryer Philips Walita 4.1L*\n\nDe ~R$ 499.00~ por\nPor apenas: *R$ 279.90*\n📦 Frete Grátis Prime!\n\n👇 Garanta antes que acabe:\nhttps://amzn.to/airfryer-deal`,
+    createdAt: 'Há 5 min'
+  }
+];
+
+export const INITIAL_CTA_PROFILE: AICtaProfile = {
+  tom: 'descontraído e urgente',
+  usa_emoji: true,
+  emojis_preferidos: ['🔥', '🚨', '😱'],
+  tamanho_preferido: 'curto',
+  palavras_proibidas: ['barato', 'imperdível'],
+  palavras_favoritas: ['corre', 'só hoje', 'últimas unidades'],
+  usa_caixa_alta: true,
+  exemplos_bons: [
+    'CORRE QUE ACABA 🔥 Só até hoje!',
+    '🚨 Preço caiu, e caiu forte!'
+  ],
+  exemplos_ruins: [],
+  observacoes_livres: 'Prefere criar senso de urgência sem parecer clickbait exagerado.'
+};
+
+export const INITIAL_TRAIN_CHAT: TrainChatMessage[] = [
+  {
+    id: 'msg-1',
+    role: 'assistant',
+    content: 'Oi! Vou aprender a gerar CTAs do jeito que você gosta. Me conta: qual tom você usa (descontraído, urgente, formal)? Gosta de emojis? Tem palavras que eu nunca devo usar? Pode mandar também exemplos de CTAs que você já usou e gostou.',
     createdAt: 'Há 5 min'
   }
 ];
