@@ -119,17 +119,75 @@ export const INITIAL_AUTOMATIONS: AutomationRule[] = [];
 export const INITIAL_TEMPLATES: CopyTemplate[] = [
   {
     id: 'tpl-1',
-    title: 'Oferta Relâmpago com Cupom',
-    category: 'Desconto Relâmpago',
-    templateText: '🔥 *OFERTA IMPERDÍVEL: {PRODUTO}*\n\nDe ~R$ {PRECO_DE}~ por apenas *R$ {PRECO_POR}*!\n🎟️ Cupom: *{CUPOM}*\n\n🛒 Garanta o seu link com desconto:\n{LINK}',
-    usageCount: 0,
+    title: 'Oferta Padrão Universal',
+    category: 'Geral',
+    store: 'Todas as Lojas',
+    content: `{cta}
+
+🔥 *{produto}*
+[se preco_original]
+De ~R$ {preco_original}~ por
+[fim]
+💰 *R$ {preco}* [se condicoes_pagamento]({condicoes_pagamento})[fim]
+
+[se cupom]
+🎟️ Cupom: *{cupom}*
+[fim]
+[se frete_gratis]
+🚚 *Frete Grátis!*
+[fim]
+
+🛒 Acesse agora:
+{link}`,
+    usageCount: 42,
+    status: 'ativo',
+    isDefault: true,
   },
   {
     id: 'tpl-2',
-    title: 'Baixou Mais! Menor Preço do Ano',
-    category: 'Queda de Preço',
-    templateText: '🚨 *BAIXOU MAIS! MENOR PREÇO DO ANO*\n\n{PRODUTO}\n\nApenas *R$ {PRECO_POR}* em até 10x sem juros!\n\n👇 Clique para comprar:\n{LINK}',
-    usageCount: 0,
+    title: 'Oferta Relâmpago Amazon',
+    category: 'Amazon',
+    store: 'Amazon',
+    content: `🚨 *OFERTA ESPECIAL AMAZON*
+
+*{produto}*
+
+[se preco_original]
+De ~R$ {preco_original}~ por
+[fim]
+Por apenas: *R$ {preco}*
+[se frete_gratis]
+📦 Frete Grátis Prime!
+[fim]
+
+👇 Garanta antes que acabe:
+{link}`,
+    usageCount: 18,
+    status: 'ativo',
+    isDefault: true,
+  },
+  {
+    id: 'tpl-3',
+    title: 'Achadinho Shopee com Cupom',
+    category: 'Shopee',
+    store: 'Shopee',
+    content: `🧡 *ACHADINHO SHOPEE*
+
+{produto}
+[se cupom_desconto]
+🔥 *{cupom_desconto} OFF!*
+[fim]
+Por apenas: *R$ {preco}*
+
+[se cupom]
+🎟️ Resgate o cupom: *{cupom}*
+[fim]
+
+🔗 Clique para ver:
+{link}`,
+    usageCount: 29,
+    status: 'ativo',
+    isDefault: true,
   }
 ];
 

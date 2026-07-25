@@ -132,10 +132,13 @@ export interface CRMLead {
 export interface CopyTemplate {
   id: string;
   title: string;
-  category: 'Urgência' | 'Desconto/Cupom' | 'Review Tech' | 'Black Friday' | 'Lista do Dia';
+  category: string;
+  store: 'Todas as Lojas' | 'Amazon' | 'Mercado Livre' | 'Shopee' | 'AliExpress' | string;
   content: string;
   usageCount: number;
-  isFavorite: boolean;
+  isFavorite?: boolean;
+  status: 'ativo' | 'inativo';
+  isDefault: boolean;
 }
 
 export interface LandingPageItem {

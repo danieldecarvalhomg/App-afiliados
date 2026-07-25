@@ -57,6 +57,12 @@ interface AppContextType {
   campaigns: Campaign[];
   automations: AutomationRule[];
   templates: CopyTemplate[];
+  setTemplates: React.Dispatch<React.SetStateAction<CopyTemplate[]>>;
+  addTemplate: (templateData: Partial<CopyTemplate>) => CopyTemplate;
+  updateTemplate: (id: string, updates: Partial<CopyTemplate>) => void;
+  deleteTemplate: (id: string) => void;
+  setDefaultTemplate: (id: string) => void;
+  toggleTemplateStatus: (id: string) => void;
   landingPages: LandingPageItem[];
   leads: CRMLead[];
   logs: SystemLog[];
@@ -180,7 +186,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [groups, setGroups] = useState<ChannelGroup[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [automations, setAutomations] = useState<AutomationRule[]>([]);
-  const [templates] = useState<CopyTemplate[]>(INITIAL_TEMPLATES);
+  const [templates, setTemplates] = useState<CopyTemplate[]>(() => {
+    try {
+      const saved = localStorage.getItem('affi_templates_v2');
+      return saved ? JSON.parse(saved) : INITIAL_TEMPLATES;
+    } catch {
+      return INITIAL_TEMPLATES;
+    }
+  });
   const [landingPages, setLandingPages] = useState<LandingPageItem[]>([]);
   const [leads, setLeads] = useState<CRMLead[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
@@ -223,6 +236,83 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   useEffect(() => {
     localStorage.setItem('affi_integrations', JSON.stringify(integrations));
   }, [integrations]);
+
+  useEffect(() => {
+    localStorage.setItem('affi_templates_v2', JSON.stringify(templates));
+  }, [templates]);
+
+  const addTemplate = (templateData: Partial<CopyTemplate>): CopyTemplate => {
+    const storeName = templateData.store || 'Todas as Lojas';
+    const newTpl: CopyTemplate = {
+      id: 'tpl-' + Date.now(),
+      title: templateData.title || 'Novo Template',
+      category: templateData.category || storeName,
+      store: storeName,
+      content: templateData.content || '',
+      usageCount: 0,
+      status: templateData.status || 'ativo',
+      isDefault: templateData.isDefault || false
+    };
+
+    setTemplates(prev => {
+      let list = prev;
+      if (newTpl.isDefault) {
+        list = prev.map(t => t.store === storeName ? { ...t, isDefault: false } : t);
+      }
+      return [newTpl, ...list];
+    });
+
+    addLog('success', 'Templates', `Novo template criado: "${newTpl.title}"`);
+    return newTpl;
+  };
+
+  const updateTemplate = (id: string, updates: Partial<CopyTemplate>) => {
+    setTemplates(prev => {
+      const current = prev.find(t => t.id === id);
+      const targetStore = updates.store || current?.store || 'Todas as Lojas';
+
+      return prev.map(t => {
+        if (t.id === id) {
+          return { ...t, ...updates };
+        }
+        if (updates.isDefault && t.store === targetStore && t.id !== id) {
+          return { ...t, isDefault: false };
+        }
+        return t;
+      });
+    });
+    addLog('info', 'Templates', `Template #${id} atualizado.`);
+  };
+
+  const deleteTemplate = (id: string) => {
+    setTemplates(prev => prev.filter(t => t.id !== id));
+    addLog('warning', 'Templates', `Template #${id} excluído.`);
+  };
+
+  const setDefaultTemplate = (id: string) => {
+    setTemplates(prev => {
+      const target = prev.find(t => t.id === id);
+      if (!target) return prev;
+
+      return prev.map(t => {
+        if (t.store === target.store) {
+          return { ...t, isDefault: t.id === id };
+        }
+        return t;
+      });
+    });
+    addLog('success', 'Templates', `Template #${id} definido como padrão.`);
+  };
+
+  const toggleTemplateStatus = (id: string) => {
+    setTemplates(prev => prev.map(t => {
+      if (t.id === id) {
+        const newStatus = t.status === 'ativo' ? 'inativo' : 'ativo';
+        return { ...t, status: newStatus };
+      }
+      return t;
+    }));
+  };
 
   const markNotificationRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
@@ -526,6 +616,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         campaigns,
         automations,
         templates,
+        setTemplates,
+        addTemplate,
+        updateTemplate,
+        deleteTemplate,
+        setDefaultTemplate,
+        toggleTemplateStatus,
         landingPages,
         leads,
         logs,
