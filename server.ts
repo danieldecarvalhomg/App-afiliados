@@ -108,74 +108,64 @@ Responda APENAS com a cópia final pronta para disparo.`;
   }
 });
 
-// Dynamic Fallback CTA Generator with NLP Intent Parser
+// Dynamic Fallback CTA Generator with Strict Personality Engine
 function buildDynamicFallbackCta(params: any): string {
   const { tone = '', ctaInstructions = '', mustUseWords = '', forbiddenWords = '', forceUppercaseCta = false } = params;
 
-  const emojis = ['🔥', '🚨', '🧡', '⚡', '🎁', '✨', '🛍️', '👉', '🛒', '📢', '💎', '🚀'];
-  const e1 = emojis[Math.floor(Math.random() * emojis.length)];
+  // Tone-specific Emojis & CTAs
+  let emojis = ['🔥', '🚨', '⚡', '⚠️'];
+  let ctaPool = [
+    'CORRE ANTES QUE ACABE O ESTOQUE NO LINK:',
+    'ÚLTIMAS UNIDADES NESSE PREÇO NO LINK ABAIXO:',
+    'ALERTA DE PREÇO BAIXO! GARANTA O SEU NO LINK:',
+    'ESTOQUE QUASE ESGOTADO! COMPRE NO LINK OFICIAL:'
+  ];
 
-  let generatedPhrase = '';
-  const textLower = (ctaInstructions + ' ' + tone + ' ' + mustUseWords).toLowerCase();
-
-  // Extract explicit quotes if user typed e.g. "Corre gente!" or 'Garantia VIP'
-  const quotesMatch = ctaInstructions.match(/['"“]([^'"”]+)['"”]/g);
-  let extractedQuote = '';
-  if (quotesMatch && quotesMatch.length > 0) {
-    extractedQuote = quotesMatch[Math.floor(Math.random() * quotesMatch.length)].replace(/['"“]/g, '').trim();
+  if (tone.includes('Amigável')) {
+    emojis = ['🧡', '✨', '🥰', '🎁'];
+    ctaPool = [
+      'OBA GEEENTE! OLHA ESSE ACHADINHO SENSACIONAL NO LINK:',
+      'GALERA, DICA DA HORA PRA VOCÊS! RESGATE NO LINK ABAIXO:',
+      'ACHADINHO INCRÍVEL DEMAIS! COMPRE NO LINK OFICIAL:',
+      'CORRE PRA GARANTIR O SEU COM DESCONTO NO LINK:'
+    ];
+  } else if (tone.includes('Direto')) {
+    emojis = ['💰', '🛒', '👉', '🎯'];
+    ctaPool = [
+      'PREÇO DE CUSTO! COMPRE AGORA ACESSANDO O LINK:',
+      'DESCONTO EXCLUSIVO APLICADO! GARANTA NO LINK:',
+      'MENOR PREÇO GARANTIDO DO DIA NO LINK ABAIXO:',
+      'CLIQUE AQUI E COMPRE PELO MENOR PREÇO NO LINK:'
+    ];
+  } else if (tone.includes('Consultivo')) {
+    emojis = ['⭐', '🛡️', '💎', '📌'];
+    ctaPool = [
+      'REVIEW TECH: EXCELENTE CUSTO-BENEFÍCIO NO LINK:',
+      'PRODUTO COM GARANTIA E MELHOR PREÇO NO LINK ABAIXO:',
+      'QUALIDADE COMPROVADA! GARANTA O SEU NO LINK:',
+      'VALE CADA CENTAVO! CONFIRA A OFERTA NO LINK:'
+    ];
+  } else if (tone.includes('Divertido')) {
+    emojis = ['🔥', '🎉', '🤪', '🚀'];
+    ctaPool = [
+      'PREÇO TÃO BAIXO QUE PARECE MEME! CORRE NO LINK:',
+      'SURREAL DE BARATO! GARANTA O SEU ANTES QUE SUMA NO LINK:',
+      'FOCO NO DESCONTÃO! COMPRE AGORA MESMO NO LINK ABAIXO:',
+      'CHORA CONCORRÊNCIA! OFERTAÇO DISPONÍVEL NO LINK:'
+    ];
   }
 
-  if (extractedQuote) {
-    generatedPhrase = `${extractedQuote.toUpperCase()}! GARANTA O SEU NO LINK`;
-  } else if (textLower.includes('frete') || textLower.includes('grátis') || textLower.includes('gratis')) {
-    const freteCtas = [
-      'APROVEITE O FRETE GRÁTIS E COMPRE NO LINK:',
-      'GARANTA COM FRETE GRÁTIS DISPONÍVEL NO LINK:',
-      'COMPRE AGORA COM FRETE GRÁTIS NO LINK ABAIXO:'
-    ];
-    generatedPhrase = freteCtas[Math.floor(Math.random() * freteCtas.length)];
-  } else if (textLower.includes('cupom') || textLower.includes('desconto')) {
-    const cupomCtas = [
-      'RESGATE SEU CUPOM DE DESCONTO EXCLUSIVO NO LINK:',
-      'USE O CUPOM E COMPRE COM MAIOR DESCONTO NO LINK:',
-      'APLIQUE O DESCONTO E GARANTA O SEU NO LINK ABAIXO:'
-    ];
-    generatedPhrase = cupomCtas[Math.floor(Math.random() * cupomCtas.length)];
-  } else if (textLower.includes('estoque') || textLower.includes('acabe') || textLower.includes('urgente')) {
-    const urgenteCtas = [
-      'CORRE ANTES QUE ACABE O ESTOQUE NO LINK:',
-      'ÚLTIMAS UNIDADES NESSE PREÇO NO LINK ABAIXO:',
-      'GARANTA O SEU ANTES QUE ESGOTE NO LINK:'
-    ];
-    generatedPhrase = urgenteCtas[Math.floor(Math.random() * urgenteCtas.length)];
-  } else if (textLower.includes('amigável') || textLower.includes('amigavel') || textLower.includes('gente')) {
-    const amigavelCtas = [
-      'OBA GEEENTE! CORRE PRA GARANTIR O SEU NO LINK:',
-      'GALERA, OLHA ESSE ACHADINHO SENSACIONAL NO LINK:',
-      'DICA DA HORA PRA VOCÊS! RESGATE NO LINK ABAIXO:'
-    ];
-    generatedPhrase = amigavelCtas[Math.floor(Math.random() * amigavelCtas.length)];
-  } else if (textLower.includes('pix')) {
-    const pixCtas = [
-      'GARANTA MAIS DESCONTO NO PIX ACESSANDO O LINK:',
-      'APROVEITE O DESCONTO EXCLUSIVO NO PIX NO LINK ABAIXO:'
-    ];
-    generatedPhrase = pixCtas[Math.floor(Math.random() * pixCtas.length)];
-  } else if (ctaInstructions && ctaInstructions.trim().length > 0) {
-    // Transform user's instructions into the main CTA text
-    let cleanText = ctaInstructions.trim();
-    if (!cleanText.toLowerCase().includes('link')) {
-      cleanText = `${cleanText} no link abaixo:`;
+  const randomEmoji = emojis[Math.floor(Math.random() * emojis.length)];
+  let pickedCta = ctaPool[Math.floor(Math.random() * ctaPool.length)];
+
+  // If custom ctaInstructions were typed and are not default, combine with tone
+  const isDefaultInst = ctaInstructions === 'Crie uma CTA atrativa com emojis e foco no link de afiliado oficial';
+  if (ctaInstructions && ctaInstructions.trim().length > 0 && !isDefaultInst) {
+    let cleanInst = ctaInstructions.trim();
+    if (!cleanInst.toLowerCase().includes('link')) {
+      cleanInst = `${cleanInst} no link abaixo:`;
     }
-    generatedPhrase = cleanText;
-  } else {
-    const generalCtas = [
-      'CORRE GALERA! COMPRE COM MAIOR DESCONTO NO LINK:',
-      'RESGATE O SEU DESCONTO EXCLUSIVO ACESSANDO O LINK:',
-      'GARANTA A SUA UNIDADE COM PREÇO ESPECIAL NO LINK:',
-      'CLIQUE AQUI E COMPRE COM MELHOR PREÇO DO ANO NO LINK:'
-    ];
-    generatedPhrase = generalCtas[Math.floor(Math.random() * generalCtas.length)];
+    pickedCta = `${cleanInst}`;
   }
 
   // Inject mustUseWords if specified
@@ -183,13 +173,13 @@ function buildDynamicFallbackCta(params: any): string {
     const wordList = mustUseWords.split(',').map((w: string) => w.trim()).filter(Boolean);
     if (wordList.length > 0) {
       const extraWord = wordList[Math.floor(Math.random() * wordList.length)];
-      if (!generatedPhrase.toLowerCase().includes(extraWord.toLowerCase())) {
-        generatedPhrase = `${extraWord.toUpperCase()}! ${generatedPhrase}`;
+      if (!pickedCta.toLowerCase().includes(extraWord.toLowerCase())) {
+        pickedCta = `${extraWord.toUpperCase()}! ${pickedCta}`;
       }
     }
   }
 
-  let fullResult = `${e1} ${generatedPhrase}`;
+  let fullResult = `${randomEmoji} ${pickedCta}`;
 
   // Filter forbiddenWords
   if (forbiddenWords && forbiddenWords.trim().length > 0) {
@@ -220,23 +210,28 @@ app.post("/api/ai/generate-cta", async (req, res) => {
       return res.json({ cta: fallbackCta });
     }
 
+    const isDefaultInst = !ctaInstructions || ctaInstructions === 'Crie uma CTA atrativa com emojis e foco no link de afiliado oficial';
+
     const prompt = `Você é um Copywriter Especialista em Marketing de Afiliados no Brasil.
-Sua ÚNICA TAREFA é transformar as INSTRUÇÕES DO USUÁRIO em uma Chamada para Ação (CTA) curta (1 linha) para Telegram/WhatsApp.
+Sua ÚNICA TAREFA é sintetizar uma Chamada para Ação (CTA) curta (1 linha) para Telegram/WhatsApp.
 
-INSTRUÇÕES PRIMÁRIAS DO USUÁRIO (OBEDECER RIGOROSAMENTE ACIMA DE TUDO):
-"${ctaInstructions || "Crie uma chamada persuasiva chamando para o link"}"
+PERSONALIDADE & TOM DE VOZ SELECIONADO PELO USUÁRIO (OBRIGATÓRIO ADOTAR ESTE ESTILO DE ESCRITA):
+- ${tone || "Amigável & Descontraído"}
 
-PARÂMETROS DE ESTILO:
-- Tom de Voz / Personalidade: ${tone || "Descontraído"}
-- Palavras OBRIGATÓRIAS a incluir: ${mustUseWords || "Nenhuma"}
-- Palavras PROIBIDAS (NÃO USAR): ${forbiddenWords || "Nenhuma"}
+${!isDefaultInst ? `INSTRUÇÕES ADICIONAIS DO USUÁRIO PARA A CTA: "${ctaInstructions}"` : ""}
+PALAVRAS OBRIGATÓRIAS A INCLUIR: ${mustUseWords || "Nenhuma"}
+PALAVRAS PROIBIDAS (NÃO USAR): ${forbiddenWords || "Nenhuma"}
 
-REGRAS OBRIGATÓRIAS:
-1. O texto da CTA DEVE refletir diretamente o pedido das Instruções Primárias do Usuário acima.
-2. Escreva APENAS 1 linha de CTA (máximo 15 palavras) terminando com indicação para o link (ex: "no link:" ou "no link abaixo:").
-3. NUNCA repita a mesma frase. Seja criativo e variado em cada chamada.
-${forceUppercaseCta ? "4. OBRIGATÓRIO: A CTA DEVE ESTAR TOTALMENTE EM CAIXA ALTA (LETRAS MAIÚSCULAS)." : ""}
-5. Responda APENAS com o texto da CTA final, sem aspas, explicações ou introduções.`;
+DIRETRIZES RIGOROSAS:
+1. A CTA DEVE refletir 100% a personalidade selecionada (${tone}).
+2. Se a personalidade for "Urgente", use tom de alerta e estoque baixo (ex: "🚨 CORRE ANTES QUE ACABE O ESTOQUE!").
+3. Se a personalidade for "Amigável", use tom afetuoso (ex: "🧡 OBA GEEENTE! OLHA ESSE ACHADINHO!").
+4. Se a personalidade for "Direto", seja objetivo e focado no preço (ex: "💰 PREÇO DE CUSTO! COMPRE NO LINK:").
+5. Se a personalidade for "Consultivo", use tom técnico/review (ex: "⭐ CUSTO-BENEFÍCIO COMPROVADO NO LINK:").
+6. Se a personalidade for "Divertido", use humor e memes (ex: "🔥 PREÇO TÃO BAIXO QUE PARECE MEME!").
+7. Escreva APENAS 1 linha de CTA (máximo 15 palavras) terminando com indicação para o link (ex: "no link:" ou "no link abaixo:").
+${forceUppercaseCta ? "8. OBRIGATÓRIO: A CTA DEVE ESTAR TOTALMENTE EM CAIXA ALTA (LETRAS MAIÚSCULAS)." : ""}
+9. Responda APENAS com o texto final da CTA, sem aspas nem explicações adicionais.`;
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",

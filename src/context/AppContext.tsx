@@ -558,22 +558,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       throw new Error(data.error || 'Erro ao gerar CTA');
     } catch (err: any) {
-      const emojis = ['🔥', '🚨', '🧡', '⚡', '🎁', '✨', '🛍️', '👉', '🛒'];
-      const e = emojis[Math.floor(Math.random() * emojis.length)];
-      const phrases = [
-        'GARANTA SEU DESCONTO EXCLUSIVO NO LINK:',
-        'COMPRE AGORA MESMO COM MENOR PREÇO DO ANO:',
-        'OFERTA IMPERDÍVEL DISPONÍVEL NO LINK ABAIXO:',
-        'CORRE ANTES QUE ACABE O ESTOQUE NO LINK:',
-        'RESGATE SEU CUPOM EXCLUSIVO NO LINK:'
-      ];
+      const tone = params.tone || '';
+      let emoji = '🔥';
+      let phrases = ['CORRE ANTES QUE ACABE O ESTOQUE NO LINK:'];
+
+      if (tone.includes('Amigável')) {
+        emoji = '🧡';
+        phrases = [
+          'OBA GEEENTE! OLHA ESSE ACHADINHO SENSACIONAL NO LINK:',
+          'GALERA, DICA DA HORA PRA VOCÊS! RESGATE NO LINK ABAIXO:',
+          'ACHADINHO INCRÍVEL DEMAIS! COMPRE NO LINK OFICIAL:'
+        ];
+      } else if (tone.includes('Direto')) {
+        emoji = '💰';
+        phrases = [
+          'PREÇO DE CUSTO! COMPRE AGORA ACESSANDO O LINK:',
+          'DESCONTO EXCLUSIVO APLICADO! GARANTA NO LINK:',
+          'MENOR PREÇO GARANTIDO DO DIA NO LINK ABAIXO:'
+        ];
+      } else if (tone.includes('Consultivo')) {
+        emoji = '⭐';
+        phrases = [
+          'REVIEW TECH: EXCELENTE CUSTO-BENEFÍCIO NO LINK:',
+          'PRODUTO COM GARANTIA E MELHOR PREÇO NO LINK ABAIXO:',
+          'QUALIDADE COMPROVADA! GARANTA O SEU NO LINK:'
+        ];
+      } else if (tone.includes('Divertido')) {
+        emoji = '🚀';
+        phrases = [
+          'PREÇO TÃO BAIXO QUE PARECE MEME! CORRE NO LINK:',
+          'SURREAL DE BARATO! GARANTA O SEU ANTES QUE SUMA NO LINK:'
+        ];
+      } else {
+        emoji = '🚨';
+        phrases = [
+          'CORRE ANTES QUE ACABE O ESTOQUE NO LINK:',
+          'ÚLTIMAS UNIDADES NESSE PREÇO NO LINK ABAIXO:',
+          'ALERTA DE PREÇO BAIXO! GARANTA O SEU NO LINK:'
+        ];
+      }
+
       let customTag = '';
       if (params.mustUseWords) {
         const words = params.mustUseWords.split(',').filter(Boolean);
         if (words.length > 0) customTag = words[Math.floor(Math.random() * words.length)].trim();
       }
       const pickedPhrase = phrases[Math.floor(Math.random() * phrases.length)];
-      let finalCta = customTag ? `${e} ${customTag}! ${pickedPhrase}` : `${e} ${pickedPhrase}`;
+      let finalCta = customTag ? `${emoji} ${customTag}! ${pickedPhrase}` : `${emoji} ${pickedPhrase}`;
       return params.forceUppercaseCta ? finalCta.toUpperCase() : finalCta;
     }
   };
