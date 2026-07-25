@@ -563,24 +563,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const rawInst = (ctaInstructions || '').trim();
       const instLower = rawInst.toLowerCase();
 
-      // 1. Emoji Selection & Position Interpreter
-      let emojiPos: 'start' | 'end' = 'start';
+      // 1. Detect Requested Length Intent (Long vs Short vs Medium)
+      const isLong = instLower.includes('longa') || instLower.includes('longo') || instLower.includes('extensa') || instLower.includes('detalhada') || instLower.includes('grande') || instLower.includes('completa');
+      const isShort = instLower.includes('curta') || instLower.includes('curto') || instLower.includes('direta') || instLower.includes('objetiva');
+
+      // 2. Detect Requested Mood / Energy Intent (Animated, Urgent, Persuasive, Friendly, Funny)
+      const isAnimated = instLower.includes('animad') || instLower.includes('empolgad') || instLower.includes('alegre') || instLower.includes('energia') || instLower.includes('entusiasm');
+      const isPersuasive = instLower.includes('convenç') || instLower.includes('convenc') || instLower.includes('persuasiv') || instLower.includes('vender') || instLower.includes('comprar');
+
+      // 3. Emoji Position & Type Rules
+      let emojiPos: 'start' | 'end' | 'both' = 'start';
       if (instLower.includes('no final') || instLower.includes('no fim') || instLower.includes('ao final') || instLower.includes('ao fim')) {
         emojiPos = 'end';
+      } else if (isAnimated || isLong) {
+        emojiPos = 'both';
       }
 
       let selectedEmoji = '🔥';
-      if (instLower.includes('raio') || instLower.includes('trovão')) selectedEmoji = '⚡';
-      else if (instLower.includes('fogo') || instLower.includes('chama')) selectedEmoji = '🔥';
+      if (isAnimated) selectedEmoji = '🎉';
+      else if (instLower.includes('raio') || instLower.includes('trovão')) selectedEmoji = '⚡';
       else if (instLower.includes('sirene') || instLower.includes('alerta') || instLower.includes('urgente')) selectedEmoji = '🚨';
-      else if (instLower.includes('coração') || instLower.includes('coracao') || instLower.includes('amor')) selectedEmoji = '🧡';
-      else if (instLower.includes('presente') || instLower.includes('gift')) selectedEmoji = '🎁';
+      else if (instLower.includes('coração') || instLower.includes('coracao')) selectedEmoji = '🧡';
       else if (tone.includes('Amigável')) selectedEmoji = '🧡';
       else if (tone.includes('Direto')) selectedEmoji = '💰';
-      else if (tone.includes('Consultivo')) selectedEmoji = '⭐';
-      else if (tone.includes('Divertido')) selectedEmoji = '🚀';
 
-      // 2. Topic & Intent Interpreter
+      // 4. Topic & Phrase Synthesis
       let phrase = '';
 
       const quoteMatches = rawInst.match(/['"“]([^'"”]+)['"”]/g);
@@ -589,43 +596,54 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         extractedQuote = quoteMatches[Math.floor(Math.random() * quoteMatches.length)].replace(/['"“]/g, '').trim();
       }
 
-      if (extractedQuote && (instLower.includes('cupom') || instLower.includes('desconto') || instLower.includes('código'))) {
-        phrase = `APLIQUE O CUPOM ${extractedQuote.toUpperCase()} E GARANTA SEU DESCONTO NO LINK OFICIAL:`;
-      } else if (instLower.includes('cupom') || instLower.includes('desconto')) {
-        phrase = `RESGATE SEU CUPOM DE DESCONTO EXCLUSIVO NO LINK ABAIXO:`;
-      } else if (instLower.includes('frete') || instLower.includes('grátis') || instLower.includes('gratis')) {
-        phrase = `GARANTA A SUA UNIDADE COM FRETE GRÁTIS NO LINK ABAIXO:`;
-      } else if (instLower.includes('pix')) {
-        phrase = `APROVEITE O DESCONTO EXCLUSIVO NO PIX ACESSANDO O LINK:`;
-      } else if (instLower.includes('estoque') || instLower.includes('acabe') || instLower.includes('urgente')) {
-        phrase = `CORRE ANTES QUE ACABE O ESTOQUE NO LINK ABAIXO:`;
-      } else if (tone.includes('Amigável')) {
-        phrase = `OBA GEEENTE! OLHA ESSE ACHADINHO SENSACIONAL NO LINK ABAIXO:`;
-      } else if (tone.includes('Direto')) {
-        phrase = `PREÇO DE CUSTO! COMPRE AGORA MESMO NO LINK OFICIAL:`;
-      } else if (tone.includes('Consultivo')) {
-        phrase = `REVIEW TECH: EXCELENTE CUSTO-BENEFÍCIO NO LINK ABAIXO:`;
-      } else if (tone.includes('Divertido')) {
-        phrase = `PREÇO TÃO BAIXO QUE PARECE MEME! COMPRE NO LINK ABAIXO:`;
+      if (isLong) {
+        if (extractedQuote) {
+          phrase = `OBAAA GEEENTE! ESSA É A SUA OPORTUNIDADE DE OURO PRA COMPRAR COM DESCONTO SURREAL! APLIQUE O CUPOM EXCLUSIVO "${extractedQuote.toUpperCase()}", GARANTA SEU DESCONTO E APROVEITE O MENOR PREÇO DO ANO. NÃO DEIXE PRA DEPOIS, CLIQUE AGORA MESMO E RESGATE NO LINK OFICIAL ABAIXO:`;
+        } else if (isAnimated || isPersuasive) {
+          phrase = `🎉 OBAAA GEEENTE! ESSA É A SUA CHANCE ÚNICA PRA GARANTIR O PRODUTO DOS SEUS SONHOS COM UM DESCONTO SIMPLESMENTE SURREAL! QUALIDADE COMPROVADA, ESTOQUE SUPER LIMITADO E MENOR PREÇO DO ANO GARANTIDO. NÃO PERCA TEMPO, CLIQUE AGORA MESMO E GARANTA O SEU NO LINK OFICIAL ABAIXO:`;
+        } else if (instLower.includes('frete')) {
+          phrase = `OFERTA ESPECIAL LIBERADA COM FRETE GRÁTIS PARA TODO O BRASIL! GARANTA A SUA UNIDADE COM PREÇO PROMOCIONAL DE CUSTO E RECEBA NO CONFORTO DA SUA CASA. ACESSE AGORA O LINK OFICIAL ABAIXO:`;
+        } else {
+          phrase = `ATENÇÃO GALERA! SE VOCÊ ESTAVA ESPERANDO O MOMENTO CERTO PRA COMPRAR, A HORA É AGORA! OPORTUNIDADE IMPERDÍVEL COM DESCONTO EXCLUSIVO LIBERADO POR TEMPO LIMITADO. CLIQUE NO LINK ABAIXO E GARANTA JÁ O SEU:`;
+        }
+      } else if (isShort) {
+        phrase = extractedQuote ? `USE O CUPOM ${extractedQuote.toUpperCase()} E COMPRE NO LINK:` : `PREÇO DE CUSTO! COMPRE AGORA NO LINK ABAIXO:`;
       } else {
-        phrase = `DESCONTO EXCLUSIVO LIBERADO! GARANTA O SEU NO LINK ABAIXO:`;
+        if (extractedQuote) {
+          phrase = `APLIQUE O CUPOM EXCLUSIVO "${extractedQuote.toUpperCase()}" E GARANTA MAIOR DESCONTO NO LINK OFICIAL:`;
+        } else if (instLower.includes('cupom') || instLower.includes('desconto')) {
+          phrase = `RESGATE SEU CUPOM DE DESCONTO EXCLUSIVO E GARANTA O MENOR PREÇO NO LINK ABAIXO:`;
+        } else if (instLower.includes('frete')) {
+          phrase = `GARANTA A SUA UNIDADE COM FRETE GRÁTIS DISPONÍVEL NO LINK ABAIXO:`;
+        } else if (instLower.includes('pix')) {
+          phrase = `APROVEITE O DESCONTO EXCLUSIVO NO PIX ACESSANDO O LINK ABAIXO:`;
+        } else if (instLower.includes('estoque') || instLower.includes('urgente')) {
+          phrase = `CORRE ANTES QUE ACABE O ESTOQUE! GARANTA A SUA UNIDADE NO LINK ABAIXO:`;
+        } else if (tone.includes('Amigável')) {
+          phrase = `OBA GEEENTE! OLHA ESSE ACHADINHO SENSACIONAL QUE SEPARAI NO LINK ABAIXO:`;
+        } else {
+          phrase = `DESCONTO EXCLUSIVO LIBERADO! GARANTA O SEU AGORA MESMO NO LINK ABAIXO:`;
+        }
       }
 
-      // 3. Assemble Emoji Position
-      let fullCta = emojiPos === 'end' ? `${phrase} ${selectedEmoji}` : `${selectedEmoji} ${phrase}`;
+      // 5. Assemble Emoji Position
+      let fullCta = '';
+      if (emojiPos === 'end') fullCta = `${phrase} ${selectedEmoji}`;
+      else if (emojiPos === 'both') fullCta = `${selectedEmoji} ${phrase} 🔥🚀`;
+      else fullCta = `${selectedEmoji} ${phrase}`;
 
-      // 4. Inject Must-Use Words
+      // 6. Inject Must-Use Words
       if (mustUseWords && mustUseWords.trim().length > 0) {
         const wordList = mustUseWords.split(',').map((w: string) => w.trim()).filter(Boolean);
         if (wordList.length > 0) {
           const extraWord = wordList[Math.floor(Math.random() * wordList.length)];
           if (!fullCta.toLowerCase().includes(extraWord.toLowerCase())) {
-            fullCta = emojiPos === 'end' ? `${extraWord.toUpperCase()}! ${fullCta}` : `${selectedEmoji} ${extraWord.toUpperCase()}! ${phrase}`;
+            fullCta = `${extraWord.toUpperCase()}! ${fullCta}`;
           }
         }
       }
 
-      // 5. Filter Forbidden Words
+      // 7. Filter Forbidden Words
       if (forbiddenWords && forbiddenWords.trim().length > 0) {
         const forbiddenList = forbiddenWords.split(',').map((w: string) => w.trim()).filter(Boolean);
         forbiddenList.forEach((fw: string) => {
