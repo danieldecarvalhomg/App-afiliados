@@ -189,22 +189,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [templates, setTemplates] = useState<CopyTemplate[]>(() => {
     try {
       const saved = localStorage.getItem('affi_templates_v2');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          return parsed.map((t: any, idx: number) => ({
-            id: String(t.id || `tpl-${Date.now()}-${idx}`),
-            title: String(t.title || `Template ${idx + 1}`),
-            category: String(t.category || t.store || 'Todas as Lojas'),
-            store: String(t.store || t.category || 'Todas as Lojas'),
-            content: String(t.content || ''),
-            status: (t.status === 'inativo' ? 'inativo' : 'ativo') as 'ativo' | 'inativo',
-            isDefault: !!t.isDefault,
-            createdAt: String(t.createdAt || new Date().toISOString().split('T')[0])
-          }));
-        }
-      }
-      return INITIAL_TEMPLATES;
+      return saved ? JSON.parse(saved) : INITIAL_TEMPLATES;
     } catch {
       return INITIAL_TEMPLATES;
     }

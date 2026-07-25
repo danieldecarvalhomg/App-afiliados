@@ -94,14 +94,6 @@ export function formatWhatsAppMarkdown(text: string): string {
   return formatted;
 }
 
-const AVAILABLE_PERSONALITIES = [
-  'Amigável & Descontraído (Gente, achadinho, corre!)',
-  'Urgente & Escassez extrema (Estoque baixo, corre antes que acabe!)',
-  'Direto & Objetivo (Preço sem enrolação e focado)',
-  'Consultivo & Review Tech (Prós, contras e garantia)',
-  'Divertido com Memes & Emojis otimizados'
-];
-
 // ============================================================================
 // MAIN VIEW COMPONENT
 // ============================================================================
@@ -113,7 +105,7 @@ export const AiStudioView: React.FC = () => {
     addQueueItem,
     addLog,
     generateCopyWithAI,
-    templates = [],
+    templates,
     addTemplate,
     updateTemplate,
     deleteTemplate,
@@ -140,31 +132,35 @@ export const AiStudioView: React.FC = () => {
   const [copied, setCopied] = useState(false);
 
   // AI Training & Persona State
-  const [selectedPersonalities, setSelectedPersonalities] = useState<string[]>(() => {
+  const [isAiTrainingOpen, setIsAiTrainingOpen] = useState(false);
+
+  const ALL_TONE_OPTIONS = [
+    'Amigável & Descontraído (Gente, achadinho, corre!)',
+    'Urgente & Escassez extrema (Estoque baixo, corre antes que acabe!)',
+    'Direto & Objetivo (Preço sem enrolação e focado)',
+    'Consultivo & Review Tech (Prós, contras e garantia)',
+    'Divertido com Memes & Emojis otimizados'
+  ];
+
+  const [selectedTones, setSelectedTones] = useState<string[]>(() => {
     try {
       const saved = localStorage.getItem('affi_ai_training');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed.personalities)) return parsed.personalities;
+        if (Array.isArray(parsed.tones) && parsed.tones.length > 0) return parsed.tones;
         if (parsed.tone) return [parsed.tone];
       }
     } catch {}
-    return ['Amigável & Descontraído (Gente, achadinho, corre!)'];
+    return [...ALL_TONE_OPTIONS];
   });
 
-  const [ctaUppercase, setCtaUppercase] = useState<boolean>(() => {
+  const [forceUppercaseCta, setForceUppercaseCta] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('affi_ai_training');
-      if (saved) return !!JSON.parse(saved).ctaUppercase;
+      if (saved) return !!JSON.parse(saved).forceUppercaseCta;
     } catch {}
-    return false;
+    return true;
   });
-
-  const aiTone = useMemo(() => {
-    if (!selectedPersonalities || selectedPersonalities.length === 0) return 'Personalizado';
-    if (selectedPersonalities.length === AVAILABLE_PERSONALITIES.length) return 'Todas as Personalidades';
-    return selectedPersonalities.map(p => (p || '').split(' (')[0]).filter(Boolean).join(', ');
-  }, [selectedPersonalities]);
 
   const [mustUseWords, setMustUseWords] = useState(() => {
     try {
@@ -200,39 +196,23 @@ export const AiStudioView: React.FC = () => {
 
   const [isTrainingSaved, setIsTrainingSaved] = useState(false);
 
-  const togglePersonality = (p: string) => {
-    setSelectedPersonalities(prev =>
-      prev.includes(p) ? prev.filter(item => item !== p) : [...prev, p]
-    );
+  const handleToggleTone = (t: string) => {
+    setSelectedTones(prev => {
+      if (prev.includes(t)) {
+        if (prev.length === 1) return prev;
+        return prev.filter(item => item !== t);
+      } else {
+        return [...prev, t];
+      }
+    });
   };
 
-  const handleSelectAllPersonalities = () => {
-    setSelectedPersonalities([...AVAILABLE_PERSONALITIES]);
-  };
-
-  const handleClearPersonalities = () => {
-    setSelectedPersonalities([]);
-  };
-
-  const handleSaveAiTrainingSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    const finalCta = ctaUppercase ? preferredCta.toUpperCase() : preferredCta;
-    const trainingObj = {
-      tone: aiTone,
-      personalities: selectedPersonalities,
-      mustUseWords,
-      forbiddenWords,
-      preferredCta: finalCta,
-      ctaUppercase,
-      exampleCopy
-    };
-    localStorage.setItem('affi_ai_training', JSON.stringify(trainingObj));
-    setIsTrainingSaved(true);
-    addLog('success', 'Treinamento IA', 'Personalidades e estilo de CTA em CAIXA ALTA atualizados com sucesso!');
-    setTimeout(() => {
-      setIsTrainingSaved(false);
-      setIsAiTrainingOpen(false);
-    }, 1200);
+  const handleSelectAllTones = () => {
+    if (selectedTones.length === ALL_TONE_OPTIONS.length) {
+      setSelectedTones([ALL_TONE_OPTIONS[0]]);
+    } else {
+      setSelectedTones([...ALL_TONE_OPTIONS]);
+    }
   };
 
   // Template Management States
@@ -380,21 +360,47 @@ export const AiStudioView: React.FC = () => {
   const handleGenerateAI = async () => {
     setIsGenerating(true);
     try {
+      const pickedTone = selectedTones[Math.floor(Math.random() * selectedTones.length)];
+      const activeCta = forceUppercaseCta ? preferredCta.toUpperCase() : preferredCta;
+
       const result = await generateCopyWithAI({
         productName,
         price,
         originalPrice,
         couponCode,
         marketplace,
-        tone: aiTone || tone
+        tone: pickedTone || tone,
+        forceUppercaseCta,
+        preferredCta: activeCta
       });
       setGeneratedCopy(result);
-      addLog('success', 'Gerador IA', `Cópia gerada com estilo da IA para "${productName}"`);
+      addLog('success', 'Gerador IA', `Cópia gerada com tom sorteado ("${pickedTone}") para "${productName}"`);
     } catch (e) {
       addLog('error', 'Gerador IA', 'Falha ao gerar cópia via IA.');
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleSaveAiTrainingSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalCta = forceUppercaseCta ? preferredCta.toUpperCase() : preferredCta;
+    const trainingObj = {
+      tones: selectedTones,
+      tone: selectedTones[0] || 'Amigável & Descontraído',
+      forceUppercaseCta,
+      mustUseWords,
+      forbiddenWords,
+      preferredCta: finalCta,
+      exampleCopy
+    };
+    localStorage.setItem('affi_ai_training', JSON.stringify(trainingObj));
+    setIsTrainingSaved(true);
+    addLog('success', 'Treinamento IA', `Personalidade (${selectedTones.length} tons) e CTA em CAIXA ALTA salvos com sucesso!`);
+    setTimeout(() => {
+      setIsTrainingSaved(false);
+      setIsAiTrainingOpen(false);
+    }, 1200);
   };
 
   const handleCopyText = () => {
@@ -643,7 +649,7 @@ export const AiStudioView: React.FC = () => {
                     </h3>
                     <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-purple-500/20 text-purple-300 border border-purple-500/30 flex items-center gap-1">
                       <Brain className="w-3 h-3 text-amber-400" />
-                      Estilo: "{aiTone}"
+                      Estilo: {selectedTones.length > 1 ? `🎲 IA Sorteando (${selectedTones.length} Tons)` : selectedTones[0] || 'Personalizado'}
                     </span>
                   </div>
                   <p className="text-xs text-slate-400 max-w-2xl leading-relaxed">
@@ -1254,56 +1260,52 @@ De ~R$ {preco_original}~ por
             </div>
 
             <form onSubmit={handleSaveAiTrainingSubmit} className="space-y-4 text-xs">
-              {/* Multi-select Personalities */}
+              {/* Multi-Tone Selection Checklist */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-slate-300 font-semibold flex items-center gap-1.5">
                     <Sliders className="w-3.5 h-3.5 text-purple-400" />
-                    Personalidades & Tom de Voz da IA (Selecione Múltiplas ou Todas)
+                    Personalidades & Tom de Voz (Selecione Várias ou Todas para Sorteio)
                   </label>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={handleSelectAllPersonalities}
-                      className="text-[10px] text-purple-400 hover:text-purple-300 font-bold underline"
-                    >
-                      Selecionar Todas
-                    </button>
-                    <span className="text-slate-700">•</span>
-                    <button
-                      type="button"
-                      onClick={handleClearPersonalities}
-                      className="text-[10px] text-slate-400 hover:text-slate-300 underline"
-                    >
-                      Limpar
-                    </button>
-                  </div>
+
+                  <button
+                    type="button"
+                    onClick={handleSelectAllTones}
+                    className="text-[10px] font-bold text-purple-300 hover:text-white bg-purple-500/20 px-2.5 py-1 rounded-xl border border-purple-500/40 transition-colors"
+                  >
+                    {selectedTones.length === ALL_TONE_OPTIONS.length ? 'Desmarcar Todas' : '✓ Marcar Todas (Sortear)'}
+                  </button>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 p-3 rounded-2xl bg-slate-950 border border-slate-800 max-h-48 overflow-y-auto">
-                  {AVAILABLE_PERSONALITIES.map(item => {
-                    const isSelected = selectedPersonalities.includes(item);
+                <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 space-y-2 max-h-48 overflow-y-auto">
+                  {ALL_TONE_OPTIONS.map((tOption) => {
+                    const isChecked = selectedTones.includes(tOption);
                     return (
                       <label
-                        key={item}
-                        onClick={() => togglePersonality(item)}
-                        className={`p-2.5 rounded-xl border text-xs font-medium cursor-pointer transition-all flex items-center gap-2.5 ${
-                          isSelected
-                            ? 'bg-purple-600/20 border-purple-500/50 text-purple-200 shadow-sm'
-                            : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:text-white'
+                        key={tOption}
+                        className={`flex items-center gap-3 p-2.5 rounded-xl border transition-all cursor-pointer ${
+                          isChecked
+                            ? 'bg-purple-500/15 border-purple-500/50 text-white font-semibold'
+                            : 'bg-slate-900/40 border-slate-800 text-slate-400 hover:text-slate-200'
                         }`}
                       >
                         <input
                           type="checkbox"
-                          checked={isSelected}
-                          onChange={() => {}}
-                          className="rounded bg-slate-950 border-slate-700 text-purple-600 focus:ring-0 shrink-0"
+                          checked={isChecked}
+                          onChange={() => handleToggleTone(tOption)}
+                          className="rounded bg-slate-950 border-slate-700 text-purple-600 focus:ring-0"
                         />
-                        <span className="leading-snug text-[11px]">{item}</span>
+                        <span className="text-xs">{tOption}</span>
                       </label>
                     );
                   })}
                 </div>
+
+                <span className="text-[10px] text-slate-400 block font-mono">
+                  {selectedTones.length > 1
+                    ? `🎲 A IA fará um sorteio aleatório entre os ${selectedTones.length} tons selecionados a cada geração!`
+                    : `📌 Apenas 1 tom ativo.`}
+                </span>
               </div>
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -1338,38 +1340,39 @@ De ~R$ {preco_original}~ por
                 </div>
               </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1">
+              {/* CTA Input with Uppercase Checkbox */}
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
                   <label className="text-slate-300 font-semibold flex items-center gap-1.5">
                     <ArrowRight className="w-3.5 h-3.5 text-indigo-400" />
                     Estilo da Chamada para Ação (CTA Preferida)
                   </label>
-                  <label className="flex items-center gap-1.5 cursor-pointer">
+                  <label className="flex items-center gap-2 cursor-pointer bg-amber-500/10 px-2.5 py-1 rounded-xl border border-amber-500/30">
                     <input
                       type="checkbox"
-                      checked={ctaUppercase}
+                      checked={forceUppercaseCta}
                       onChange={e => {
-                        const checked = e.target.checked;
-                        setCtaUppercase(checked);
-                        if (checked && preferredCta) {
+                        const isChecked = e.target.checked;
+                        setForceUppercaseCta(isChecked);
+                        if (isChecked && preferredCta) {
                           setPreferredCta(prev => prev.toUpperCase());
                         }
                       }}
-                      className="rounded bg-slate-950 border-slate-800 text-amber-500 focus:ring-0"
+                      className="rounded bg-slate-950 border-amber-500/40 text-amber-500 focus:ring-0"
                     />
-                    <span className="text-[11px] font-bold text-amber-400 uppercase tracking-wider">
-                      Gerar CTA em CAIXA ALTA
-                    </span>
+                    <span className="text-[11px] font-bold text-amber-300">FORÇAR CTA EM CAIXA ALTA</span>
                   </label>
                 </div>
+
                 <input
                   type="text"
                   value={preferredCta}
-                  onChange={e => setPreferredCta(ctaUppercase ? e.target.value.toUpperCase() : e.target.value)}
+                  onChange={e => {
+                    const val = e.target.value;
+                    setPreferredCta(forceUppercaseCta ? val.toUpperCase() : val);
+                  }}
                   placeholder="Ex: 👉 RESGATE O SEU DESCONTO EXCLUSIVO NO LINK ABAIXO:"
-                  className={`w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500 ${
-                    ctaUppercase ? 'uppercase font-bold tracking-wide text-amber-300' : ''
-                  }`}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono text-xs"
                 />
               </div>
 

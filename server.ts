@@ -47,13 +47,22 @@ app.post("/api/ai/generate-copy", async (req, res) => {
 
     let customPromptSection = "";
     if (customTraining) {
-      const ctaUpperRule = customTraining.ctaUppercase ? " (MANTENHA A CTA 100% EM CAIXA ALTA/LETRAS MAIÚSCULAS!)" : "";
+      let activeTone = customTraining.tone || tone || "Personalizado";
+      if (Array.isArray(customTraining.tones) && customTraining.tones.length > 0) {
+        activeTone = customTraining.tones[Math.floor(Math.random() * customTraining.tones.length)];
+      }
+
+      let ctaText = customTraining.preferredCta || "Padrão";
+      if (customTraining.forceUppercaseCta && ctaText) {
+        ctaText = ctaText.toUpperCase();
+      }
+
       customPromptSection = `
 INSTRUÇÕES ESPECÍFICAS DE TREINAMENTO E ESTILO DO USUÁRIO:
-- Tom de Voz Obrigatório (Múltiplas Personalidades): ${customTraining.tone || tone || "Personalizado"}
+- Tom de Voz Sorteado/Aplicado: ${activeTone}
 - Palavras/Expressões OBRIGATÓRIAS a utilizar: ${customTraining.mustUseWords || "Nenhuma"}
 - Palavras/Expressões PROIBIDAS (NÃO UTILIZAR DE FORMA ALGUMA): ${customTraining.forbiddenWords || "Nenhuma"}
-- Estilo da Chamada para Ação (CTA) Preferida: ${customTraining.preferredCta || "Padrão"}${ctaUpperRule}
+- Estilo da Chamada para Ação (CTA): ${ctaText} ${customTraining.forceUppercaseCta ? "(ATENÇÃO: A CTA DEVE ESTAR TOTALMENTE EM CAIXA ALTA / LETRAS MAIÚSCULAS)" : ""}
 - Exemplo do Estilo Pessoal do Usuário para ESPELHAR EXATAMENTE:
 """
 ${customTraining.exampleCopy || "Nenhum exemplo fornecido."}
