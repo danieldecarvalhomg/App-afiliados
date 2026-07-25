@@ -29,7 +29,25 @@ import {
   Edit3,
   FileText
 } from 'lucide-react';
-import { formatWhatsAppMarkdown } from './AiStudioView';
+function formatWhatsAppMarkdown(text: string): string {
+  if (!text) return '';
+
+  let formatted = text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  // Bold: *text*
+  formatted = formatted.replace(/\*([^\*\n]+)\*/g, '<strong>$1</strong>');
+  // Italic: _text_
+  formatted = formatted.replace(/_([^_\n]+)_/g, '<em>$1</em>');
+  // Strikethrough: ~text~
+  formatted = formatted.replace(/~([^~\n]+)~/g, '<del class="opacity-70">$1</del>');
+  // Monospace: `text`
+  formatted = formatted.replace(/`([^`\n]+)`/g, '<code class="bg-black/40 px-1.5 py-0.5 rounded font-mono text-[11px] text-amber-300">$1</code>');
+
+  return formatted;
+}
 
 export const GroupMonitoringView: React.FC = () => {
   const {
