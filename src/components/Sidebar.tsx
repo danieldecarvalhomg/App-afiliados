@@ -49,7 +49,7 @@ export const Sidebar: React.FC = () => {
       title: 'VISÃO GERAL',
       items: [
         { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
-        { id: 'produtos', label: 'Produtos & Ofertas', icon: ShoppingBag, badge: products.length },
+        { id: 'produtos', label: 'Feed de Ofertas (Ao Vivo)', icon: Flame, badge: 'AO VIVO', badgeColor: 'bg-rose-500/20 text-rose-400 border border-rose-500/30 animate-pulse' },
         {
           id: 'filas',
           label: 'Filas & Agendamentos',

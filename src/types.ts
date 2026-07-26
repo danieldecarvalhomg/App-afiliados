@@ -23,6 +23,12 @@ export interface Product {
   isArchived: boolean;
   collectionId?: string;
   hotScore: number; // 0 - 100
+  isLiveStreamItem?: boolean;
+  priceDropAlert?: boolean;
+  priceDropAmount?: number;
+  stockStatus?: 'normal' | 'poucas_unidades' | 'relampago';
+  freeShipping?: boolean;
+  pixDiscount?: boolean;
   createdAt: string;
   updatedAt: string;
 }

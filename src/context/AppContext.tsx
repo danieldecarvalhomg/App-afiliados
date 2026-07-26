@@ -142,20 +142,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [products, setProducts] = useState<Product[]>(() => {
     try {
-      const saved = localStorage.getItem('affi_products');
-      if (!saved) return [];
+      const saved = localStorage.getItem('affi_products_feed_v1');
+      if (!saved) return INITIAL_PRODUCTS;
       const parsed = JSON.parse(saved);
-      // Filter out any demo items
-      const clean = parsed.filter((p: any) => p.id && !p.id.includes('prod-1') && !p.id.includes('prod-2') && !p.id.includes('prod-3') && !p.id.includes('prod-4'));
-      if (clean.length !== parsed.length) {
-        localStorage.setItem('affi_products', JSON.stringify(clean));
-      }
-      return clean;
+      return parsed.length > 0 ? parsed : INITIAL_PRODUCTS;
     } catch {
-      localStorage.removeItem('affi_products');
-      return [];
+      return INITIAL_PRODUCTS;
     }
   });
+
+  useEffect(() => {
+    localStorage.setItem('affi_products_feed_v1', JSON.stringify(products));
+  }, [products]);
 
   const [queues, setQueues] = useState<QueueConfig[]>(() => {
     try {
