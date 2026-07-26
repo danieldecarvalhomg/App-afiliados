@@ -1264,43 +1264,47 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     }
 
-    // === PALAVRAS PROIBIDAS ===
-    const proibidaMatch = t.match(/\b(não usa(r)?|proibid[ao]s?|sem a palavra|nunca escrev[ae]|para de usar|remove(r)? a palavra)\b[:\s]+(.+)/);
-    if (proibidaMatch || (intencao === 'remover' && /palavra|termo|expressão/.test(t))) {
-      const palavraAlvo = proibidaMatch?.[3]?.trim().split(/[,\s]/)[0];
-      if (palavraAlvo && palavraAlvo.length > 2) {
-        const curr = ctaProfile.palavrasProibidas;
-        if (!curr.includes(palavraAlvo)) {
-          changes.palavrasProibidas = [...curr, palavraAlvo];
-          confirmacao = `Combinado! Nunca mais vou usar a palavra *"${palavraAlvo}"* nos seus CTAs. 🚫`;
-        }
+    // === EXTRAÇÃO UNIVERSAL DE PROIBIÇÕES ("não use X", "sem a palavra Y") ===
+    const proibidaMatch = t.match(/\b(não (us[ae]|escreva|coloque|diga)|sem a|proibid[ao]s?|nunca (us[ae]|escreva|coloque|diga)|para de usar)\b\s+["']?(.+?)["']?$/i);
+    if (proibidaMatch && proibidaMatch[3]) {
+      const termo = proibidaMatch[3].trim();
+      const curr = ctaProfile.palavrasProibidas || [];
+      if (!curr.includes(termo)) {
+        changes.palavrasProibidas = [...curr, termo];
+        confirmacao = `Entendido! Proibi o termo *"${termo}"* nos seus CTAs. 🚫`;
       }
     }
 
-    // === PALAVRAS FAVORITAS ===
-    const favMatch = t.match(/\b(usa(r)?|inclui(r)?|adiciona(r)?|coloca(r)?)\b.*(a (palavra|frase)|expressão)[:\s]+["']?(.+?)["']?$/);
-    if (favMatch) {
-      const palavra = favMatch[6]?.trim().split(/[,;]/)[0];
-      if (palavra && palavra.length > 2) {
-        const curr = ctaProfile.palavrasFavoritas;
-        if (!curr.includes(palavra)) {
-          changes.palavrasFavoritas = [...curr, palavra];
-          confirmacao = `Ótimo! Vou usar *"${palavra}"* com frequência nos seus CTAs. ✅`;
-        }
+    // === EXTRAÇÃO UNIVERSAL DE EXPRESSÕES FAVORITAS ("use X", "adicione Y", "fale Z") ===
+    const favMatch = t.match(/\b(usa[er]?|inclu[ia]r?|adiciona[er]?|coloqu[ae]|fale|mencione|diga|escreva)\b\s+["']?(.+?)["']?$/i);
+    if (favMatch && favMatch[2] && !confirmacao) {
+      const termo = favMatch[2].trim();
+      const curr = ctaProfile.palavrasFavoritas || [];
+      if (!curr.includes(termo)) {
+        changes.palavrasFavoritas = [...curr, termo];
+        confirmacao = `Anotado! Adicionei *"${termo}"* às suas expressões favoritas de CTA. ✅`;
       }
     }
 
-    // === OBSERVAÇÕES LIVRES ===
-    if (intencao === 'ambiguo' && texto.length > 20) {
-      requerConfirmacao = true;
-      confirmacao = `Quase entendi! Você quer dizer que prefere: *"${texto.trim()}"*? Confirma que eu salvo essa preferência nas observações do seu perfil!`;
+    // === CAPTURA UNIVERSAL ABSOLUTA DE QUALQUER INSTRUÇÃO ===
+    // Se o comando não se encaixou em um botão fixo, salva a frase exata do usuário como Regra Ativa
+    if (!confirmacao) {
+      const novaInstrucao = texto.trim();
+      const obsAtuais = (ctaProfile.observacoesLivres || '')
+        .split('\n')
+        .map(o => o.trim())
+        .filter(Boolean);
+
+      if (!obsAtuais.includes(novaInstrucao)) {
+        const novasObs = [...obsAtuais, `• ${novaInstrucao}`].join('\n');
+        changes.observacoesLivres = novasObs;
+        confirmacao = `✍️ Regra registrada e salva: *"${novaInstrucao}"*. A IA seguirá isso rigorosamente em todos os seus CTAs! ✅`;
+      } else {
+        confirmacao = `Entendido! Essa regra já está salva e ativa nas suas preferências. ✅`;
+      }
     }
 
-    if (!confirmacao && Object.keys(changes).length > 0) {
-      confirmacao = 'Preferência salva com sucesso! O seu perfil de CTA foi atualizado. ✅';
-    }
-
-    return { changes, confirmacao, requerConfirmacao };
+    return { changes, confirmacao, requerConfirmacao: false };
   };
 
   const gerarRespostaConsulta = (): string => {
