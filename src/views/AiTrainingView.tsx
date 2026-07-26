@@ -126,22 +126,39 @@ export const AiTrainingView: React.FC = () => {
     setKeyError(null);
 
     try {
-      const res = await fetch('/api/ai/validate-key', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ apiKey: keyToTest })
-      });
-      const data = await res.json();
+      let testRes: Response;
+      try {
+        // Direct browser fetch to OpenAI API (works on Vercel deployment without backend)
+        testRes = await fetch('https://api.openai.com/v1/models', {
+          method: 'GET',
+          headers: { 'Authorization': `Bearer ${keyToTest}` }
+        });
+      } catch (directErr) {
+        // Fallback to server endpoint if direct fetch fails
+        testRes = await fetch('/api/ai/validate-key', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ apiKey: keyToTest })
+        });
+      }
 
-      if (data.valid) {
+      if (testRes.ok) {
         setOpenAiApiKey(keyToTest);
         setShowApiKeyModal(false);
         setKeyError(null);
+        return;
+      }
+
+      const data = await testRes.json().catch(() => ({}));
+      if (testRes.status === 401) {
+        setKeyError('Chave de API incorreta ou desativada na OpenAI. Verifique sua chave em platform.openai.com.');
+      } else if (testRes.status === 429) {
+        setKeyError('Sua conta na OpenAI está sem saldo (cota excedida). Adicione saldo na plataforma OpenAI.');
       } else {
-        setKeyError(data.error || 'A chave informada é inválida ou está sem saldo na OpenAI.');
+        setKeyError(data.error || `A chave retornou erro da OpenAI (${testRes.status}).`);
       }
     } catch (err: any) {
-      setKeyError('Falha ao conectar com o servidor para validar a chave.');
+      setKeyError('Falha de conexão ao conectar com a OpenAI. Verifique sua internet.');
     } finally {
       setIsValidatingKey(false);
     }
