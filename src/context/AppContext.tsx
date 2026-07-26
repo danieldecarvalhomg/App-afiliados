@@ -132,8 +132,8 @@ interface AppContextType {
   ctaFeedbacks: CtaFeedback[];
   addCtaFeedback: (feedback: Partial<CtaFeedback>) => void;
   sendTrainingMessage: (userText: string) => Promise<void>;
-  openAiApiKey: string;
-  setOpenAiApiKey: (key: string) => void;
+  geminiApiKey: string;
+  setGeminiApiKey: (key: string) => void;
 
   // Global Search
   isSearchOpen: boolean;
@@ -191,18 +191,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
 
-  const [openAiApiKey, setOpenAiApiKeyState] = useState<string>(() => {
+  const [geminiApiKey, setGeminiApiKeyState] = useState<string>(() => {
     try {
-      return localStorage.getItem('affi_openai_api_key_v1') || '';
+      return localStorage.getItem('affi_gemini_api_key_v1') || '';
     } catch {
       return '';
     }
   });
 
-  const setOpenAiApiKey = (key: string) => {
-    setOpenAiApiKeyState(key);
+  const setGeminiApiKey = (key: string) => {
+    setGeminiApiKeyState(key);
     try {
-      localStorage.setItem('affi_openai_api_key_v1', key);
+      localStorage.setItem('affi_gemini_api_key_v1', key);
     } catch {}
   };
 
@@ -1414,8 +1414,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // Save user message
     addTrainingMessage({ role: 'user', content: userText });
 
-    // 1. If user provided an OpenAI API Key in browser, call OpenAI API directly (works on Vercel)
-    if (openAiApiKey && openAiApiKey.trim().startsWith('sk-')) {
+    // 1. If user provided a Gemini API Key in browser, call Gemini API directly (works on Vercel)
+    if (geminiApiKey && geminiApiKey.trim()) {
       try {
         const systemPrompt = `Você é uma Inteligência Artificial Especialista em Copywriting e Marketing de Afiliados no Brasil.
 Seu papel é conversar amigavelmente com o usuário, entender como ele gosta das suas chamadas para ação (CTAs) para o Telegram/WhatsApp e atualizar o Perfil de Preferências (JSON).
@@ -1423,47 +1423,34 @@ Seu papel é conversar amigavelmente com o usuário, entender como ele gosta das
 PERFIL DE PREFERÊNCIAS ATUAL DO USUÁRIO:
 ${JSON.stringify(ctaProfile || {}, null, 2)}
 
-DIRETRIZES DE RESPOSTA:
-1. Responda em Português do Brasil com tom simpático, inteligente e especialista em afiliados.
-2. Analise a mensagem do usuário e determine se ele está:
-   - Adicionando ou alterando preferências (tom: "urgente" | "descontraido" | "formal" | "divertido" | "luxuoso", tamanhoPreferido: "curto" | "medio" | "longo", usaEmoji: boolean, usaCaixaAlta: boolean, emojisPreferidos, palavrasProibidas, palavrasFavoritas).
-   - Pedindo exemplos de CTA.
-   - Fazendo perguntas ou tirando dúvidas sobre marketing de afiliados e copies.
-3. IMPORTANTE: Se o usuário especificou qualquer preferência ou mudança no tom/estilo/regras, inclua no objeto "updatedProfile" APENAS os campos que foram modificados.
-4. Se o usuário pediu para reiniciar ou começar do zero, retorne um "updatedProfile" zerado.
-5. Retorne APENAS um objeto JSON no seguinte formato:
+INSTRUÇÕES:
+1. Responda em Português do Brasil com tom simpático e especialista em afiliados.
+2. Analise a mensagem do usuário ("${userText}").
+3. Se houver mudanças de preferência, retorne no campo "updatedProfile" apenas o que mudou.
+4. Retorne APENAS um objeto JSON no formato:
 {
   "reply": "Texto de resposta conversacional em Markdown formato WhatsApp (*negrito*, _itálico_)",
   "updatedProfile": null ou objeto com os campos alterados,
   "generatedCtas": null ou array de 3 CTAs fraseados se o usuário pediu exemplos
 }`;
 
-        const formattedHistory = (trainingMessages || []).slice(-6).map((h: any) => ({
-          role: h.role === 'user' ? 'user' : 'assistant',
-          content: h.content
-        }));
-
-        const directRes = await fetch('https://api.openai.com/v1/chat/completions', {
+        const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey.trim()}`;
+        const directRes = await fetch(geminiUrl, {
           method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${openAiApiKey.trim()}`
-          },
+          headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            model: 'gpt-4o-mini',
-            messages: [
-              { role: 'system', content: systemPrompt },
-              ...formattedHistory,
-              { role: 'user', content: userText }
-            ],
-            response_format: { type: 'json_object' },
-            temperature: 0.7
+            contents: [{ parts: [{ text: systemPrompt }] }],
+            generationConfig: {
+              responseMimeType: 'application/json',
+              temperature: 0.7
+            }
           })
         });
 
         if (directRes.ok) {
           const data = await directRes.json();
-          const jsonContent = JSON.parse(data.choices[0]?.message?.content || '{}');
+          const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || '{}';
+          const jsonContent = JSON.parse(rawText);
           if (jsonContent.updatedProfile && typeof jsonContent.updatedProfile === 'object' && Object.keys(jsonContent.updatedProfile).length > 0) {
             updateCtaProfile(jsonContent.updatedProfile, userText);
           }
@@ -1473,21 +1460,21 @@ DIRETRIZES DE RESPOSTA:
             profileChanges: jsonContent.updatedProfile || undefined,
             generatedCtas: jsonContent.generatedCtas || undefined
           });
-          addLog('info', 'IA Chatbot', 'Resposta gerada via OpenAI ChatGPT (GPT-4o-mini)');
+          addLog('info', 'IA Chatbot', 'Resposta gerada via Google Gemini 2.5 Flash (API)');
           return;
-        } else if (directRes.status === 401 || directRes.status === 429) {
+        } else if (directRes.status === 400 || directRes.status === 403) {
           addTrainingMessage({
             role: 'ai',
-            content: `⚠️ Sua chave da OpenAI retornou erro (${directRes.status}). Verifique se sua chave está correta e com saldo em platform.openai.com.`
+            content: `⚠️ Sua chave da Gemini API retornou erro (${directRes.status}). Verifique se sua chave está correta em aistudio.google.com.`
           });
           return;
         }
       } catch (directErr) {
-        console.warn('Direct OpenAI fetch failed, attempting server route:', directErr);
+        console.warn('Direct Gemini fetch failed, attempting server route:', directErr);
       }
     }
 
-    // 2. Try Real AI API via server route /api/ai/chat-training (for backend deployments or Gemini)
+    // 2. Try Real AI API via server route /api/ai/chat-training
     try {
       const res = await fetch('/api/ai/chat-training', {
         method: 'POST',
@@ -1496,7 +1483,7 @@ DIRETRIZES DE RESPOSTA:
           userMessage: userText,
           currentProfile: ctaProfile,
           history: trainingMessages,
-          userApiKey: openAiApiKey
+          userApiKey: geminiApiKey
         })
       });
 
@@ -1700,8 +1687,8 @@ DIRETRIZES DE RESPOSTA:
         ctaFeedbacks,
         addCtaFeedback,
         sendTrainingMessage,
-        openAiApiKey,
-        setOpenAiApiKey,
+        geminiApiKey,
+        setGeminiApiKey,
         isSearchOpen,
         setIsSearchOpen,
       }}

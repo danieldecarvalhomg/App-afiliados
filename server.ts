@@ -134,7 +134,7 @@ Retorne APENAS o JSON válido sem nenhum bloco de markdown ao redor.`;
   }
 });
 
-// OpenAI API Key Validation API
+// Gemini & OpenAI API Key Validation API
 app.post("/api/ai/validate-key", async (req, res) => {
   try {
     const { apiKey } = req.body;
@@ -143,33 +143,39 @@ app.post("/api/ai/validate-key", async (req, res) => {
     }
 
     const trimmedKey = apiKey.trim();
-    if (!trimmedKey.startsWith("sk-")) {
-      return res.status(400).json({ valid: false, error: "Formato de chave inválido. As chaves da OpenAI começam com 'sk-'." });
+
+    // If key starts with sk-, validate with OpenAI
+    if (trimmedKey.startsWith("sk-")) {
+      const testRes = await fetch("https://api.openai.com/v1/models", {
+        method: "GET",
+        headers: { "Authorization": `Bearer ${trimmedKey}` }
+      });
+      if (testRes.status === 200) {
+        return res.json({ valid: true, provider: "openai" });
+      } else {
+        return res.status(testRes.status).json({ valid: false, error: "Chave da OpenAI inválida ou sem saldo." });
+      }
     }
 
-    const testRes = await fetch("https://api.openai.com/v1/models", {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${trimmedKey}`
-      }
+    // Default: Validate with Google Gemini API
+    const geminiRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${trimmedKey}`, {
+      method: "GET"
     });
 
-    if (testRes.status === 200) {
-      return res.json({ valid: true });
-    } else if (testRes.status === 401) {
-      return res.status(401).json({ valid: false, error: "Chave incorreta ou desativada na OpenAI." });
-    } else if (testRes.status === 429) {
-      return res.status(429).json({ valid: false, error: "Sua conta na OpenAI está sem saldo (cota excedida)." });
+    if (geminiRes.status === 200) {
+      return res.json({ valid: true, provider: "gemini" });
+    } else if (geminiRes.status === 400 || geminiRes.status === 403) {
+      return res.status(400).json({ valid: false, error: "Chave da Gemini API incorreta ou inválida. Obtenha uma chave grátis no Google AI Studio (aistudio.google.com)." });
     } else {
-      const errText = await testRes.text();
-      return res.status(testRes.status).json({ valid: false, error: `Erro na OpenAI (${testRes.status}): ${errText.slice(0, 100)}` });
+      const errText = await geminiRes.text();
+      return res.status(geminiRes.status).json({ valid: false, error: `Erro na Gemini API (${geminiRes.status}): ${errText.slice(0, 100)}` });
     }
   } catch (error: any) {
-    return res.status(500).json({ valid: false, error: `Falha de conexão com a OpenAI: ${error.message}` });
+    return res.status(500).json({ valid: false, error: `Falha de conexão: ${error.message}` });
   }
 });
 
-// AI Chatbot Training API (ChatGPT / Gemini integration)
+// AI Chatbot Training API (Gemini & OpenAI integration)
 app.post("/api/ai/chat-training", async (req, res) => {
   try {
     const { userMessage, currentProfile, history, userApiKey } = req.body;
@@ -177,19 +183,22 @@ app.post("/api/ai/chat-training", async (req, res) => {
       return res.status(400).json({ error: "Mensagem é obrigatória" });
     }
 
-    const apiKey = userApiKey || process.env.OPENAI_API_KEY;
+    const apiKey = userApiKey || process.env.GEMINI_API_KEY || process.env.OPENAI_API_KEY;
 
-    // 1. Try OpenAI ChatGPT if key is available
-    if (apiKey && (apiKey.startsWith("sk-") || userApiKey)) {
+    // 1. Try Gemini API if Gemini key or userApiKey (non sk-) is present or server GEMINI_API_KEY
+    if (apiKey && (!apiKey.startsWith("sk-") || !process.env.OPENAI_API_KEY)) {
       const systemPrompt = `Você é uma Inteligência Artificial Especialista em Copywriting e Marketing de Afiliados no Brasil.
 Seu papel é conversar amigavelmente com o usuário, entender como ele gosta das suas chamadas para ação (CTAs) para o Telegram/WhatsApp e atualizar o Perfil de Preferências (JSON).
 
 PERFIL DE PREFERÊNCIAS ATUAL DO USUÁRIO:
 ${JSON.stringify(currentProfile || {}, null, 2)}
 
+HISTÓRICO RECENTE:
+${JSON.stringify(history || [], null, 2)}
+
 DIRETRIZES DE RESPOSTA:
 1. Responda em Português do Brasil com tom simpático, inteligente e especialista em afiliados.
-2. Analise a mensagem do usuário e determine se ele está:
+2. Analise a mensagem do usuário ("${userMessage}") e determine se ele está:
    - Adicionando ou alterando preferências (tom: "urgente" | "descontraido" | "formal" | "divertido" | "luxuoso", tamanhoPreferido: "curto" | "medio" | "longo", usaEmoji: boolean, usaCaixaAlta: boolean, emojisPreferidos, palavrasProibidas, palavrasFavoritas).
    - Pedindo exemplos de CTA.
    - Fazendo perguntas ou tirando dúvidas sobre marketing de afiliados e copies.
@@ -202,11 +211,34 @@ DIRETRIZES DE RESPOSTA:
   "generatedCtas": null ou array de 3 CTAs fraseados se o usuário pediu exemplos
 }`;
 
-      const formattedHistory = (history || []).slice(-6).map((h: any) => ({
-        role: h.role === "user" ? "user" : "assistant",
-        content: h.content
-      }));
+      const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;
+      const geminiRes = await fetch(geminiUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: systemPrompt }] }],
+          generationConfig: {
+            responseMimeType: "application/json",
+            temperature: 0.7
+          }
+        })
+      });
 
+      if (geminiRes.ok) {
+        const data = await geminiRes.json();
+        const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text || "{}";
+        const parsed = JSON.parse(rawText);
+        return res.json({
+          source: "gemini-2.5-flash",
+          reply: parsed.reply || "Entendido! Atualizei suas preferências.",
+          updatedProfile: parsed.updatedProfile || null,
+          generatedCtas: parsed.generatedCtas || null
+        });
+      }
+    }
+
+    // 2. Try OpenAI if key starts with sk-
+    if (apiKey && apiKey.startsWith("sk-")) {
       const openAiRes = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST",
         headers: {
@@ -216,33 +248,21 @@ DIRETRIZES DE RESPOSTA:
         body: JSON.stringify({
           model: "gpt-4o-mini",
           messages: [
-            { role: "system", content: systemPrompt },
-            ...formattedHistory,
+            { role: "system", content: "Você é um especialista em Copywriting." },
             { role: "user", content: userMessage }
           ],
-          response_format: { type: "json_object" },
-          temperature: 0.7
+          response_format: { type: "json_object" }
         })
       });
-
       if (openAiRes.ok) {
         const data = await openAiRes.json();
         const jsonContent = JSON.parse(data.choices[0]?.message?.content || "{}");
         return res.json({
           source: "openai-gpt-4o-mini",
-          reply: jsonContent.reply || "Entendido! Atualizei suas preferências de CTA.",
+          reply: jsonContent.reply || "Entendido! Atualizei seu perfil.",
           updatedProfile: jsonContent.updatedProfile || null,
           generatedCtas: jsonContent.generatedCtas || null
         });
-      } else {
-        const errorText = await openAiRes.text();
-        console.warn("OpenAI API request failed:", errorText);
-        if (userApiKey) {
-          return res.status(openAiRes.status).json({
-            source: "error",
-            error: `A chave de API da OpenAI falhou (${openAiRes.status}). Verifique seu saldo ou chave.`
-          });
-        }
       }
     }
 

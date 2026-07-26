@@ -91,8 +91,8 @@ export const AiTrainingView: React.FC = () => {
     trainingMessages,
     sendTrainingMessage,
     addCtaFeedback,
-    openAiApiKey,
-    setOpenAiApiKey,
+    geminiApiKey,
+    setGeminiApiKey,
   } = useApp();
 
   const [inputText, setInputText]           = useState('');
@@ -114,11 +114,7 @@ export const AiTrainingView: React.FC = () => {
   const handleTestAndSaveKey = async () => {
     const keyToTest = tempKeyInput.trim();
     if (!keyToTest) {
-      setKeyError('Por favor, digite a chave da OpenAI.');
-      return;
-    }
-    if (!keyToTest.startsWith('sk-')) {
-      setKeyError('Formato inválido. As chaves da OpenAI começam com "sk-".');
+      setKeyError('Por favor, digite sua chave da Gemini API (Google AI).');
       return;
     }
 
@@ -128,10 +124,9 @@ export const AiTrainingView: React.FC = () => {
     try {
       let testRes: Response;
       try {
-        // Direct browser fetch to OpenAI API (works on Vercel deployment without backend)
-        testRes = await fetch('https://api.openai.com/v1/models', {
-          method: 'GET',
-          headers: { 'Authorization': `Bearer ${keyToTest}` }
+        // Direct browser fetch to Gemini API models endpoint (works on Vercel deployment without backend)
+        testRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${keyToTest}`, {
+          method: 'GET'
         });
       } catch (directErr) {
         // Fallback to server endpoint if direct fetch fails
@@ -143,22 +138,20 @@ export const AiTrainingView: React.FC = () => {
       }
 
       if (testRes.ok) {
-        setOpenAiApiKey(keyToTest);
+        setGeminiApiKey(keyToTest);
         setShowApiKeyModal(false);
         setKeyError(null);
         return;
       }
 
       const data = await testRes.json().catch(() => ({}));
-      if (testRes.status === 401) {
-        setKeyError('Chave de API incorreta ou desativada na OpenAI. Verifique sua chave em platform.openai.com.');
-      } else if (testRes.status === 429) {
-        setKeyError('Sua conta na OpenAI está sem saldo (cota excedida). Adicione saldo na plataforma OpenAI.');
+      if (testRes.status === 400 || testRes.status === 403) {
+        setKeyError('Chave da Gemini API incorreta ou inválida. Obtenha uma chave gratuita no Google AI Studio (aistudio.google.com).');
       } else {
-        setKeyError(data.error || `A chave retornou erro da OpenAI (${testRes.status}).`);
+        setKeyError(data.error || `A chave retornou erro da Gemini API (${testRes.status}).`);
       }
     } catch (err: any) {
-      setKeyError('Falha de conexão ao conectar com a OpenAI. Verifique sua internet.');
+      setKeyError('Falha de conexão com a Gemini API. Verifique sua conexão à internet.');
     } finally {
       setIsValidatingKey(false);
     }
@@ -241,15 +234,15 @@ export const AiTrainingView: React.FC = () => {
         {/* Header Right Actions */}
         <div className="flex items-center gap-2 self-start">
           <button
-            onClick={() => { setTempKeyInput(openAiApiKey); setKeyError(null); setShowApiKeyModal(true); }}
+            onClick={() => { setTempKeyInput(geminiApiKey); setKeyError(null); setShowApiKeyModal(true); }}
             className={`px-3.5 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 border transition-all shadow-md ${
-              openAiApiKey
+              geminiApiKey
                 ? 'bg-emerald-500/15 text-emerald-300 border-emerald-500/30 hover:bg-emerald-500/25'
-                : 'bg-gradient-to-r from-violet-600/20 to-indigo-600/20 text-violet-300 border-violet-500/30 hover:border-violet-400'
+                : 'bg-gradient-to-r from-emerald-600/20 to-teal-600/20 text-emerald-300 border-emerald-500/30 hover:border-emerald-400'
             }`}
           >
-            <Key className="w-3.5 h-3.5" />
-            {openAiApiKey ? '🤖 ChatGPT Conectado' : '🔑 Conectar ChatGPT (API)'}
+            <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+            {geminiApiKey ? '✨ Gemini IA Conectado (Grátis)' : '🔑 Conectar Gemini IA (Grátis)'}
           </button>
 
           {/* Mobile tabs */}
@@ -588,23 +581,36 @@ export const AiTrainingView: React.FC = () => {
         </div>
       )}
 
-      {/* ── OpenAI API Key Modal ─────────────────────────────────────────────── */}
+      {/* ── Gemini API Key Modal ─────────────────────────────────────────────── */}
       {showApiKeyModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
           <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
               <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <Key className="w-5 h-5 text-violet-400" />
-                API Key do ChatGPT (OpenAI)
+                <Sparkles className="w-5 h-5 text-emerald-400" />
+                API Key do Google Gemini (100% Grátis)
               </h2>
               <button onClick={() => setShowApiKeyModal(false)} className="text-slate-400 hover:text-white">
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            <p className="text-xs text-slate-300 leading-relaxed">
-              Insira sua chave da OpenAI (<code className="font-mono text-emerald-400">sk-...</code>). O sistema validará a chave em tempo real antes de conectar ao <strong>ChatGPT (GPT-4o-mini)</strong>!
-            </p>
+            <div className="p-3.5 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 space-y-1.5">
+              <p className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                🎉 O Google Gemini é 100% Gratuito!
+              </p>
+              <p className="text-[11px] text-slate-300 leading-relaxed">
+                Você pode obter uma chave de API grátis no Google AI Studio em segundos sem precisar cadastrar cartão de crédito.
+              </p>
+              <a
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-400 hover:underline pt-0.5"
+              >
+                👉 Clique aqui para criar sua chave grátis no Google AI Studio ↗
+              </a>
+            </div>
 
             {keyError && (
               <div className="p-3 rounded-2xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs flex items-start gap-2 animate-in fade-in duration-150">
@@ -614,24 +620,24 @@ export const AiTrainingView: React.FC = () => {
             )}
 
             <div className="space-y-1">
-              <label className="text-[11px] font-bold text-slate-400">Chave da API OpenAI</label>
+              <label className="text-[11px] font-bold text-slate-400">Cole sua Chave Gemini API (AIZA...)</label>
               <input
                 type="password"
                 value={tempKeyInput}
                 onChange={e => { setTempKeyInput(e.target.value); setKeyError(null); }}
-                placeholder="sk-proj-..."
-                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-violet-500"
+                placeholder="AIzaSy..."
+                className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white font-mono focus:outline-none focus:border-emerald-500"
               />
             </div>
 
             <p className="text-[10px] text-slate-500 leading-normal">
-              🔒 Sua chave é salva exclusivamente no seu navegador (localStorage) e usada apenas para se comunicar diretamente com a API oficial da OpenAI.
+              🔒 Sua chave é salva exclusivamente no seu navegador (localStorage) e usada apenas para se comunicar diretamente com a API oficial do Google Gemini.
             </p>
 
             <div className="flex gap-2 pt-2">
-              {openAiApiKey && (
+              {geminiApiKey && (
                 <button
-                  onClick={() => { setOpenAiApiKey(''); setTempKeyInput(''); setKeyError(null); setShowApiKeyModal(false); }}
+                  onClick={() => { setGeminiApiKey(''); setTempKeyInput(''); setKeyError(null); setShowApiKeyModal(false); }}
                   className="px-4 py-2.5 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-bold border border-rose-500/20"
                 >
                   Remover Chave
@@ -640,17 +646,17 @@ export const AiTrainingView: React.FC = () => {
               <button
                 onClick={handleTestAndSaveKey}
                 disabled={isValidatingKey}
-                className="flex-1 py-2.5 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1.5 transition-all"
+                className="flex-1 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 text-white text-xs font-bold shadow-md flex items-center justify-center gap-1.5 transition-all"
               >
                 {isValidatingKey ? (
                   <>
                     <Loader2 className="w-4 h-4 animate-spin" />
-                    Validando chave na OpenAI...
+                    Validando chave na Gemini API...
                   </>
                 ) : (
                   <>
                     <CheckCircle2 className="w-4 h-4" />
-                    Testar e Conectar
+                    Testar e Conectar (Grátis)
                   </>
                 )}
               </button>
