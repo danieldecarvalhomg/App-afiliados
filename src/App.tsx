@@ -24,7 +24,6 @@ import { LibraryView } from './views/LibraryView';
 import { ProfileView } from './views/ProfileView';
 import { TeamSubscriptionView } from './views/TeamSubscriptionView';
 import { GroupMonitoringView } from './views/GroupMonitoringView';
-import { AiTrainingView } from './views/AiTrainingView';
 import { HelpCenterView } from './views/HelpCenterView';
 
 const MainContent: React.FC = () => {
@@ -50,8 +49,6 @@ const MainContent: React.FC = () => {
         return <AiStudioView />;
       case 'monitoramento':
         return <GroupMonitoringView />;
-      case 'ai-training':
-        return <AiTrainingView />;
       case 'landing-pages':
         return <LandingPagesView />;
       case 'integracoes':
