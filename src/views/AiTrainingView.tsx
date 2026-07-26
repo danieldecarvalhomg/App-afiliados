@@ -232,7 +232,7 @@ export const AiTrainingView: React.FC = () => {
         </div>
 
         {/* Header Right Actions */}
-        <div className="flex items-center gap-2 self-start">
+        <div className="flex items-center gap-2 self-start flex-wrap">
           <button
             onClick={() => { setTempKeyInput(geminiApiKey); setKeyError(null); setShowApiKeyModal(true); }}
             className={`px-3.5 py-2 rounded-2xl text-xs font-bold flex items-center gap-2 border transition-all shadow-md ${
@@ -245,198 +245,67 @@ export const AiTrainingView: React.FC = () => {
             {geminiApiKey ? '✨ Gemini IA Conectado (Grátis)' : '🔑 Conectar Gemini IA (Grátis)'}
           </button>
 
-          {/* Mobile tabs */}
-          <div className="flex lg:hidden items-center gap-1 p-1 rounded-xl bg-slate-900 border border-slate-800">
-          {(['chat', 'perfil'] as const).map(tab => (
-            <button
-              key={tab}
-              onClick={() => setMobileTab(tab)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                mobileTab === tab ? 'bg-violet-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              {tab === 'chat' ? <MessageSquare className="w-3.5 h-3.5" /> : <Settings className="w-3.5 h-3.5" />}
-              {tab === 'chat' ? 'Chat' : 'Perfil'}
-            </button>
-          ))}
-          </div>
+          <button
+            onClick={() => setShowReset(true)}
+            className="px-3.5 py-2 rounded-2xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-bold border border-rose-500/20 flex items-center gap-2 transition-all shadow-md"
+          >
+            <RefreshCw className="w-3.5 h-3.5" />
+            Apagar Memória
+          </button>
         </div>
       </div>
 
-      {/* ── Two-column layout ───────────────────────────────────────────────── */}
-      <div className="flex gap-5" style={{ minHeight: '520px', maxHeight: '64vh' }}>
+      {/* ── Chat Container ─────────────────────────────────────────────────── */}
+      <div className="w-full flex flex-col" style={{ minHeight: '520px', maxHeight: '64vh' }}>
+        <div className="flex-1 flex flex-col p-5 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-xl overflow-hidden">
 
-        {/* LEFT: Chat */}
-        <div className={`flex-1 flex flex-col min-w-0 ${mobileTab === 'perfil' ? 'hidden lg:flex' : 'flex'}`}>
-          <div className="flex-1 flex flex-col p-5 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-xl overflow-hidden">
-
-            {/* Messages scroll area */}
-            <div className="flex-1 overflow-y-auto space-y-3 pr-1 pb-3">
-              {trainingMessages.length === 0 && (
-                <div className="p-5 rounded-3xl bg-slate-800/40 border border-slate-700/40 space-y-3 text-xs text-slate-300 leading-relaxed">
-                  <div className="flex items-center gap-2 mb-1">
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center shrink-0">
-                      <Brain className="w-4 h-4 text-white" />
-                    </div>
-                    <span className="font-bold text-white text-sm">Assistente IA</span>
+          {/* Messages scroll area */}
+          <div className="flex-1 overflow-y-auto space-y-3 pr-1 pb-3">
+            {trainingMessages.length === 0 && (
+              <div className="p-5 rounded-3xl bg-slate-800/40 border border-slate-700/40 space-y-3 text-xs text-slate-300 leading-relaxed">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-violet-500 to-indigo-500 flex items-center justify-center shrink-0">
+                    <Brain className="w-4 h-4 text-white" />
                   </div>
-                  <p>👋 Olá! Sou sua IA de CTA personalizada. Estou aqui para aprender <strong>exatamente</strong> como você gosta dos seus textos de divulgação.</p>
-                  <p>Pode conversar comigo de forma <strong>natural</strong> — não precisa seguir nenhum formato. Você pode:</p>
-                  <ul className="space-y-1 pl-2">
-                    <li>✅ <strong>Descrever seu estilo:</strong> "prefiro algo mais urgente e curto"</li>
-                    <li>✅ <strong>Dar comandos diretos:</strong> "nunca usa a palavra imperdível"</li>
-                    <li>✅ <strong>Pedir exemplos:</strong> "me mostra 3 CTAs de teste"</li>
-                    <li>✅ <strong>Ver o que aprendi:</strong> "o que você sabe sobre mim?"</li>
-                    <li>✅ <strong>Dar feedback:</strong> "esse ficou muito forçado"</li>
-                  </ul>
-                  <p className="text-slate-400">Cada preferência vai ser usada automaticamente nos seus Templates e no Monitor de Grupos. 🚀</p>
+                  <span className="font-bold text-white text-sm">Assistente IA</span>
                 </div>
-              )}
-
-              {trainingMessages.map(msg => <Bubble key={msg.id} msg={msg} />)}
-              {isTyping && <TypingDots />}
-              <div ref={chatEndRef} />
-            </div>
-
-            {/* Input */}
-            <div className="mt-3 flex gap-2 items-end border-t border-slate-800 pt-3">
-              <textarea
-                rows={2}
-                value={inputText}
-                onChange={e => setInputText(e.target.value)}
-                onKeyDown={handleKey}
-                placeholder="Escreva como quiser... ex: 'prefiro CTAs curtos e sem emoji' ou 'gera um exemplo'"
-                className="flex-1 bg-slate-950 border border-slate-700 rounded-2xl px-4 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 resize-none leading-relaxed"
-              />
-              <button
-                onClick={handleSend}
-                disabled={!inputText.trim() || isTyping}
-                className="p-3 rounded-2xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-all shadow-lg shadow-violet-600/20"
-              >
-                <Send className="w-4 h-4" />
-              </button>
-            </div>
-            <p className="text-[10px] text-slate-500 mt-1.5 text-center">Enter para enviar · Shift+Enter para quebrar linha</p>
-          </div>
-        </div>
-
-        {/* RIGHT: Profile panel */}
-        <div className={`w-full lg:w-80 xl:w-96 shrink-0 ${mobileTab === 'chat' ? 'hidden lg:block' : 'block'}`}>
-          <div className="flex flex-col h-full p-5 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-xl overflow-y-auto gap-4">
-
-            <div className="flex items-center justify-between shrink-0">
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <Brain className="w-4 h-4 text-violet-400" />
-                O que a IA Aprendeu
-              </h2>
-              <span className="text-[10px] font-mono text-slate-400 bg-slate-800 px-2 py-0.5 rounded-full">
-                {(ctaProfile.changelog ?? []).length} mudanças
-              </span>
-            </div>
-
-            {/* Status summary */}
-            <div className="p-3.5 rounded-2xl bg-gradient-to-br from-violet-900/30 to-indigo-900/20 border border-violet-700/30 shrink-0">
-              <div className="text-[11px] text-slate-300 space-y-0.5">
-                <p>🎭 <strong>Tom:</strong> {ctaProfile.tom ?? 'urgente'}</p>
-                <p>📏 <strong>Tamanho:</strong> {ctaProfile.tamanhoPreferido ?? 'medio'}</p>
-                <p>😀 <strong>Emojis:</strong> {ctaProfile.usaEmoji ? safe(ctaProfile.emojisPreferidos).join(' ') || '—' : 'Desativado'}</p>
-                <p>🧠 <strong>CTAs gerados:</strong> {safe(ctaProfile.ctasGerados).length}</p>
-              </div>
-            </div>
-
-            {/* Tom */}
-            <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
-              <p className="text-[11px] font-bold text-slate-300 mb-2">🎭 Tom do CTA</p>
-              <select
-                value={ctaProfile.tom ?? 'urgente'}
-                onChange={e => updateCtaProfile({ tom: e.target.value as CtaProfile['tom'] }, 'Edição manual')}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none"
-              >
-                {['urgente', 'descontraido', 'formal', 'divertido', 'luxuoso'].map(t => (
-                  <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Tamanho */}
-            <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
-              <p className="text-[11px] font-bold text-slate-300 mb-2">📏 Tamanho</p>
-              <select
-                value={ctaProfile.tamanhoPreferido ?? 'medio'}
-                onChange={e => updateCtaProfile({ tamanhoPreferido: e.target.value as CtaProfile['tamanhoPreferido'] }, 'Edição manual')}
-                className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-xs text-white focus:outline-none"
-              >
-                {['curto', 'medio', 'longo'].map(t => (
-                  <option key={t} value={t}>{t.charAt(0).toUpperCase() + t.slice(1)}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Booleans */}
-            {([
-              { label: '😀 Usa emojis', field: 'usaEmoji' as keyof CtaProfile },
-              { label: '🔠 Caixa alta', field: 'usaCaixaAlta' as keyof CtaProfile },
-            ] as const).map(({ label, field }) => (
-              <div key={field} className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800 flex items-center justify-between">
-                <p className="text-[11px] font-bold text-slate-300">{label}</p>
-                <button
-                  onClick={() => updateCtaProfile({ [field]: !(ctaProfile[field] as boolean) } as Partial<CtaProfile>, 'Edição manual')}
-                  className={`px-3 py-1 rounded-lg text-[11px] font-bold border transition-colors ${
-                    ctaProfile[field]
-                      ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                      : 'bg-slate-800 text-slate-400 border-slate-700'
-                  }`}
-                >
-                  {ctaProfile[field] ? 'Ativado' : 'Desativado'}
-                </button>
-              </div>
-            ))}
-
-            {/* Array fields */}
-            {([
-              { label: '✨ Emojis preferidos', field: 'emojisPreferidos' as keyof CtaProfile },
-              { label: '✅ Palavras favoritas', field: 'palavrasFavoritas' as keyof CtaProfile },
-              { label: '🚫 Palavras proibidas', field: 'palavrasProibidas' as keyof CtaProfile },
-              { label: '👍 Exemplos aprovados', field: 'exemplosBons' as keyof CtaProfile },
-            ] as const).map(({ label, field }) => {
-              const items = safe(ctaProfile[field] as string[]);
-              return (
-                <div key={field} className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
-                  <p className="text-[11px] font-bold text-slate-300 mb-2">{label}</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {items.length === 0 && <span className="text-[10px] text-slate-500 italic">Nenhum ainda</span>}
-                    {items.map((item, i) => (
-                      <Chip key={i} label={item} onRemove={() => removeField(field, item)} />
-                    ))}
-                  </div>
-                </div>
-              );
-            })}
-
-            {/* Observações livres */}
-            {ctaProfile.observacoesLivres && (
-              <div className="p-3.5 rounded-2xl bg-slate-950/70 border border-slate-800">
-                <p className="text-[11px] font-bold text-slate-300 mb-1">📌 Observações livres</p>
-                <p className="text-[11px] text-slate-400 leading-relaxed whitespace-pre-wrap">{ctaProfile.observacoesLivres}</p>
+                <p>👋 Olá! Sou sua IA de CTA personalizada. Estou aqui para aprender <strong>exatamente</strong> como você gosta dos seus textos de divulgação.</p>
+                <p>Pode conversar comigo de forma <strong>natural</strong> — não precisa seguir nenhum formato. Você pode:</p>
+                <ul className="space-y-1 pl-2">
+                  <li>✅ <strong>Descrever seu estilo:</strong> "prefiro algo mais urgente e curto"</li>
+                  <li>✅ <strong>Dar comandos diretos:</strong> "nunca usa a palavra imperdível"</li>
+                  <li>✅ <strong>Pedir exemplos:</strong> "me mostra 3 CTAs de teste"</li>
+                  <li>✅ <strong>Ver o que aprendi:</strong> "o que você sabe sobre mim?"</li>
+                  <li>✅ <strong>Dar feedback:</strong> "esse ficou muito forçado"</li>
+                </ul>
+                <p className="text-slate-400">Cada preferência vai ser usada automaticamente nos seus Templates e no Monitor de Grupos. 🚀</p>
               </div>
             )}
 
-            {/* Actions */}
-            <div className="flex gap-2 pt-1 shrink-0">
-              <button
-                onClick={() => setShowJson(true)}
-                className="flex-1 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold flex items-center justify-center gap-1.5 border border-slate-700"
-              >
-                <Eye className="w-3.5 h-3.5" /> Ver JSON
-              </button>
-              <button
-                onClick={() => setShowReset(true)}
-                className="flex-1 py-2 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-300 text-xs font-semibold flex items-center justify-center gap-1.5 border border-rose-500/20"
-              >
-                <RefreshCw className="w-3.5 h-3.5" /> Reiniciar
-              </button>
-            </div>
+            {trainingMessages.map(msg => <Bubble key={msg.id} msg={msg} />)}
+            {isTyping && <TypingDots />}
+            <div ref={chatEndRef} />
           </div>
+
+          {/* Input */}
+          <div className="mt-3 flex gap-2 items-end border-t border-slate-800 pt-3">
+            <textarea
+              rows={2}
+              value={inputText}
+              onChange={e => setInputText(e.target.value)}
+              onKeyDown={handleKey}
+              placeholder="Escreva como quiser... ex: 'prefiro CTAs curtos e sem emoji' ou 'gera um exemplo'"
+              className="flex-1 bg-slate-950 border border-slate-700 rounded-2xl px-4 py-3 text-xs text-white placeholder:text-slate-500 focus:outline-none focus:border-violet-500 resize-none leading-relaxed"
+            />
+            <button
+              onClick={handleSend}
+              disabled={!inputText.trim() || isTyping}
+              className="p-3 rounded-2xl bg-violet-600 hover:bg-violet-500 disabled:opacity-40 disabled:cursor-not-allowed text-white transition-all shadow-lg shadow-violet-600/20"
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+          <p className="text-[10px] text-slate-500 mt-1.5 text-center">Enter para enviar · Shift+Enter para quebrar linha</p>
         </div>
       </div>
 
