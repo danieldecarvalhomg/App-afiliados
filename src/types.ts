@@ -23,12 +23,6 @@ export interface Product {
   isArchived: boolean;
   collectionId?: string;
   hotScore: number; // 0 - 100
-  isLiveStreamItem?: boolean;
-  priceDropAlert?: boolean;
-  priceDropAmount?: number;
-  stockStatus?: 'normal' | 'poucas_unidades' | 'relampago';
-  freeShipping?: boolean;
-  pixDiscount?: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -236,5 +230,58 @@ export interface CapturedMessage {
   templateUsedId?: string;
   finalText?: string;
   createdAt: string;
+}
+
+// ============================================================================
+// AI TRAINING — CENTRAL CTA PREFERENCES PROFILE
+// ============================================================================
+
+export interface CtaProfileChange {
+  id: string;
+  timestamp: string;
+  field: string;
+  previousValue: any;
+  newValue: any;
+  triggeredByMessage: string;
+}
+
+export interface CtaProfile {
+  tom: 'descontraido' | 'urgente' | 'formal' | 'divertido' | 'luxuoso' | string;
+  usaEmoji: boolean;
+  emojisPreferidos: string[];
+  tamanhoPreferido: 'curto' | 'medio' | 'longo';
+  palavrasProibidas: string[];
+  palavrasFavoritas: string[];
+  usaCaixaAlta: boolean;
+  exemplosBons: string[];
+  exemplosRuins: string[];
+  observacoesLivres: string;
+  ctasGerados: string[];
+  changelog: CtaProfileChange[];
+  updatedAt: string;
+}
+
+
+
+export interface CtaFeedback {
+  id: string;
+  ctaText: string;
+  rating: 'good' | 'bad' | 'edited';
+  editedVersion?: string;
+  reason?: string;
+  origin: 'training' | 'templates' | 'monitoring';
+  createdAt: string;
+}
+
+export interface CtaContext {
+  produto?: string;
+  loja?: string;
+  preco?: string;
+  preco_original?: string;
+  cupom?: string;
+  link?: string;
+  frete_gratis?: boolean;
+  pix?: boolean;
+  internacional?: boolean;
 }
 

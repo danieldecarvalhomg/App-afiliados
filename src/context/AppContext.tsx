@@ -15,6 +15,10 @@ import {
   MonitoredGroup,
   CapturedMessage,
   ExtractedDataJSON,
+  CtaProfile,
+  CtaProfileChange,
+  CtaFeedback,
+  CtaContext
 } from '../types';
 import {
   INITIAL_PRODUCTS,
@@ -115,6 +119,14 @@ interface AppContextType {
   // AI helpers
   generateCopyWithAI: (params: any) => Promise<string>;
   extractOfferFromUrl: (url: string) => Promise<any>;
+  
+  // Central CTA Profile
+  ctaProfile: CtaProfile;
+  updateCtaProfile: (changes: Partial<CtaProfile>, triggeredBy?: string) => void;
+  generateCtaFromProfile: (context: CtaContext) => string;
+  resetCtaProfile: () => void;
+  ctaFeedbacks: CtaFeedback[];
+  addCtaFeedback: (feedback: Partial<CtaFeedback>) => void;
 
   // Global Search
   isSearchOpen: boolean;
@@ -127,6 +139,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTab] = useState<string>('dashboard');
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+
+  // ─── DEFAULT CENTRAL CTA PROFILE ─────────────────────────────────────────
+  const DEFAULT_CTA_PROFILE: CtaProfile = {
+    tom: 'urgente',
+    usaEmoji: true,
+    emojisPreferidos: ['🔥', '🚨', '💥'],
+    tamanhoPreferido: 'medio',
+    palavrasProibidas: [],
+    palavrasFavoritas: ['corre', 'só hoje', 'últimas unidades'],
+    usaCaixaAlta: false,
+    exemplosBons: [],
+    exemplosRuins: [],
+    observacoesLivres: '',
+    ctasGerados: [],
+    changelog: [],
+    updatedAt: new Date().toISOString()
+  };
+
+  const [ctaProfile, setCtaProfile] = useState<CtaProfile>(() => {
+    try {
+      const saved = localStorage.getItem('affi_cta_profile_v1');
+      return saved ? JSON.parse(saved) : DEFAULT_CTA_PROFILE;
+    } catch {
+      return DEFAULT_CTA_PROFILE;
+    }
+  });
+
+  const [ctaFeedbacks, setCtaFeedbacks] = useState<CtaFeedback[]>(() => {
+    try {
+      const saved = localStorage.getItem('affi_cta_feedbacks_v1');
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
 
   // Purge legacy demo data from localStorage on load if present
   useEffect(() => {
@@ -142,26 +189,20 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [products, setProducts] = useState<Product[]>(() => {
     try {
-      const saved = localStorage.getItem('affi_products_feed_v2');
-      if (!saved) return INITIAL_PRODUCTS;
+      const saved = localStorage.getItem('affi_products');
+      if (!saved) return [];
       const parsed = JSON.parse(saved);
-      // Auto-deduplicate by title to fix any previous duplicate bugs
-      const uniqueMap = new Map();
-      parsed.forEach((p: Product) => {
-        if (p && p.title && !uniqueMap.has(p.title.trim().toLowerCase())) {
-          uniqueMap.set(p.title.trim().toLowerCase(), p);
-        }
-      });
-      const clean = Array.from(uniqueMap.values()) as Product[];
-      return clean.length > 0 ? clean : INITIAL_PRODUCTS;
+      // Filter out any demo items
+      const clean = parsed.filter((p: any) => p.id && !p.id.includes('prod-1') && !p.id.includes('prod-2') && !p.id.includes('prod-3') && !p.id.includes('prod-4'));
+      if (clean.length !== parsed.length) {
+        localStorage.setItem('affi_products', JSON.stringify(clean));
+      }
+      return clean;
     } catch {
-      return INITIAL_PRODUCTS;
+      localStorage.removeItem('affi_products');
+      return [];
     }
   });
-
-  useEffect(() => {
-    localStorage.setItem('affi_products_feed_v2', JSON.stringify(products));
-  }, [products]);
 
   const [queues, setQueues] = useState<QueueConfig[]>(() => {
     try {
@@ -644,52 +685,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addProduct = (productData: Partial<Product>): Product => {
-    const title = productData.title || 'Novo Produto Afiliado';
-    const rawUrl = productData.rawUrl || '';
+    const newProduct: Product = {
+      id: 'prod-' + Date.now(),
+      title: productData.title || 'Novo Produto Afiliado',
+      originalPrice: productData.originalPrice || 199.90,
+      price: productData.price || 149.90,
+      discountPercent: productData.discountPercent || 25,
+      rating: productData.rating || 4.8,
+      reviewsCount: productData.reviewsCount || 100,
+      category: productData.category || 'Geral',
+      marketplace: productData.marketplace || 'Amazon',
+      rawUrl: productData.rawUrl || 'https://amazon.com.br',
+      affiliateUrl: productData.affiliateUrl || 'https://amzn.to/example',
+      couponCode: productData.couponCode || '',
+      image: productData.image || 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
+      status: 'ativo',
+      isFavorite: false,
+      isArchived: false,
+      hotScore: Math.floor(Math.random() * 30) + 70,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      ...productData,
+    };
 
-    let createdProd: Product | null = null;
-
-    setProducts(prev => {
-      // Deduplicate by title or rawUrl
-      const existingIndex = prev.findIndex(p => 
-        (p.title && p.title.trim().toLowerCase() === title.trim().toLowerCase()) ||
-        (rawUrl && p.rawUrl && p.rawUrl === rawUrl)
-      );
-
-      if (existingIndex >= 0) {
-        createdProd = prev[existingIndex];
-        return prev;
-      }
-
-      const newProduct: Product = {
-        id: productData.id || ('prod-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)),
-        title,
-        originalPrice: productData.originalPrice || 199.90,
-        price: productData.price || 149.90,
-        discountPercent: productData.discountPercent || 25,
-        rating: productData.rating || 4.8,
-        reviewsCount: productData.reviewsCount || 100,
-        category: productData.category || 'Geral',
-        marketplace: productData.marketplace || 'Amazon',
-        rawUrl: rawUrl || 'https://amazon.com.br',
-        affiliateUrl: productData.affiliateUrl || 'https://amzn.to/example',
-        couponCode: productData.couponCode || '',
-        image: productData.image || 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
-        status: 'ativo',
-        isFavorite: false,
-        isArchived: false,
-        hotScore: Math.floor(Math.random() * 30) + 70,
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        ...productData,
-      };
-
-      createdProd = newProduct;
-      supabaseService.saveProduct(newProduct);
-      return [newProduct, ...prev];
-    });
-
-    return createdProd || (productData as Product);
+    setProducts(prev => [newProduct, ...prev]);
+    supabaseService.saveProduct(newProduct);
+    addLog('success', 'Produtos', `Novo produto adicionado: "${newProduct.title}"`);
+    return newProduct;
   };
 
   const updateProduct = (id: string, updates: Partial<Product>) => {
@@ -923,6 +945,204 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.clear();
   };
 
+  // ─── AI TRAINING PERSISTENCE ─────────────────────────────────────────────
+  useEffect(() => {
+    localStorage.setItem('affi_cta_profile_v1', JSON.stringify(ctaProfile));
+  }, [ctaProfile]);
+
+  useEffect(() => {
+    localStorage.setItem('affi_training_messages_v1', JSON.stringify(trainingMessages));
+  }, [trainingMessages]);
+
+  useEffect(() => {
+    localStorage.setItem('affi_cta_feedbacks_v1', JSON.stringify(ctaFeedbacks));
+  }, [ctaFeedbacks]);
+
+  // ─── CTA PROFILE CRUD ────────────────────────────────────────────────────
+  const updateCtaProfile = (changes: Partial<CtaProfile>, triggeredBy = '') => {
+    setCtaProfile(prev => {
+      const changeEntries: CtaProfileChange[] = Object.entries(changes)
+        .filter(([k]) => k !== 'changelog' && k !== 'ctasGerados' && k !== 'updatedAt')
+        .map(([field, newValue]) => ({
+          id: 'chg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
+          timestamp: new Date().toISOString(),
+          field,
+          previousValue: (prev as any)[field],
+          newValue,
+          triggeredByMessage: triggeredBy
+        }));
+
+      return {
+        ...prev,
+        ...changes,
+        changelog: [...(prev.changelog || []), ...changeEntries].slice(-100),
+        updatedAt: new Date().toISOString()
+      };
+    });
+  };
+
+  const resetCtaProfile = () => {
+    const blank: CtaProfile = {
+      tom: 'urgente',
+      usaEmoji: true,
+      emojisPreferidos: ['🔥', '🚨', '💥'],
+      tamanhoPreferido: 'medio',
+      palavrasProibidas: [],
+      palavrasFavoritas: ['corre', 'só hoje', 'últimas unidades'],
+      usaCaixaAlta: false,
+      exemplosBons: [],
+      exemplosRuins: [],
+      observacoesLivres: '',
+      ctasGerados: [],
+      changelog: [],
+      updatedAt: new Date().toISOString()
+    };
+    setCtaProfile(blank);
+    setTrainingMessages([]);
+    addLog('warning', 'IA Training', 'Treinamento da IA foi reiniciado do zero.');
+  };
+
+  const addTrainingMessage = (msg: Partial<TrainingMessage>): TrainingMessage => {
+    const newMsg: TrainingMessage = {
+      id: 'msg-' + Date.now(),
+      role: msg.role || 'user',
+      content: msg.content || '',
+      timestamp: new Date().toISOString(),
+      profileChanges: msg.profileChanges,
+      generatedCtas: msg.generatedCtas
+    };
+    setTrainingMessages(prev => [...prev, newMsg]);
+    return newMsg;
+  };
+
+  const clearTrainingHistory = () => {
+    setTrainingMessages([]);
+  };
+
+  const addCtaFeedback = (feedback: Partial<CtaFeedback>) => {
+    const newFb: CtaFeedback = {
+      id: 'fb-' + Date.now(),
+      ctaText: feedback.ctaText || '',
+      rating: feedback.rating || 'good',
+      editedVersion: feedback.editedVersion,
+      reason: feedback.reason,
+      origin: feedback.origin || 'training',
+      createdAt: new Date().toISOString()
+    };
+    setCtaFeedbacks(prev => [...prev, newFb]);
+
+    if (newFb.rating === 'good') {
+      const cta = newFb.editedVersion || newFb.ctaText;
+      setCtaProfile(prev => ({
+        ...prev,
+        exemplosBons: [...prev.exemplosBons, cta].slice(-20)
+      }));
+    } else if (newFb.rating === 'bad') {
+      setCtaProfile(prev => ({
+        ...prev,
+        exemplosRuins: [...prev.exemplosRuins, newFb.ctaText].slice(-20)
+      }));
+    }
+  };
+
+  // ─── ANTI-REPETITION ENGINE ──────────────────────────────────────────────
+  const normalizeCtaFingerprint = (text: string): string => {
+    return text
+      .toLowerCase()
+      .replace(/[\u{1F300}-\u{1FFFF}]/gu, '')
+      .replace(/[^a-záàãâéêíóôõúüç\s]/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .slice(0, 60);
+  };
+
+  const simScore = (a: string, b: string): number => {
+    if (a === b) return 1;
+    const len = Math.max(a.length, b.length);
+    if (len === 0) return 1;
+    let matches = 0;
+    for (let i = 0; i < Math.min(a.length, b.length); i++) {
+      if (a[i] === b[i]) matches++;
+    }
+    return matches / len;
+  };
+
+  const isCtaRepeated = (candidate: string, history: string[]): boolean => {
+    const fp = normalizeCtaFingerprint(candidate);
+    return history.some(h => simScore(fp, normalizeCtaFingerprint(h)) >= 0.8);
+  };
+
+  const saveCtaToHistory = (cta: string) => {
+    setCtaProfile(prev => ({
+      ...prev,
+      ctasGerados: [...prev.ctasGerados, cta].slice(-200)
+    }));
+  };
+
+  // ─── CTA GENERATION ENGINE ───────────────────────────────────────────────
+  // Generates ONLY the call-to-action phrase — NOT the full offer.
+  // Product, price, link etc. are template variables handled separately.
+  // Context is used only as flavor hints (urgency level, extras mention).
+  const generateCtaFromProfile = (context: CtaContext = {}): string => {
+    const prof = ctaProfile;
+    const { cupom, frete_gratis, pix } = context;
+
+    // ── 100% Clean Engine: Zero hardcoded clichés ("CORRE!", "SÓ AGORA!", etc.) ──
+    // Build strictly using ONLY what the user instructed and saved.
+    const favs = (prof.palavrasFavoritas || []).filter(w => w.length > 0);
+    const emojis = prof.usaEmoji ? (prof.emojisPreferidos || []) : [];
+    const obs = (prof.observacoesLivres || '')
+      .split('\n')
+      .map(o => o.replace(/^[•\-\*]\s*/, '').trim())
+      .filter(Boolean);
+
+    const partes: string[] = [];
+
+    // Add user's explicit favorite phrases/words
+    if (favs.length > 0) {
+      partes.push(favs.join(' '));
+    }
+
+    // Add user's custom observation rules
+    if (obs.length > 0) {
+      partes.push(obs[obs.length - 1]);
+    }
+
+    // Add contextual offer hints if present
+    if (frete_gratis) partes.push('Frete grátis');
+    if (pix)          partes.push('Desconto no PIX');
+    if (cupom)        partes.push(`Cupom ${cupom}`);
+
+    // If user has not set any custom text yet, clean neutral fallback:
+    if (partes.length === 0) {
+      partes.push('Acesse pelo link para aproveitar!');
+    }
+
+    let cta = partes.join(' ').trim();
+
+    if (prof.usaCaixaAlta) {
+      cta = cta.toUpperCase();
+    }
+
+    if (emojis.length > 0) {
+      const e0 = emojis[0];
+      const e1 = emojis.length > 1 ? emojis[1] : '';
+      cta = `${e0} ${cta}${e1 ? ' ' + e1 : ''}`;
+    }
+
+    // Filter prohibited words
+    (prof.palavrasProibidas || []).forEach(w => {
+      if (w) cta = cta.replace(new RegExp(w, 'gi'), '').trim();
+    });
+
+    cta = cta.replace(/\s+/g, ' ').trim();
+
+    saveCtaToHistory(cta);
+    return cta;
+  };
+
+
+
   return (
     <AppContext.Provider
       value={{
@@ -985,6 +1205,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addLog,
         generateCopyWithAI,
         extractOfferFromUrl,
+        ctaProfile,
+        updateCtaProfile,
+        generateCtaFromProfile,
+        resetCtaProfile,
+        ctaFeedbacks,
+        addCtaFeedback,
         isSearchOpen,
         setIsSearchOpen,
       }}
