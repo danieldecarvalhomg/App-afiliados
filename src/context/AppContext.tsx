@@ -142,17 +142,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const [products, setProducts] = useState<Product[]>(() => {
     try {
-      const saved = localStorage.getItem('affi_products_feed_v1');
+      const saved = localStorage.getItem('affi_products_feed_v2');
       if (!saved) return INITIAL_PRODUCTS;
       const parsed = JSON.parse(saved);
-      return parsed.length > 0 ? parsed : INITIAL_PRODUCTS;
+      // Auto-deduplicate by title to fix any previous duplicate bugs
+      const uniqueMap = new Map();
+      parsed.forEach((p: Product) => {
+        if (p && p.title && !uniqueMap.has(p.title.trim().toLowerCase())) {
+          uniqueMap.set(p.title.trim().toLowerCase(), p);
+        }
+      });
+      const clean = Array.from(uniqueMap.values()) as Product[];
+      return clean.length > 0 ? clean : INITIAL_PRODUCTS;
     } catch {
       return INITIAL_PRODUCTS;
     }
   });
 
   useEffect(() => {
-    localStorage.setItem('affi_products_feed_v1', JSON.stringify(products));
+    localStorage.setItem('affi_products_feed_v2', JSON.stringify(products));
   }, [products]);
 
   const [queues, setQueues] = useState<QueueConfig[]>(() => {
@@ -636,33 +644,52 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const addProduct = (productData: Partial<Product>): Product => {
-    const newProduct: Product = {
-      id: 'prod-' + Date.now(),
-      title: productData.title || 'Novo Produto Afiliado',
-      originalPrice: productData.originalPrice || 199.90,
-      price: productData.price || 149.90,
-      discountPercent: productData.discountPercent || 25,
-      rating: productData.rating || 4.8,
-      reviewsCount: productData.reviewsCount || 100,
-      category: productData.category || 'Geral',
-      marketplace: productData.marketplace || 'Amazon',
-      rawUrl: productData.rawUrl || 'https://amazon.com.br',
-      affiliateUrl: productData.affiliateUrl || 'https://amzn.to/example',
-      couponCode: productData.couponCode || '',
-      image: productData.image || 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
-      status: 'ativo',
-      isFavorite: false,
-      isArchived: false,
-      hotScore: Math.floor(Math.random() * 30) + 70,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      ...productData,
-    };
+    const title = productData.title || 'Novo Produto Afiliado';
+    const rawUrl = productData.rawUrl || '';
 
-    setProducts(prev => [newProduct, ...prev]);
-    supabaseService.saveProduct(newProduct);
-    addLog('success', 'Produtos', `Novo produto adicionado: "${newProduct.title}"`);
-    return newProduct;
+    let createdProd: Product | null = null;
+
+    setProducts(prev => {
+      // Deduplicate by title or rawUrl
+      const existingIndex = prev.findIndex(p => 
+        (p.title && p.title.trim().toLowerCase() === title.trim().toLowerCase()) ||
+        (rawUrl && p.rawUrl && p.rawUrl === rawUrl)
+      );
+
+      if (existingIndex >= 0) {
+        createdProd = prev[existingIndex];
+        return prev;
+      }
+
+      const newProduct: Product = {
+        id: productData.id || ('prod-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6)),
+        title,
+        originalPrice: productData.originalPrice || 199.90,
+        price: productData.price || 149.90,
+        discountPercent: productData.discountPercent || 25,
+        rating: productData.rating || 4.8,
+        reviewsCount: productData.reviewsCount || 100,
+        category: productData.category || 'Geral',
+        marketplace: productData.marketplace || 'Amazon',
+        rawUrl: rawUrl || 'https://amazon.com.br',
+        affiliateUrl: productData.affiliateUrl || 'https://amzn.to/example',
+        couponCode: productData.couponCode || '',
+        image: productData.image || 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
+        status: 'ativo',
+        isFavorite: false,
+        isArchived: false,
+        hotScore: Math.floor(Math.random() * 30) + 70,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        ...productData,
+      };
+
+      createdProd = newProduct;
+      supabaseService.saveProduct(newProduct);
+      return [newProduct, ...prev];
+    });
+
+    return createdProd || (productData as Product);
   };
 
   const updateProduct = (id: string, updates: Partial<Product>) => {
