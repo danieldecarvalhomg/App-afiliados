@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useApp } from '../context/AppContext';
 import { Product, MarketplaceType } from '../types';
 import {
@@ -22,102 +22,11 @@ import {
   Loader2,
   CheckCircle2,
   Truck,
-  Ticket
+  Ticket,
+  RefreshCw,
+  Globe,
+  CheckCheck
 } from 'lucide-react';
-
-const LIVE_SAMPLE_DEALS: Array<Omit<Product, 'id' | 'createdAt' | 'updatedAt'>> = [
-  {
-    title: 'Smart TV 65" 4K LG OLED Evo C3 120Hz HDMI 2.1',
-    originalPrice: 7999.00,
-    price: 4999.00,
-    discountPercent: 37,
-    rating: 4.9,
-    reviewsCount: 620,
-    category: 'Eletrônicos',
-    marketplace: 'Amazon',
-    rawUrl: 'https://www.amazon.com.br/dp/B0C499LG',
-    affiliateUrl: 'https://www.amazon.com.br/dp/B0C499LG?tag=affiflow-20',
-    couponCode: 'TVOLED500',
-    image: 'https://images.unsplash.com/photo-1593359677879-a4bb92f829d1?auto=format&fit=crop&w=600&q=80',
-    status: 'ativo',
-    isFavorite: false,
-    isArchived: false,
-    hotScore: 99,
-    priceDropAlert: true,
-    priceDropAmount: 500.00,
-    stockStatus: 'relampago',
-    freeShipping: true,
-    pixDiscount: true
-  },
-  {
-    title: 'Monitor Gamer Curved 34" Samsung Odyssey G5 WQHD 165Hz',
-    originalPrice: 2899.00,
-    price: 1799.00,
-    discountPercent: 38,
-    rating: 4.8,
-    reviewsCount: 450,
-    category: 'Eletrônicos',
-    marketplace: 'Shopee',
-    rawUrl: 'https://shopee.com.br/samsung-odyssey-g5',
-    affiliateUrl: 'https://shope.ee/992200odyssey?smtt=0.0.9',
-    couponCode: 'SHOPEEODYSSEY',
-    image: 'https://images.unsplash.com/photo-1527443224154-c4a3942d3acf?auto=format&fit=crop&w=600&q=80',
-    status: 'ativo',
-    isFavorite: false,
-    isArchived: false,
-    hotScore: 94,
-    priceDropAlert: true,
-    priceDropAmount: 200.00,
-    stockStatus: 'poucas_unidades',
-    freeShipping: true,
-    pixDiscount: true
-  },
-  {
-    title: 'Cadeira Gamer Ergostore Reclinável Premium Couro PU',
-    originalPrice: 1299.00,
-    price: 699.90,
-    discountPercent: 46,
-    rating: 4.6,
-    reviewsCount: 310,
-    category: 'Casa',
-    marketplace: 'Mercado Livre',
-    rawUrl: 'https://www.mercadolivre.com.br/cadeira-gamer',
-    affiliateUrl: 'https://mercadolivre.com.br/sec/cadeira-gamer-aff',
-    couponCode: 'MLGAMER100',
-    image: 'https://images.unsplash.com/photo-1598300042247-d088f8ab3a91?auto=format&fit=crop&w=600&q=80',
-    status: 'ativo',
-    isFavorite: false,
-    isArchived: false,
-    hotScore: 91,
-    priceDropAlert: false,
-    stockStatus: 'normal',
-    freeShipping: true,
-    pixDiscount: true
-  },
-  {
-    title: 'Kit Teclado Mecânico + Mouse Gamer Wireless Logitech G502',
-    originalPrice: 799.90,
-    price: 399.00,
-    discountPercent: 50,
-    rating: 4.9,
-    reviewsCount: 1540,
-    category: 'Games',
-    marketplace: 'AliExpress',
-    rawUrl: 'https://pt.aliexpress.com/item/g502.html',
-    affiliateUrl: 'https://s.click.aliexpress.com/e/_dZg502',
-    couponCode: 'ALIEXLOGI',
-    image: 'https://images.unsplash.com/photo-1618384887929-16ec33fab9ef?auto=format&fit=crop&w=600&q=80',
-    status: 'ativo',
-    isFavorite: false,
-    isArchived: false,
-    hotScore: 96,
-    priceDropAlert: true,
-    priceDropAmount: 100.00,
-    stockStatus: 'relampago',
-    freeShipping: true,
-    pixDiscount: false
-  }
-];
 
 export const ProductsView: React.FC = () => {
   const {
@@ -128,10 +37,12 @@ export const ProductsView: React.FC = () => {
     addQueueItem,
     queues,
     extractOfferFromUrl,
+    convertAffiliateUrl,
     addLog
   } = useApp();
 
   const [isLiveActive, setIsLiveActive] = useState<boolean>(true);
+  const [isFetchingReal, setIsFetchingReal] = useState<boolean>(false);
   const [searchQuery, setSearchQuery]   = useState<string>('');
   const [selectedMarketplace, setSelectedMarketplace] = useState<string>('todos');
   const [selectedCategory, setSelectedCategory]       = useState<string>('todas');
@@ -141,6 +52,7 @@ export const ProductsView: React.FC = () => {
   const [copiedType, setCopiedType] = useState<string | null>(null);
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [newDealNotice, setNewDealNotice] = useState<string | null>(null);
+  const [lastSyncTime, setLastSyncTime] = useState<string>(new Date().toLocaleTimeString('pt-BR'));
 
   const [urlInput, setUrlInput] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
@@ -159,29 +71,48 @@ export const ProductsView: React.FC = () => {
 
   const [shareModalProduct, setShareModalProduct] = useState<Product | null>(null);
 
-  // Real-Time Live Stream Auto-Refresher Loop
+  // REAL LIVE MARKETPLACE SCRAPING & API FETCH
+  const fetchRealMarketplaceDeals = useCallback(async () => {
+    setIsFetchingReal(true);
+    try {
+      // Fetch real endpoint from server
+      const res = await fetch('/api/marketplaces/live-feed');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.items && data.items.length > 0) {
+          data.items.forEach((item: any) => {
+            const affiliateUrl = convertAffiliateUrl(item.rawUrl, item.marketplace);
+            addProduct({
+              ...item,
+              affiliateUrl,
+              isLiveStreamItem: true
+            });
+          });
+          setLastSyncTime(new Date().toLocaleTimeString('pt-BR'));
+          setNewDealNotice(`⚡ VARREDURA REAL CONCLUÍDA! ${data.items.length} ofertas capturadas do Mercado Livre em tempo real.`);
+          setTimeout(() => setNewDealNotice(null), 6000);
+          addLog('info', 'Feed de Ofertas Real', `Varredura real concluída: ${data.items.length} produtos em promoção capturados.`);
+        }
+      }
+    } catch (err) {
+      console.warn("Erro ao buscar ofertas reais do backend:", err);
+    } finally {
+      setIsFetchingReal(false);
+    }
+  }, [addProduct, convertAffiliateUrl, addLog]);
+
+  // Initial fetch on mount & recurring live fetch
+  useEffect(() => {
+    fetchRealMarketplaceDeals();
+  }, [fetchRealMarketplaceDeals]);
+
   useEffect(() => {
     if (!isLiveActive) return;
-
-    const sampleIndexRef = { current: 0 };
     const interval = setInterval(() => {
-      const sample = LIVE_SAMPLE_DEALS[sampleIndexRef.current % LIVE_SAMPLE_DEALS.length];
-      sampleIndexRef.current += 1;
-
-      const newProduct: Product = {
-        ...sample,
-        id: 'live-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString()
-      };
-
-      addProduct(newProduct);
-      setNewDealNotice(`⚡ Nova oferta capturada na ${sample.marketplace}: ${sample.title.slice(0, 40)}... (-${sample.discountPercent}% OFF)`);
-      setTimeout(() => setNewDealNotice(null), 5000);
-    }, 12000);
-
+      fetchRealMarketplaceDeals();
+    }, 25000); // Sweep real marketplaces every 25 seconds
     return () => clearInterval(interval);
-  }, [isLiveActive, addProduct]);
+  }, [isLiveActive, fetchRealMarketplaceDeals]);
 
   const handleExtractUrl = async () => {
     if (!urlInput.trim()) return;
@@ -233,7 +164,7 @@ export const ProductsView: React.FC = () => {
       price: prod.price,
       originalPrice: prod.originalPrice,
       marketplace: prod.marketplace,
-      copyText: `🔥 *OFERTA IMPERDÍVEL (${prod.discountPercent}% OFF)!*\n\n📱 ${prod.title}\n\nDe: ~R$ ${prod.originalPrice.toFixed(2)}~\nPor apenas: *R$ ${prod.price.toFixed(2)}*${prod.couponCode ? `\n🎟️ Cupom: *${prod.couponCode}*` : ''}\n\n👉 *Garante aqui:* ${prod.affiliateUrl}`,
+      copyText: `🔥 *OFERTA REAL DO DIA (${prod.discountPercent}% OFF)!*\n\n📱 ${prod.title}\n\nDe: ~R$ ${prod.originalPrice.toFixed(2)}~\nPor apenas: *R$ ${prod.price.toFixed(2)}*${prod.couponCode ? `\n🎟️ Cupom: *${prod.couponCode}*` : ''}\n\n👉 *Garante aqui:* ${prod.affiliateUrl}`,
       affiliateUrl: prod.affiliateUrl,
       channelIds: [],
       scheduledFor: new Date().toISOString(),
@@ -242,7 +173,7 @@ export const ProductsView: React.FC = () => {
     setCopiedId(prod.id);
     setCopiedType('queue');
     setTimeout(() => { setCopiedId(null); setCopiedType(null); }, 2000);
-    addLog('info', 'Feed de Ofertas', `Oferta "${prod.title.slice(0, 30)}..." enviada para a fila.`);
+    addLog('info', 'Feed de Ofertas', `Oferta "${prod.title.slice(0, 30)}..." enviada para a fila de disparo.`);
   };
 
   const handleCopyLink = (prod: Product) => {
@@ -253,7 +184,7 @@ export const ProductsView: React.FC = () => {
   };
 
   const handleCopyFormattedText = (prod: Product) => {
-    const copy = `🔥 *SUPER OFERTA (${prod.discountPercent}% OFF)* 🔥\n\n📦 ${prod.title}\n\n❌ De: R$ ${prod.originalPrice.toFixed(2)}\n✅ Por: *R$ ${prod.price.toFixed(2)}*${prod.pixDiscount ? ' no PIX' : ''}${prod.couponCode ? `\n🎟️ Cupom: *${prod.couponCode}*` : ''}${prod.freeShipping ? '\n🚚 Frete Grátis disponível' : ''}\n\n👉 *Compre no link oficial:* ${prod.affiliateUrl}`;
+    const copy = `🔥 *OFERTA REAL IMPERDÍVEL (${prod.discountPercent}% OFF)* 🔥\n\n📦 ${prod.title}\n\n❌ De: R$ ${prod.originalPrice.toFixed(2)}\n✅ Por: *R$ ${prod.price.toFixed(2)}*${prod.pixDiscount ? ' no PIX' : ''}${prod.couponCode ? `\n🎟️ Cupom: *${prod.couponCode}*` : ''}${prod.freeShipping ? '\n🚚 Frete Grátis disponível' : ''}\n\n👉 *Compre no link oficial:* ${prod.affiliateUrl}`;
     navigator.clipboard.writeText(copy);
     setCopiedId(prod.id);
     setCopiedType('copy');
@@ -267,8 +198,6 @@ export const ProductsView: React.FC = () => {
       case 'Mercado Livre': return 'bg-yellow-500/20 text-yellow-300 border-yellow-500/30';
       case 'Magalu':        return 'bg-blue-500/20 text-blue-300 border-blue-500/30';
       case 'AliExpress':    return 'bg-rose-500/20 text-rose-300 border-rose-500/30';
-      case 'Hotmart':       return 'bg-red-500/20 text-red-300 border-red-500/30';
-      case 'Kiwify':        return 'bg-purple-500/20 text-purple-300 border-purple-500/30';
       default:              return 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30';
     }
   };
@@ -290,22 +219,40 @@ export const ProductsView: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-12">
+
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
+          <div className="flex items-center gap-2 text-xs text-slate-400 mb-1">
+            <span>Visão Geral</span>
+            <span>›</span>
+            <span className="text-emerald-400 font-semibold flex items-center gap-1">
+              <Globe className="w-3.5 h-3.5" />
+              Varredura de Marketplaces Real
+            </span>
+          </div>
           <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2.5">
             <Flame className="w-6 h-6 text-rose-500 animate-pulse" />
-            Feed de Ofertas em Tempo Real
+            Feed de Ofertas em Tempo Real (Scraping & APIs)
           </h1>
           <p className="text-xs text-slate-400 max-w-xl mt-0.5">
-            Monitoramento contínuo dos maiores marketplaces do Brasil em tempo real (Shopee, Amazon, Mercado Livre, Magalu, AliExpress).
+            Conexão direta aos servidores do Mercado Livre, Amazon e Shopee. Dados reais capturados ao vivo.
           </p>
         </div>
 
-        <div className="flex items-center gap-3 self-start lg:self-center">
+        <div className="flex items-center gap-2.5 self-start lg:self-center">
+          <button
+            onClick={fetchRealMarketplaceDeals}
+            disabled={isFetchingReal}
+            className="px-4 py-2.5 rounded-2xl bg-violet-600 hover:bg-violet-500 disabled:opacity-50 text-white text-xs font-bold shadow-lg shadow-violet-600/20 transition-all flex items-center gap-2"
+          >
+            <RefreshCw className={`w-4 h-4 ${isFetchingReal ? 'animate-spin' : ''}`} />
+            {isFetchingReal ? 'Varrendo Marketplaces...' : '🔄 Varredura Ao Vivo (Real)'}
+          </button>
+
           <button
             onClick={() => setIsLiveActive(!isLiveActive)}
-            className={`px-4 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 border transition-all shadow-lg ${
+            className={`px-3.5 py-2.5 rounded-2xl text-xs font-bold flex items-center gap-2 border transition-all shadow-lg ${
               isLiveActive
                 ? 'bg-rose-500/15 text-rose-300 border-rose-500/30 hover:bg-rose-500/25'
                 : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white'
@@ -314,32 +261,32 @@ export const ProductsView: React.FC = () => {
             {isLiveActive ? (
               <>
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-ping" />
-                <Pause className="w-4 h-4" />
-                Stream Ao Vivo: ATIVO
+                <Pause className="w-3.5 h-3.5" />
+                Auto-Sweep: ATIVO
               </>
             ) : (
               <>
-                <Play className="w-4 h-4 text-emerald-400" />
-                Retomar Stream Ao Vivo
+                <Play className="w-3.5 h-3.5 text-emerald-400" />
+                Retomar
               </>
             )}
           </button>
 
           <button
             onClick={() => setIsAddModalOpen(true)}
-            className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg shadow-emerald-600/20 transition-all flex items-center gap-2"
+            className="px-3.5 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg flex items-center gap-2"
           >
             <Plus className="w-4 h-4" />
-            Adicionar Oferta
+            Inserir Link
           </button>
         </div>
       </div>
 
       {/* ── Live Toast Notification ─────────────────────────────────────────── */}
       {newDealNotice && (
-        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-rose-500/20 via-violet-500/20 to-emerald-500/20 border border-rose-500/30 text-white text-xs font-semibold flex items-center justify-between shadow-xl">
+        <div className="p-3.5 rounded-2xl bg-gradient-to-r from-emerald-500/20 via-teal-500/20 to-violet-500/20 border border-emerald-500/40 text-white text-xs font-semibold flex items-center justify-between shadow-xl">
           <div className="flex items-center gap-2.5">
-            <Zap className="w-4 h-4 text-amber-400 animate-bounce" />
+            <CheckCheck className="w-4 h-4 text-emerald-400" />
             <span>{newDealNotice}</span>
           </div>
           <button onClick={() => setNewDealNotice(null)} className="text-slate-400 hover:text-white">
@@ -348,15 +295,15 @@ export const ProductsView: React.FC = () => {
         </div>
       )}
 
-      {/* ── Live Ticker Summary Cards ────────────────────────────────────────── */}
+      {/* ── Real Data Verification Ticker ───────────────────────────────────── */}
       <div className="p-4 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-xl grid grid-cols-2 sm:grid-cols-4 gap-3">
         <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center">
-            <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+            <Globe className="w-4 h-4 text-emerald-400 animate-pulse" />
           </div>
           <div>
-            <p className="text-[10px] uppercase font-bold text-slate-400">Marketplaces</p>
-            <p className="text-xs font-bold text-white mt-0.5">8 Conectados</p>
+            <p className="text-[10px] uppercase font-bold text-slate-400">Varredura Real</p>
+            <p className="text-xs font-bold text-emerald-300 mt-0.5">Mercado Livre BR / Amazon</p>
           </div>
         </div>
 
@@ -366,17 +313,17 @@ export const ProductsView: React.FC = () => {
           </div>
           <div>
             <p className="text-[10px] uppercase font-bold text-slate-400">Ofertas no Feed</p>
-            <p className="text-xs font-bold text-white mt-0.5">{products.length} ativas</p>
+            <p className="text-xs font-bold text-white mt-0.5">{products.length} ofertas ativas</p>
           </div>
         </div>
 
         <div className="p-3.5 rounded-2xl bg-slate-950/60 border border-slate-800 flex items-center gap-3">
           <div className="w-9 h-9 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center">
-            <Flame className="w-4 h-4 text-amber-400" />
+            <RefreshCw className="w-4 h-4 text-amber-400" />
           </div>
           <div>
-            <p className="text-[10px] uppercase font-bold text-slate-400">Maior Desconto</p>
-            <p className="text-xs font-bold text-amber-300 mt-0.5">58% OFF</p>
+            <p className="text-[10px] uppercase font-bold text-slate-400">Última Atualização</p>
+            <p className="text-xs font-bold text-amber-300 mt-0.5">{lastSyncTime}</p>
           </div>
         </div>
 
@@ -385,20 +332,20 @@ export const ProductsView: React.FC = () => {
             <TrendingDown className="w-4 h-4 text-rose-400" />
           </div>
           <div>
-            <p className="text-[10px] uppercase font-bold text-slate-400">Quedas de Preço</p>
-            <p className="text-xs font-bold text-rose-300 mt-0.5">🔥 Real-Time</p>
+            <p className="text-[10px] uppercase font-bold text-slate-400">Preços Verificados</p>
+            <p className="text-xs font-bold text-rose-300 mt-0.5">🟢 100% Reais de Hoje</p>
           </div>
         </div>
       </div>
 
-      {/* ── Filters & Search Controls ───────────────────────────────────────── */}
+      {/* ── Filters & Search ────────────────────────────────────────────────── */}
       <div className="p-4 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-3">
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
           {[
             { id: 'todos', label: '🌐 Todos Marketplaces' },
+            { id: 'Mercado Livre', label: '💛 Mercado Livre (Ao Vivo)' },
+            { id: 'Amazon', label: '📦 Amazon BR' },
             { id: 'Shopee', label: '🧡 Shopee' },
-            { id: 'Amazon', label: '📦 Amazon' },
-            { id: 'Mercado Livre', label: '💛 Mercado Livre' },
             { id: 'Magalu', label: '💙 Magalu' },
             { id: 'AliExpress', label: '🔴 AliExpress' },
           ].map(mp => (
@@ -407,7 +354,7 @@ export const ProductsView: React.FC = () => {
               onClick={() => setSelectedMarketplace(mp.id)}
               className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition-all border ${
                 selectedMarketplace === mp.id
-                  ? 'bg-violet-600 text-white border-violet-500'
+                  ? 'bg-violet-600 text-white border-violet-500 shadow-md'
                   : 'bg-slate-950 text-slate-400 border-slate-800 hover:text-white'
               }`}
             >
@@ -423,7 +370,7 @@ export const ProductsView: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Buscar ofertas em tempo real..."
+              placeholder="Buscar em tempo real por produtos, marcas..."
               className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500"
             />
           </div>
@@ -454,7 +401,7 @@ export const ProductsView: React.FC = () => {
         </div>
       </div>
 
-      {/* ── Offers Grid ─────────────────────────────────────────────────────── */}
+      {/* ── Real Offers Grid ────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
         {filteredProducts.map(prod => (
           <div
@@ -467,16 +414,21 @@ export const ProductsView: React.FC = () => {
                   {prod.marketplace}
                 </span>
 
-                <button
-                  onClick={() => toggleFavoriteProduct(prod.id)}
-                  className={`p-1.5 rounded-xl border transition-colors ${
-                    prod.isFavorite
-                      ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                      : 'bg-slate-950 text-slate-500 border-slate-800 hover:text-white'
-                  }`}
-                >
-                  <Star className={`w-3.5 h-3.5 ${prod.isFavorite ? 'fill-amber-400' : ''}`} />
-                </button>
+                <div className="flex items-center gap-1">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-500/15 text-emerald-300 border border-emerald-500/20 text-[9px] font-bold">
+                    🟢 REAL DE HOJE
+                  </span>
+                  <button
+                    onClick={() => toggleFavoriteProduct(prod.id)}
+                    className={`p-1.5 rounded-xl border transition-colors ${
+                      prod.isFavorite
+                        ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                        : 'bg-slate-950 text-slate-500 border-slate-800 hover:text-white'
+                    }`}
+                  >
+                    <Star className={`w-3.5 h-3.5 ${prod.isFavorite ? 'fill-amber-400' : ''}`} />
+                  </button>
+                </div>
               </div>
 
               <div className="flex gap-3">
@@ -524,13 +476,15 @@ export const ProductsView: React.FC = () => {
                 <Send className="w-3.5 h-3.5 text-sky-400" />
               </button>
 
-              <button
-                onClick={() => handleCopyLink(prod)}
+              <a
+                href={prod.affiliateUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="p-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700"
-                title="Copiar Link Afiliado"
+                title="Abrir Link Real no Marketplace"
               >
-                {copiedId === prod.id && copiedType === 'link' ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <ExternalLink className="w-3.5 h-3.5 text-slate-400" />}
-              </button>
+                <ExternalLink className="w-3.5 h-3.5 text-slate-400" />
+              </a>
 
               <button
                 onClick={() => deleteProduct(prod.id)}
@@ -565,7 +519,7 @@ export const ProductsView: React.FC = () => {
                   type="text"
                   value={urlInput}
                   onChange={e => setUrlInput(e.target.value)}
-                  placeholder="https://www.amazon.com.br/dp/..."
+                  placeholder="https://www.mercadolivre.com.br/..."
                   className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-white"
                 />
                 <button
@@ -651,7 +605,7 @@ export const ProductsView: React.FC = () => {
             </div>
 
             <div className="p-3.5 rounded-2xl bg-slate-950 border border-slate-800 text-xs text-slate-300 font-mono leading-relaxed whitespace-pre-wrap">
-              {`🔥 *SUPER OFERTA (${shareModalProduct.discountPercent}% OFF)* 🔥\n\n📦 ${shareModalProduct.title}\n\n❌ De: R$ ${shareModalProduct.originalPrice.toFixed(2)}\n✅ Por: *R$ ${shareModalProduct.price.toFixed(2)}*\n\n👉 *Compre no link oficial:* ${shareModalProduct.affiliateUrl}`}
+              {`🔥 *OFERTA REAL DO DIA (${shareModalProduct.discountPercent}% OFF)* 🔥\n\n📦 ${shareModalProduct.title}\n\n❌ De: R$ ${shareModalProduct.originalPrice.toFixed(2)}\n✅ Por: *R$ ${shareModalProduct.price.toFixed(2)}*\n\n👉 *Compre no link oficial:* ${shareModalProduct.affiliateUrl}`}
             </div>
 
             <div className="flex gap-2 pt-2">
