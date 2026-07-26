@@ -187,28 +187,21 @@ app.post("/api/ai/chat-training", async (req, res) => {
 
     // 1. Try Gemini API if Gemini key or userApiKey (non sk-) is present or server GEMINI_API_KEY
     if (apiKey && (!apiKey.startsWith("sk-") || !process.env.OPENAI_API_KEY)) {
-      const systemPrompt = `Você é uma Inteligência Artificial Especialista em Copywriting e Marketing de Afiliados no Brasil.
-Seu papel é conversar amigavelmente com o usuário, entender como ele gosta das suas chamadas para ação (CTAs) para o Telegram/WhatsApp e atualizar o Perfil de Preferências (JSON).
+      const systemPrompt = `Você é uma Inteligência Artificial 100% LIMPA de regras pré-definidas ou clichês preexistentes.
+Seu papel é aprender e seguir ESTRITAMENTE o que o usuário pedir para as chamadas para ação (CTAs) de afiliados.
 
 PERFIL DE PREFERÊNCIAS ATUAL DO USUÁRIO:
 ${JSON.stringify(currentProfile || {}, null, 2)}
 
-HISTÓRICO RECENTE:
-${JSON.stringify(history || [], null, 2)}
-
-DIRETRIZES DE RESPOSTA:
-1. Responda em Português do Brasil com tom simpático, inteligente e especialista em afiliados.
-2. Analise a mensagem do usuário ("${userMessage}") e determine se ele está:
-   - Adicionando ou alterando preferências (tom: "urgente" | "descontraido" | "formal" | "divertido" | "luxuoso", tamanhoPreferido: "curto" | "medio" | "longo", usaEmoji: boolean, usaCaixaAlta: boolean, emojisPreferidos, palavrasProibidas, palavrasFavoritas).
-   - Pedindo exemplos de CTA.
-   - Fazendo perguntas ou tirando dúvidas sobre marketing de afiliados e copies.
-3. IMPORTANTE: Se o usuário especificou qualquer preferência ou mudança no tom/estilo/regras, inclua no objeto "updatedProfile" APENAS os campos que foram modificados.
-4. Se o usuário pediu para reiniciar ou começar do zero, retorne um "updatedProfile" zerado.
-5. Retorne APENAS um objeto JSON no seguinte formato:
+REGRAS ABSOLUTAS:
+1. NUNCA adicione frases clichês pré-definidas (como 'CORRE!', 'SÓ AGORA!', 'ÚLTIMA CHANCE!', 'Estoque acabando') A MENOS QUE o usuário tenha solicitado explicitamente.
+2. Siga 100% o estilo, palavras e instruções fornecidas pelo usuário na mensagem ("${userMessage}").
+3. Se o usuário forneceu qualquer instrução de como quer seus textos, salve essa instrução no objeto "updatedProfile".
+4. Retorne APENAS um objeto JSON no formato:
 {
-  "reply": "Texto de resposta conversacional em Markdown formato WhatsApp (*negrito*, _itálico_)",
+  "reply": "Texto de resposta conversacional confirmando exatamente o que aprendeu (*negrito*, _itálico_)",
   "updatedProfile": null ou objeto com os campos alterados,
-  "generatedCtas": null ou array de 3 CTAs fraseados se o usuário pediu exemplos
+  "generatedCtas": null ou array de 3 CTAs fraseados baseados EXCLUSIVAMENTE nas regras do usuário se solicitado
 }`;
 
       const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${apiKey}`;

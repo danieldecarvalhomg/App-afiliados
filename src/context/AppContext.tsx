@@ -1118,148 +1118,58 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const prof = ctaProfile;
     const { cupom, frete_gratis, pix } = context;
 
-    // ── Abertura (hook) ────────────────────────────────────────────────────
-    const aberturas: Record<string, string[]> = {
-      urgente: [
-        'CORRE!', 'SÓ AGORA!', 'ÚLTIMA CHANCE!', 'VENCE HOJE!',
-        'NÃO PERDE!', 'ESQUENTA!', 'HOJE É O DIA!', 'AGORA OU NUNCA!'
-      ],
-      descontraido: [
-        'Oi, gente!', 'Peraí, olha isso:', 'Calma que tem mais:',
-        'Vem ver o que eu achei:', 'Isso aqui tá bom demais:', 'Olha só!'
-      ],
-      formal: [
-        'Oportunidade especial:', 'Oferta selecionada:',
-        'Condição exclusiva:', 'Destaque do dia:'
-      ],
-      divertido: [
-        'TÁ DE BRINCADEIRA?!', 'Pow, que preço!', 'QUE ISSO!',
-        'Bora aproveitar!', 'Alô alô!', 'Isso tá doido!'
-      ],
-      luxuoso: [
-        'Exclusividade para você:', 'Seleção premium:',
-        'Curadoria especial:', 'Peça única em oferta:'
-      ]
-    };
+    // ── 100% Clean Engine: Zero hardcoded clichés ("CORRE!", "SÓ AGORA!", etc.) ──
+    // Build strictly using ONLY what the user instructed and saved.
+    const favs = (prof.palavrasFavoritas || []).filter(w => w.length > 0);
+    const emojis = prof.usaEmoji ? (prof.emojisPreferidos || []) : [];
+    const obs = (prof.observacoesLivres || '')
+      .split('\n')
+      .map(o => o.replace(/^[•\-\*]\s*/, '').trim())
+      .filter(Boolean);
 
-    // ── Gancho central (o coração do CTA) ─────────────────────────────────
-    const ganchos: Record<string, string[]> = {
-      urgente: [
-        'O estoque tá acabando!',
-        'Promoção com tempo limitado!',
-        'Preço vai subir a qualquer hora!',
-        'Aproveita enquanto ainda tem!',
-        'Essa condição não dura para sempre!',
-        'Tá voando do carrinho!'
-      ],
-      descontraido: [
-        'Vale muito a pena conferir!',
-        'Achei e precisei compartilhar!',
-        'Uma das melhores condições que vi hoje!',
-        'Tá com um precinho muito bom!'
-      ],
-      formal: [
-        'Condição especial por tempo limitado.',
-        'Oportunidade de economia real.',
-        'Oferta válida enquanto durar o estoque.',
-        'Avalie e aproveite.'
-      ],
-      divertido: [
-        'Tá barato que dói!',
-        'Minha carteira agradeço e desculpe ao mesmo tempo!',
-        'Isso é crime de preço bom!',
-        'Comprei, cheguei, amei — você vai também!'
-      ],
-      luxuoso: [
-        'Uma raridade nessa faixa de preço.',
-        'Qualidade premium ao alcance.',
-        'Sofisticação com condição especial.',
-        'Para quem não abre mão do melhor.'
-      ]
-    };
+    const partes: string[] = [];
 
-    // ── Fechamento / CTA final ─────────────────────────────────────────────
-    const fechamentos: Record<string, string[]> = {
-      curto: ['Pega logo!', 'Corre lá!', 'Garanta já!', 'Clica no link!', 'Vai!'],
-      medio: [
-        'Garante o seu antes que acabe!',
-        'Clica no link e aproveita!',
-        'Não deixa passar não!',
-        'Acessa e confere!'
-      ],
-      longo: [
-        'Clica no link agora e garante o seu antes que o estoque esgote — essa condição não vai durar muito!',
-        'Acessa pelo link e aproveita essa condição especial antes que o preço volte ao normal!'
-      ]
-    };
-
-    const tom = prof.tom as string;
-    const abList  = aberturas[tom]   || aberturas.urgente;
-    const gaList  = ganchos[tom]     || ganchos.urgente;
-    const fecList = fechamentos[prof.tamanhoPreferido] || fechamentos.medio;
-    const favs    = (prof.palavrasFavoritas || []).filter(w => w.length > 0);
-    const emojis  = prof.usaEmoji ? (prof.emojisPreferidos || ['🔥', '🚨', '💥']) : [];
-
-    const pick = <T,>(arr: T[], seed = 0): T => arr[(Date.now() + seed) % arr.length];
-
-    // ── Extras contextuais (menção opcional no CTA) ────────────────────────
-    const extras: string[] = [];
-    if (frete_gratis) extras.push('frete grátis incluso');
-    if (pix)          extras.push('desconto no PIX');
-    if (cupom)        extras.push('cupom de desconto disponível');
-
-    const tentativas: string[] = [];
-
-    for (let attempt = 0; attempt < 5; attempt++) {
-      const e0  = emojis.length ? emojis[attempt % emojis.length]         : '';
-      const e1  = emojis.length ? emojis[(attempt + 1) % emojis.length]   : '';
-      const ab  = pick(abList,  attempt);
-      const ga  = pick(gaList,  attempt + 3);
-      const fec = pick(fecList, attempt + 7);
-
-      const partes: string[] = [];
-
-      // 1. Abertura com emoji
-      partes.push(`${e0 ? e0 + ' ' : ''}${prof.usaCaixaAlta ? ab.toUpperCase() : ab}`);
-
-      // 2. Gancho central
-      partes.push(ga);
-
-      // 3. Extra contextual (apenas no tamanho médio/longo)
-      if (extras.length && prof.tamanhoPreferido !== 'curto') {
-        partes.push(`(${pick(extras, attempt + 5)})`);
-      }
-
-      // 4. Palavra favorita (tamanho médio/longo)
-      if (favs.length && prof.tamanhoPreferido !== 'curto') {
-        const fav = favs[attempt % favs.length];
-        partes.push(prof.usaCaixaAlta ? fav.toUpperCase() : fav);
-      }
-
-      // 5. Fechamento com emoji
-      partes.push(`${e1 ? e1 + ' ' : ''}${fec}`);
-
-      // Separador: curto = espaço inline, outros = nova linha
-      const sep = prof.tamanhoPreferido === 'curto' ? ' ' : '\n';
-      let cta = partes.join(sep).trim();
-
-      // Remove palavras proibidas
-      (prof.palavrasProibidas || []).forEach(w => {
-        if (w) cta = cta.replace(new RegExp(w, 'gi'), '').trim();
-      });
-
-      tentativas.push(cta);
-
-      if (!isCtaRepeated(cta, prof.ctasGerados || [])) {
-        saveCtaToHistory(cta);
-        return cta;
-      }
+    // Add user's explicit favorite phrases/words
+    if (favs.length > 0) {
+      partes.push(favs.join(' '));
     }
 
-    const fallback = tentativas[tentativas.length - 1];
-    saveCtaToHistory(fallback);
-    addLog('info', 'IA Training', 'Anti-repetição: CTA aceito após 5 tentativas.');
-    return fallback;
+    // Add user's custom observation rules
+    if (obs.length > 0) {
+      partes.push(obs[obs.length - 1]);
+    }
+
+    // Add contextual offer hints if present
+    if (frete_gratis) partes.push('Frete grátis');
+    if (pix)          partes.push('Desconto no PIX');
+    if (cupom)        partes.push(`Cupom ${cupom}`);
+
+    // If user has not set any custom text yet, clean neutral fallback:
+    if (partes.length === 0) {
+      partes.push('Acesse pelo link para aproveitar!');
+    }
+
+    let cta = partes.join(' ').trim();
+
+    if (prof.usaCaixaAlta) {
+      cta = cta.toUpperCase();
+    }
+
+    if (emojis.length > 0) {
+      const e0 = emojis[0];
+      const e1 = emojis.length > 1 ? emojis[1] : '';
+      cta = `${e0} ${cta}${e1 ? ' ' + e1 : ''}`;
+    }
+
+    // Filter prohibited words
+    (prof.palavrasProibidas || []).forEach(w => {
+      if (w) cta = cta.replace(new RegExp(w, 'gi'), '').trim();
+    });
+
+    cta = cta.replace(/\s+/g, ' ').trim();
+
+    saveCtaToHistory(cta);
+    return cta;
   };
 
   // ─── NLP COMMAND INTERPRETER ─────────────────────────────────────────────
@@ -1417,21 +1327,18 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     // 1. If user provided a Gemini API Key in browser, call Gemini API directly (works on Vercel)
     if (geminiApiKey && geminiApiKey.trim()) {
       try {
-        const systemPrompt = `Você é uma Inteligência Artificial Especialista em Copywriting e Marketing de Afiliados no Brasil.
-Seu papel é conversar amigavelmente com o usuário, entender como ele gosta das suas chamadas para ação (CTAs) para o Telegram/WhatsApp e atualizar o Perfil de Preferências (JSON).
+        const systemPrompt = `Você é uma Inteligência Artificial 100% LIMPA de regras pré-definidas ou clichês preexistentes.
+Seu papel é aprender e seguir ESTRITAMENTE o que o usuário pedir para as chamadas para ação (CTAs) de afiliados.
 
-PERFIL DE PREFERÊNCIAS ATUAL DO USUÁRIO:
-${JSON.stringify(ctaProfile || {}, null, 2)}
-
-INSTRUÇÕES:
-1. Responda em Português do Brasil com tom simpático e especialista em afiliados.
-2. Analise a mensagem do usuário ("${userText}").
-3. Se houver mudanças de preferência, retorne no campo "updatedProfile" apenas o que mudou.
+REGRAS ABSOLUTAS:
+1. NUNCA adicione frases clichês pré-definidas (como 'CORRE!', 'SÓ AGORA!', 'ÚLTIMA CHANCE!', 'Estoque acabando') A MENOS QUE o usuário tenha solicitado explicitamente.
+2. Siga 100% o estilo, palavras e instruções fornecidas pelo usuário em linguagem natural.
+3. Se o usuário forneceu um comando ("quero CTAs calmos", "prefiro citar desconto", "nunca fale de preço"), salve essa instrução no objeto "updatedProfile".
 4. Retorne APENAS um objeto JSON no formato:
 {
-  "reply": "Texto de resposta conversacional em Markdown formato WhatsApp (*negrito*, _itálico_)",
-  "updatedProfile": null ou objeto com os campos alterados,
-  "generatedCtas": null ou array de 3 CTAs fraseados se o usuário pediu exemplos
+  "reply": "Resposta conversacional confirmando exatamente o que você entendeu e salvou (*negrito*, _itálico_)",
+  "updatedProfile": null ou objeto com os campos alterados (tom, tamanhoPreferido, usaEmoji, emojisPreferidos, palavrasFavoritas, palavrasProibidas, observacoesLivres),
+  "generatedCtas": null ou array de 3 CTAs criados baseados EXCLUSIVAMENTE nas preferências do usuário se ele pediu exemplos
 }`;
 
         const geminiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiApiKey.trim()}`;
