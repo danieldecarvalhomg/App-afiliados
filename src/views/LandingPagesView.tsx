@@ -28,8 +28,9 @@ export const LandingPagesView: React.FC = () => {
       views: 0,
       clicks: 0,
       conversionRate: 0,
-      status: 'ativa',
-      createdAt: new Date().toISOString()
+      activeProductsCount: 1,
+      status: 'publicada',
+      updatedAt: new Date().toISOString()
     };
 
     setPages(prev => [newPage, ...prev]);

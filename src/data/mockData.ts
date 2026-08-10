@@ -10,7 +10,9 @@ import {
   CopyTemplate,
   LandingPageItem,
   SystemLog,
-  SubscriptionPlan
+  SubscriptionPlan,
+  MonitoredGroup,
+  CapturedMessage
 } from '../types';
 
 export const INITIAL_PRODUCTS: Product[] = [];
@@ -198,22 +200,16 @@ export const INITIAL_LEADS: CRMLead[] = [];
 export const INITIAL_LOGS: SystemLog[] = [];
 
 export const INITIAL_SUBSCRIPTION: SubscriptionPlan = {
-  planName: 'Plano Pro Afiliados',
+  name: 'Plano Pro Afiliados',
   status: 'ativo',
-  monthlyRate: 149.00,
+  priceMonthly: 149.00,
   renewalDate: '2026-08-24',
-  channelsLimit: 50,
-  channelsUsed: 0,
-  aiGenerationsLimit: 10000,
-  aiGenerationsUsed: 0,
-  teamMembersLimit: 5,
-  teamMembersUsed: 1,
-  features: [
-    'Disparos ilimitados via Telegram & WhatsApp',
-    'Gerador de Copies ilimitado com Gemini IA',
-    'Conexão com Banco de Dados em Nuvem',
-    'Rastreamento avançado de cliques e comissões'
-  ]
+  disparosLimit: 5000,
+  disparosUsed: 0,
+  canaisLimit: 50,
+  canaisUsed: 0,
+  iaGenerationsLimit: 10000,
+  iaGenerationsUsed: 0,
 };
 
 export const INITIAL_MONITORED_GROUPS: MonitoredGroup[] = [

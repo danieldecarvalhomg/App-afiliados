@@ -945,14 +945,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.clear();
   };
 
-  // ─── AI TRAINING PERSISTENCE ─────────────────────────────────────────────
   useEffect(() => {
     localStorage.setItem('affi_cta_profile_v1', JSON.stringify(ctaProfile));
   }, [ctaProfile]);
-
-  useEffect(() => {
-    localStorage.setItem('affi_training_messages_v1', JSON.stringify(trainingMessages));
-  }, [trainingMessages]);
 
   useEffect(() => {
     localStorage.setItem('affi_cta_feedbacks_v1', JSON.stringify(ctaFeedbacks));
@@ -998,25 +993,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       updatedAt: new Date().toISOString()
     };
     setCtaProfile(blank);
-    setTrainingMessages([]);
-    addLog('warning', 'IA Training', 'Treinamento da IA foi reiniciado do zero.');
-  };
-
-  const addTrainingMessage = (msg: Partial<TrainingMessage>): TrainingMessage => {
-    const newMsg: TrainingMessage = {
-      id: 'msg-' + Date.now(),
-      role: msg.role || 'user',
-      content: msg.content || '',
-      timestamp: new Date().toISOString(),
-      profileChanges: msg.profileChanges,
-      generatedCtas: msg.generatedCtas
-    };
-    setTrainingMessages(prev => [...prev, newMsg]);
-    return newMsg;
-  };
-
-  const clearTrainingHistory = () => {
-    setTrainingMessages([]);
+    addLog('warning', 'IA Training', 'Perfil da IA foi reiniciado.');
   };
 
   const addCtaFeedback = (feedback: Partial<CtaFeedback>) => {
