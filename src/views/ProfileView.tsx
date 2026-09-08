@@ -1,197 +1,48 @@
-import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { supabase } from '../lib/supabase';
-import {
-  User,
-  Shield,
-  Key,
-  CheckCircle2,
-  Lock,
-  Mail,
-  Smartphone,
-  Sparkles,
-  Award,
-  Save,
-  Check,
-  Zap,
-  Globe,
-  Camera,
-  LogOut
-} from 'lucide-react';
+import React, { useEffect, useMemo, useState } from "react";
+import { Award, KeyRound, LogOut, Save, Shield } from "lucide-react";
+import { useApp } from "../context/AppContext";
+import { supabase } from "../lib/supabase";
+import { supabaseService } from "../services/supabaseService";
+import { deleteAccount } from "../services/accountApi";
 
-interface ProfileViewProps {
-  onLogout: () => void;
-}
+interface ProfileViewProps { onLogout: () => void; }
 
 export const ProfileView: React.FC<ProfileViewProps> = ({ onLogout }) => {
-  const { addLog } = useApp();
+  const { addLog, currentUser } = useApp();
+  const [fullName, setFullName] = useState("");
+  const [email, setEmail] = useState(currentUser?.email ?? "");
+  const [avatarUrl, setAvatarUrl] = useState("");
+  const [timezone, setTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || "America/Sao_Paulo");
+  const [locale, setLocale] = useState(navigator.language || "pt-BR");
+  const [newEmail, setNewEmail] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [securityBusy, setSecurityBusy] = useState(false);
+  const [mfaFactors, setMfaFactors] = useState<Array<{ id: string; friendly_name?: string; status: string }>>([]);
+  const [mfaEnrollment, setMfaEnrollment] = useState<{ id: string; qrCode: string } | null>(null);
+  const [mfaCode, setMfaCode] = useState("");
+  const initials = useMemo(() => (fullName || email || "P").split(/\s+/).map((x: string) => x[0]).join("").slice(0, 2).toUpperCase(), [fullName, email]);
 
-  const [fullName, setFullName] = useState(() => {
-    return localStorage.getItem('user_profile_name') || 'Daniel Guimarães';
-  });
-  const [email, setEmail] = useState(() => {
-    return localStorage.getItem('user_profile_email') || 'daniel@afiliadoapp.com';
-  });
-  const [roleTitle, setRoleTitle] = useState(() => {
-    return localStorage.getItem('user_profile_role') || 'Afiliado Master & Growth Hacker';
-  });
-  const [phone, setPhone] = useState(() => {
-    return localStorage.getItem('user_profile_phone') || '(11) 99887-6655';
-  });
+  useEffect(() => { if (!currentUser?.id) return; setEmail(currentUser.email ?? ""); void (async () => { const profile = await supabaseService.fetchProfile(currentUser.id); if (!profile) return; setFullName(profile.full_name ?? currentUser.user_metadata?.full_name ?? ""); setAvatarUrl(profile.avatar_url ?? currentUser.user_metadata?.avatar_url ?? ""); setTimezone(profile.timezone ?? timezone); setLocale(profile.locale ?? locale); })(); }, [currentUser]);
+  useEffect(() => { void (async () => { const { data } = await supabase.auth.mfa.listFactors(); setMfaFactors((data?.totp ?? []).map((factor) => ({ id: factor.id, friendly_name: factor.friendly_name ?? undefined, status: factor.status }))); })(); }, [currentUser]);
+  async function saveProfile(event: React.FormEvent) { event.preventDefault(); setSaving(true); setNotice(null); setError(null); try { const saved = await supabaseService.updateProfile(currentUser.id, { full_name: fullName.trim(), avatar_url: avatarUrl.trim() || null, timezone, locale }); if (!saved) throw new Error("PROFILE_SAVE_FAILED"); const { error: authError } = await supabase.auth.updateUser({ data: { full_name: fullName.trim(), avatar_url: avatarUrl.trim() || null } }); if (authError) throw authError; setNotice("Perfil salvo com sucesso."); addLog("success", "Perfil", "Alterações do perfil salvas com sucesso."); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível salvar o perfil."); } finally { setSaving(false); } }
+  async function changePassword(event: React.FormEvent) { event.preventDefault(); setSecurityBusy(true); setNotice(null); setError(null); try { if (newPassword.length < 8) throw new Error("A senha deve ter pelo menos 8 caracteres."); const { error: authError } = await supabase.auth.updateUser({ password: newPassword }); if (authError) throw authError; await supabase.from("security_events").insert({ user_id: currentUser.id, event_type: "PASSWORD_CHANGED", metadata: { source: "profile" } }); setNewPassword(""); setNotice("Senha alterada. Outras sessões foram encerradas."); await supabase.auth.signOut({ scope: "others" }); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível alterar a senha."); } finally { setSecurityBusy(false); } }
+  async function changeEmail(event: React.FormEvent) { event.preventDefault(); setSecurityBusy(true); setNotice(null); setError(null); try { const value = newEmail.trim().toLowerCase(); if (!value || value === email.toLowerCase()) throw new Error("Informe um email diferente do atual."); const { error: authError } = await supabase.auth.updateUser({ email: value }); if (authError) throw authError; await supabase.from("security_events").insert({ user_id: currentUser.id, event_type: "EMAIL_CHANGED", metadata: { source: "profile" } }); setNewEmail(""); setNotice("Confirme o novo email, se solicitado pelo Supabase Auth."); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível alterar o email."); } finally { setSecurityBusy(false); } }
+  async function endOtherSessions() { setSecurityBusy(true); setNotice(null); setError(null); try { const { error: authError } = await supabase.auth.signOut({ scope: "others" }); if (authError) throw authError; await supabase.from("security_events").insert({ user_id: currentUser.id, event_type: "SESSION_REVOKED", metadata: { source: "profile", scope: "others" } }); setNotice("As outras sessões foram encerradas."); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível encerrar as sessões."); } finally { setSecurityBusy(false); } }
+  async function logoutEverywhere() { setSecurityBusy(true); setNotice(null); setError(null); try { await supabase.from("security_events").insert({ user_id: currentUser.id, event_type: "SESSION_REVOKED", metadata: { source: "profile", scope: "global" } }); const { error: authError } = await supabase.auth.signOut({ scope: "global" }); if (authError) throw authError; onLogout(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível sair de todos os dispositivos."); } finally { setSecurityBusy(false); } }
+  async function removeAccount() { if (!window.confirm("Excluir sua conta e todos os dados do AfiliHub? Esta ação não pode ser desfeita.")) return; setSecurityBusy(true); setNotice(null); setError(null); try { await deleteAccount(); onLogout(); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível excluir a conta."); } finally { setSecurityBusy(false); } }
+  async function beginMfa() { setSecurityBusy(true); setError(null); try { const { data, error: authError } = await supabase.auth.mfa.enroll({ factorType: "totp", friendlyName: "AfiliHub" }); if (authError || !data) throw authError ?? new Error("Não foi possível iniciar o MFA."); setMfaEnrollment({ id: data.id, qrCode: data.totp.qr_code }); setMfaCode(""); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível iniciar o MFA."); } finally { setSecurityBusy(false); } }
+  async function verifyMfa(event: React.FormEvent) { event.preventDefault(); if (!mfaEnrollment) return; setSecurityBusy(true); setError(null); try { const { data: challenge, error: challengeError } = await supabase.auth.mfa.challenge({ factorId: mfaEnrollment.id }); if (challengeError || !challenge) throw challengeError ?? new Error("Não foi possível validar o MFA."); const { error: verifyError } = await supabase.auth.mfa.verify({ factorId: mfaEnrollment.id, challengeId: challenge.id, code: mfaCode.trim() }); if (verifyError) throw verifyError; await supabase.from("security_events").insert({ user_id: currentUser.id, event_type: "MFA_ENABLED", metadata: { factor_type: "totp" } }); setMfaEnrollment(null); setMfaCode(""); const { data } = await supabase.auth.mfa.listFactors(); setMfaFactors((data?.totp ?? []).map((factor) => ({ id: factor.id, friendly_name: factor.friendly_name ?? undefined, status: factor.status }))); setNotice("Autenticação em duas etapas ativada."); } catch (cause) { setError(cause instanceof Error ? cause.message : "Código MFA inválido."); } finally { setSecurityBusy(false); } }
+  async function disableMfa(id: string) { setSecurityBusy(true); setError(null); try { const { error: authError } = await supabase.auth.mfa.unenroll({ factorId: id }); if (authError) throw authError; await supabase.from("security_events").insert({ user_id: currentUser.id, event_type: "MFA_DISABLED", metadata: { factor_type: "totp" } }); setMfaFactors((items) => items.filter((item) => item.id !== id)); setNotice("Autenticação em duas etapas desativada."); } catch (cause) { setError(cause instanceof Error ? cause.message : "Não foi possível desativar o MFA."); } finally { setSecurityBusy(false); } }
 
-  // Profile Image Url State
-  const [avatarUrl, setAvatarUrl] = useState(() => {
-    return localStorage.getItem('user_profile_avatar') || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80';
-  });
-
-  const [savedSuccess, setSavedSuccess] = useState(false);
-
-  const handleSaveProfile = (e: React.FormEvent) => {
-    e.preventDefault();
-    localStorage.setItem('user_profile_name', fullName);
-    localStorage.setItem('user_profile_email', email);
-    localStorage.setItem('user_profile_role', roleTitle);
-    localStorage.setItem('user_profile_phone', phone);
-    localStorage.setItem('user_profile_avatar', avatarUrl);
-    
-    setSavedSuccess(true);
-    addLog('success', 'Perfil', 'Alterações do perfil salvas com sucesso.');
-    setTimeout(() => setSavedSuccess(false), 3000);
-  };
-
-  const handleLogoutAction = async () => {
-    try {
-      await supabase.auth.signOut();
-    } catch (e) {
-      console.warn('Local session reset:', e);
-    }
-    // Clear user keys and log out
-    localStorage.removeItem('user_profile_name');
-    localStorage.removeItem('user_profile_email');
-    localStorage.removeItem('user_profile_avatar');
-    addLog('info', 'Autenticação', 'Usuário deslogou da conta.');
-    onLogout();
-  };
-
-  return (
-    <div className="space-y-8 pb-16">
-      {/* Top Banner / Header */}
-      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-900/60 via-purple-900/40 to-slate-900 border border-slate-800 p-8">
-        <div className="absolute -right-10 -bottom-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none"></div>
-        <div className="flex flex-col sm:flex-row items-center gap-6 relative z-10">
-          {/* Avatar Display */}
-          <div className="relative group shrink-0">
-            <img
-              src={avatarUrl}
-              alt="Perfil"
-              className="w-24 h-24 rounded-3xl object-cover border-2 border-indigo-500/40 shadow-2xl"
-              onError={() => {
-                setAvatarUrl('https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&q=80');
-              }}
-            />
-            <div className="absolute inset-0 bg-slate-950/60 rounded-3xl flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none">
-              <Camera className="w-6 h-6 text-white" />
-            </div>
-          </div>
-
-          <div className="text-center sm:text-left space-y-1.5 flex-1">
-            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-              <h1 className="text-2xl font-extrabold text-white tracking-tight">{fullName}</h1>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 flex items-center gap-1">
-                <Award className="w-3 h-3 text-amber-400" />
-                Plano Pro Unlimited
-              </span>
-            </div>
-            <p className="text-xs text-indigo-300 font-medium">{roleTitle}</p>
-            <p className="text-[11px] text-slate-400 font-mono">{email} • Membro desde Julho/2026</p>
-          </div>
-
-          {/* Logout Button in header */}
-          <button
-            onClick={handleLogoutAction}
-            className="px-4 py-2.5 rounded-2xl bg-rose-500/10 hover:bg-rose-500/25 border border-rose-500/30 text-rose-300 font-bold text-xs flex items-center gap-2 transition-all shadow-lg"
-          >
-            <LogOut className="w-4 h-4" />
-            Sair da Conta
-          </button>
-        </div>
-      </div>
-
-      {/* Main Settings Form */}
-      <form onSubmit={handleSaveProfile} className="max-w-3xl space-y-6">
-        {/* Personal Info Form */}
-        <div className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800/80 space-y-5">
-          <h3 className="text-sm font-bold text-white flex items-center gap-2">
-            <User className="w-4 h-4 text-indigo-400" />
-            Dados Pessoais & Configuração de Perfil
-          </h3>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
-            <div>
-              <label className="text-slate-400 block mb-1.5 font-medium">Nome Completo</label>
-              <input
-                type="text"
-                required
-                value={fullName}
-                onChange={e => setFullName(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-slate-400 block mb-1.5 font-medium">E-mail de Acesso</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={e => setEmail(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-slate-400 block mb-1.5 font-medium">Cargo / Função</label>
-              <input
-                type="text"
-                value={roleTitle}
-                onChange={e => setRoleTitle(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="text-slate-400 block mb-1.5 font-medium">Telefone / WhatsApp</label>
-              <input
-                type="text"
-                value={phone}
-                onChange={e => setPhone(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div className="sm:col-span-2">
-              <label className="text-slate-400 block mb-1.5 font-medium">URL da sua Foto de Perfil</label>
-              <input
-                type="text"
-                value={avatarUrl}
-                onChange={e => setAvatarUrl(e.target.value)}
-                placeholder="Cole o link da sua foto (ex: link do Instagram, Unsplash ou qualquer URL)"
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500 font-mono"
-              />
-            </div>
-          </div>
-
-          <div className="pt-2 flex items-center justify-end gap-3">
-            <button
-              type="submit"
-              className="px-6 py-3 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-indigo-600/20 transition-all hover:scale-105"
-            >
-              {savedSuccess ? <Check className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
-              {savedSuccess ? 'Salvo com Sucesso!' : 'Salvar Alterações'}
-            </button>
-          </div>
-        </div>
-      </form>
-    </div>
-  );
+  return <div className="space-y-8 pb-16"><div><h1 className="text-2xl font-semibold">Perfil / Conta</h1><p className="mt-1 text-sm text-[#6B6F7B]">Dados persistidos no seu perfil do Supabase Auth.</p></div>{notice && <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-600">{notice}</div>}{error && <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">{error}</div>}
+    <form onSubmit={saveProfile} className="max-w-3xl space-y-6"><section className="space-y-6 rounded-xl border border-[#E8E9ED] bg-[#FFFFFF] p-6"><div className="flex items-center gap-4 border-b border-[#E8E9ED] pb-5"><div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-[#D4D4D8] bg-[#F4F4F6] text-lg font-semibold">{avatarUrl ? <img src={avatarUrl} alt="Avatar" className="h-full w-full object-cover" /> : initials}</div><div><h2 className="font-medium">Dados pessoais</h2><p className="text-xs text-[#9CA3AF]">{email}</p></div><Award className="ml-auto h-5 w-5 text-[#9CA3AF]" /></div><label className="block text-sm text-[#6B6F7B]">Nome completo<input required value={fullName} onChange={e => setFullName(e.target.value)} className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2" /></label><label className="block text-sm text-[#6B6F7B]">Avatar URL (opcional)<input type="url" value={avatarUrl} onChange={e => setAvatarUrl(e.target.value)} className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2" /></label><div className="grid gap-4 sm:grid-cols-2"><label className="text-sm text-[#6B6F7B]">Fuso horário<input value={timezone} onChange={e => setTimezone(e.target.value)} className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2" /></label><label className="text-sm text-[#6B6F7B]">Idioma/região<input value={locale} onChange={e => setLocale(e.target.value)} className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2" /></label></div><button disabled={saving} className="flex items-center gap-2 rounded-lg bg-[#EDEDED] px-4 py-2 text-sm font-medium text-[#111] disabled:opacity-50"><Save className="h-4 w-4" />{saving ? "Salvando…" : "Salvar perfil"}</button></section></form>
+    <section className="max-w-3xl space-y-4 rounded-xl border border-[#E8E9ED] bg-[#FFFFFF] p-6"><h2 className="flex items-center gap-2 font-medium"><Shield className="h-4 w-4" />Segurança</h2><form onSubmit={changePassword} className="space-y-2"><label className="block text-sm text-[#6B6F7B]">Nova senha<input type="password" minLength={8} required value={newPassword} onChange={e => setNewPassword(e.target.value)} placeholder="Mínimo de 8 caracteres" className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2" /></label><button disabled={securityBusy} className="flex items-center gap-2 rounded-lg border border-[#D4D4D8] px-3 py-2 text-sm"><KeyRound className="h-4 w-4" />Alterar senha</button></form><form onSubmit={changeEmail} className="space-y-2 border-t border-[#E8E9ED] pt-4"><label className="block text-sm text-[#A1A1A1]">Novo email<input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2" /></label><button disabled={securityBusy} className="rounded-lg border border-[#D4D4D8] px-3 py-2 text-sm">Alterar email</button></form></section>
+    <section className="max-w-3xl space-y-4 rounded-xl border border-[#E8E9ED] bg-[#FFFFFF] p-6"><h2 className="font-medium">Autenticação em duas etapas</h2><p className="text-sm text-[#6B6F7B]">Status real do Supabase Auth. O AfiliHub não simula MFA.</p>{mfaFactors.filter(factor => factor.status === "verified").length > 0 ? <div className="flex items-center justify-between gap-3 rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm"><span className="text-emerald-200">MFA TOTP ativado</span><button disabled={securityBusy} onClick={() => void disableMfa(mfaFactors.find(factor => factor.status === "verified")!.id)} className="rounded-lg border border-red-700/60 px-3 py-2 text-xs text-red-200">Desativar</button></div> : mfaEnrollment ? <form onSubmit={verifyMfa} className="space-y-3"><p className="text-sm text-[#6B6F7B]">Escaneie o QR no seu autenticador e informe o código de 6 dígitos.</p><img src={mfaEnrollment.qrCode} alt="QR code para configurar MFA" className="h-44 w-44 rounded-lg bg-white p-2" /><input required inputMode="numeric" pattern="[0-9]{6}" maxLength={6} value={mfaCode} onChange={e => setMfaCode(e.target.value)} placeholder="000000" className="w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2" /><button disabled={securityBusy} className="rounded-lg bg-[#EDEDED] px-3 py-2 text-sm font-medium text-[#111]">{securityBusy ? "Validando…" : "Confirmar código"}</button></form> : <button disabled={securityBusy} onClick={() => void beginMfa()} className="rounded-lg border border-[#D4D4D8] px-3 py-2 text-sm">Ativar MFA</button>}</section>
+    <section className="max-w-3xl space-y-3 rounded-xl border border-[#E8E9ED] bg-[#FFFFFF] p-6"><h2 className="font-medium">Sessões</h2><p className="text-sm text-[#6B6F7B]">O Supabase não expõe uma lista confiável de dispositivos neste cliente; estas ações revogam sessões reais.</p><div className="flex flex-wrap gap-2"><button disabled={securityBusy} onClick={() => void endOtherSessions()} className="rounded-lg border border-[#D4D4D8] px-3 py-2 text-sm">Encerrar outras sessões</button><button disabled={securityBusy} onClick={() => void logoutEverywhere()} className="flex items-center gap-2 rounded-lg border border-[#D4D4D8] px-3 py-2 text-sm"><LogOut className="h-4 w-4" />Sair de todos os dispositivos</button></div></section>
+    <section className="max-w-3xl space-y-3 rounded-xl border border-[#E8E9ED] bg-[#FFFFFF] p-6"><h2 className="font-medium">Privacidade e documentos</h2><p className="text-sm text-[#6B6F7B]">Consulte os documentos vigentes ou altere suas escolhas de analytics e publicidade.</p><div className="flex flex-wrap gap-3 text-sm"><a className="underline" href="/termos.html" target="_blank" rel="noreferrer">Termos de Uso</a><a className="underline" href="/privacidade.html" target="_blank" rel="noreferrer">Política de Privacidade</a><a className="underline" href="/reembolso.html" target="_blank" rel="noreferrer">Reembolso</a></div><button type="button" onClick={() => { localStorage.removeItem("promofy_consent_v1"); window.location.reload(); }} className="rounded-lg border border-[#D4D4D8] px-3 py-2 text-sm">Alterar preferências de cookies</button></section>
+    <section className="max-w-3xl space-y-3 rounded-xl border border-red-900/60 bg-red-950/10 p-6"><h2 className="font-medium text-red-200">Zona de perigo</h2><p className="text-sm text-red-200/70">A exclusão remove a conta Auth e os dados vinculados por cascade. Não é reversível.</p><button disabled={securityBusy} onClick={() => void removeAccount()} className="rounded-lg border border-red-700/70 px-3 py-2 text-sm text-red-200">Excluir minha conta</button></section>
+  </div>;
 };

@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-labelledby="title">
+  <title id="title">Ícone da AfiliHub</title>
+  <defs>
+    <linearGradient id="afilihub-icon-gradient" x1="52" y1="45" x2="456" y2="470" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF2D7D" />
+      <stop offset="0.42" stop-color="#FF6B6B" />
+      <stop offset="0.76" stop-color="#FF9F43" />
+      <stop offset="1" stop-color="#FFC629" />
+    </linearGradient>
+    <radialGradient id="afilihub-icon-glow" cx="0" cy="0" r="1" gradientTransform="translate(128 86) rotate(47) scale(455)">
+      <stop stop-color="#FFFFFF" stop-opacity="0.2" />
+      <stop offset="0.65" stop-color="#FFFFFF" stop-opacity="0" />
+    </radialGradient>
+    <filter id="afilihub-icon-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#FF6B6B" flood-opacity="0.2" />
+    </filter>
+    <mask id="afilihub-icon-cutout">
+      <rect width="512" height="512" fill="white" />
+      <circle cx="235" cy="251" r="41" fill="black" />
+      <path d="M269 263 390 302" stroke="black" stroke-width="24" stroke-linecap="round" />
+    </mask>
+  </defs>
+  <rect x="32" y="32" width="448" height="448" rx="120" fill="url(#afilihub-icon-gradient)" filter="url(#afilihub-icon-shadow)" />
+  <rect x="32" y="32" width="448" height="448" rx="120" fill="url(#afilihub-icon-glow)" />
+  <g fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round" mask="url(#afilihub-icon-cutout)">
+    <path d="M116 374 205 150c11-28 26-40 52-40h7c25 0 41 12 52 40l82 224" stroke-width="76" />
+    <path d="M166 306h190" stroke-width="64" />
+  </g>
+</svg>

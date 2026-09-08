@@ -1,924 +1,307 @@
-import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { MonitoredGroup, CapturedMessage, ExtractedDataJSON, GroupRules } from '../types';
-import {
-  Bot,
-  Plus,
-  Play,
-  Pause,
-  Trash2,
-  Settings,
-  Eye,
-  CheckCircle2,
-  XCircle,
-  Clock,
-  Zap,
-  Filter,
-  Search,
-  MessageSquare,
-  Sparkles,
-  ShoppingBag,
-  ExternalLink,
-  ChevronRight,
-  ShieldAlert,
-  RotateCcw,
-  Sliders,
-  X,
-  Check,
-  Send,
-  Edit3,
-  FileText
-} from 'lucide-react';
-function formatWhatsAppMarkdown(text: string): string {
-  if (!text) return '';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AlertCircle, Check, ChevronDown, ChevronRight, Link2, LoaderCircle, MessageSquare, Pause, Play, Plus, RefreshCw, RotateCcw, Tag, Trash2, Truck, X } from 'lucide-react';
+import type { CapturedMessage, GroupMonitor, WhatsAppMessageType } from '../domain/monitoring/types';
+import type { WhatsAppConnection, WhatsAppGroup } from '../domain/whatsapp/types';
+import { monitoringApi } from '../services/monitoringApi';
+import { whatsappApi } from '../services/whatsappApi';
+import { ProductReviewRulesEditor } from '../components/monitoring/ProductReviewRulesEditor';
+import type { ProductReviewRule } from '../domain/monitoring/ReviewSettingsRepository';
+import { supabase } from '../lib/supabase';
 
-  let formatted = text
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
+const card = 'rounded-xl border border-[#E8E9ED] bg-[#FFFFFF]';
+function dateTime(value: string): string {
+  return new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(value));
+}
+function excerpt(value: string): string { return value.trim() || 'Mensagem sem texto'; }
+function typeLabel(type: WhatsAppMessageType): string {
+  return ({ text: 'Texto', image: 'Imagem', video: 'Vídeo', document: 'Documento', audio: 'Áudio', sticker: 'Sticker', unknown: 'Outro' })[type];
+}
+function money(value: number | null): string | null {
+  return value == null ? null : new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(value);
+}
+const marketplaceLabels: Record<string, string> = {
+  shopee: 'Shopee', amazon: 'Amazon', mercado_livre: 'Mercado Livre', magalu: 'Magalu',
+  aliexpress: 'AliExpress', other: 'Outro', unknown: 'Marketplace não identificado',
+};
 
-  // Bold: *text*
-  formatted = formatted.replace(/\*([^\*\n]+)\*/g, '<strong>$1</strong>');
-  // Italic: _text_
-  formatted = formatted.replace(/_([^_\n]+)_/g, '<em>$1</em>');
-  // Strikethrough: ~text~
-  formatted = formatted.replace(/~([^~\n]+)~/g, '<del class="opacity-70">$1</del>');
-  // Monospace: `text`
-  formatted = formatted.replace(/`([^`\n]+)`/g, '<code class="bg-black/40 px-1.5 py-0.5 rounded font-mono text-[11px] text-amber-300">$1</code>');
-
-  return formatted;
+function AnalysisPanel({ capture, reprocessing, reviewing, onReprocess, onApprove, onReject }: {
+  capture: CapturedMessage; reprocessing: boolean; reviewing: boolean;
+  onReprocess: () => void; onApprove: () => void; onReject: () => void;
+}): React.ReactNode {
+  if (capture.processingStatus === 'raw') return <div className="mt-3 text-xs text-amber-300">Análise pendente</div>;
+  if (capture.processingStatus === 'processing') return <div className="mt-3 flex items-center gap-2 text-xs text-sky-300"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Analisando...</div>;
+  if (capture.processingStatus === 'ignored') return <div className="mt-3 text-xs text-[#6B6F7B]">Não é promoção</div>;
+  if (capture.processingStatus === 'failed' || capture.processingStatus === 'needs_review') {
+    const failed = capture.processingStatus === 'failed';
+    return <div className={`mt-3 rounded-lg border p-3 ${failed ? 'border-red-900/60 bg-red-950/15' : 'border-amber-900/60 bg-amber-950/15'}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2 text-xs"><AlertCircle className="h-3.5 w-3.5" /><span>{failed ? 'Não foi possível analisar' : 'Análise inconclusiva'}</span>{capture.analysis?.reason === 'insufficient_text_content' && <span className="text-[#9CA3AF]">Conteúdo textual insuficiente</span>}</div>
+      <button disabled={reprocessing} onClick={onReprocess} className="flex items-center gap-1.5 rounded-md border border-[#D4D4D8] px-2.5 py-1.5 text-xs text-[#D4D4D8] disabled:opacity-50"><RotateCcw className={`h-3.5 w-3.5 ${reprocessing ? 'animate-spin' : ''}`} />{reprocessing ? 'Reprocessando...' : 'Reprocessar'}</button></div>
+    </div>;
+  }
+  const analysis = capture.analysis;
+  if (!analysis) return <div className="mt-3 text-xs text-amber-300">Análise pendente</div>;
+  return <div className="mt-3 rounded-lg border border-emerald-900/60 bg-emerald-950/15 p-3">
+    <div className="mb-2 flex flex-wrap items-center gap-2"><span className="text-xs font-medium text-emerald-600">Promoção detectada</span><span className="text-[11px] text-[#9CA3AF]">{Math.round(analysis.confidence * 100)}% confiança</span></div>
+    {analysis.productName && <p className="text-sm font-medium text-[#0F172A]">{analysis.productName}</p>}
+    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#6B6F7B]">
+      {analysis.price != null && <span className="font-medium text-emerald-600">{money(analysis.price)}</span>}
+      {analysis.originalPrice != null && <span className="line-through">{money(analysis.originalPrice)}</span>}
+      {analysis.discountPercent != null && <span>{analysis.discountPercent}% OFF</span>}
+      <span>{marketplaceLabels[analysis.marketplace] ?? analysis.marketplace}</span>
+      {analysis.coupon?.code && <span className="flex items-center gap-1"><Tag className="h-3 w-3" />Cupom {analysis.coupon.code}</span>}
+      {analysis.freeShipping && <span className="flex items-center gap-1"><Truck className="h-3 w-3" />Frete grátis</span>}
+    </div>
+    {capture.reviewStatus === 'pending' ? <div className="mt-3 flex flex-wrap gap-2">
+      <button disabled={reviewing} onClick={onApprove} className="flex items-center gap-1.5 rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-emerald-950 disabled:opacity-50"><Check className="h-3.5 w-3.5" />Aprovar e cadastrar</button>
+      <button disabled={reviewing} onClick={onReject} className="flex items-center gap-1.5 rounded-md border border-[#D4D4D8] px-3 py-1.5 text-xs text-[#D4D4D8] disabled:opacity-50"><X className="h-3.5 w-3.5" />Rejeitar</button>
+    </div> : <div className={`mt-3 text-xs font-medium ${capture.reviewStatus === 'approved' ? 'text-emerald-600' : 'text-[#6B6F7B]'}`}>
+      {capture.reviewStatus === 'approved' ? 'Oferta aprovada e cadastrada em Produtos' : 'Oferta rejeitada'}
+    </div>}
+  </div>;
 }
 
 export const GroupMonitoringView: React.FC = () => {
-  const {
-    monitoredGroups,
-    addMonitoredGroup,
-    updateMonitoredGroup,
-    deleteMonitoredGroup,
-    toggleMonitoredGroupStatus,
-    capturedMessages,
-    approveCapturedMessage,
-    rejectCapturedMessage,
-    processCapturedMessageAI,
-    addLog
-  } = useApp();
+  const [connections, setConnections] = useState<WhatsAppConnection[]>([]);
+  const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
+  const [monitors, setMonitors] = useState<GroupMonitor[]>([]);
+  const [captures, setCaptures] = useState<CapturedMessage[]>([]);
+  const [connectionId, setConnectionId] = useState('');
+  const [groupId, setGroupId] = useState('');
+  const [filterConnectionId, setFilterConnectionId] = useState('');
+  const [reviewRequired, setReviewRequired] = useState(true);
+  const [reviewRules, setReviewRules] = useState<ProductReviewRule[]>([]);
+  const [reviewRulesDirty, setReviewRulesDirty] = useState(false);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [clearingHistory, setClearingHistory] = useState(false);
+  const [savingReview, setSavingReview] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
+  const [reprocessingId, setReprocessingId] = useState<string | null>(null);
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const capturesLiveRef = useRef(false);
 
-  // Navigation Sub-Tab State
-  const [activeTab, setActiveTab] = useState<'grupos' | 'revisao' | 'historico'>('grupos');
-
-  // Add Group Modal State
-  const [isAddGroupOpen, setIsAddGroupOpen] = useState(false);
-  const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupUrl, setNewGroupUrl] = useState('');
-  const [newGroupPlatform, setNewGroupPlatform] = useState<'Telegram' | 'WhatsApp'>('Telegram');
-  const [newGroupStore, setNewGroupStore] = useState('Todas as Lojas');
-  const [newGroupConfidence, setNewGroupConfidence] = useState(0.7);
-
-  // Group Rules Modal State
-  const [activeRulesGroup, setActiveRulesGroup] = useState<MonitoredGroup | null>(null);
-  const [editingRules, setEditingRules] = useState<GroupRules>({
-    mandatoryKeywords: [],
-    forbiddenKeywords: [],
-    minPrice: 0,
-    maxPrice: 10000,
-    enableOCR: true,
-    maxPerHour: 30,
-    dedupHours: 12,
-    autoApproveConfidence: 0.7
-  });
-  const [forbiddenKeyInput, setForbiddenKeyInput] = useState('');
-
-  // Simulator Modal State
-  const [isSimulatorOpen, setIsSimulatorOpen] = useState(false);
-  const [simGroupId, setSimGroupId] = useState('');
-  const [simRawText, setSimRawText] = useState(
-    '🔥 PROMOÇÃO IMPERDÍVEL! TV 55 4K Smart QLED de R$ 3.999 por R$ 2.499,00 no PIX com frete grátis! Use o cupom TVQLED200 https://amzn.to/tv-samsung-deal'
-  );
-  const [isProcessingSim, setIsProcessingSim] = useState(false);
-
-  // Edit Review Item State
-  const [editingReviewId, setEditingReviewId] = useState<string | null>(null);
-  const [editJson, setEditJson] = useState<Partial<ExtractedDataJSON>>({});
-
-  // History Filter State
-  const [historySearch, setHistorySearch] = useState('');
-  const [historyStatusFilter, setHistoryStatusFilter] = useState<string>('todas');
-
-  const pendingMessages = capturedMessages.filter(m => m.status === 'Pendente');
-
-  // Handle Add Group Submit
-  const handleAddGroupSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newGroupName.trim()) return;
-
-    addMonitoredGroup({
-      name: newGroupName,
-      externalIdOrUrl: newGroupUrl || 'https://t.me/grupo_ofertas',
-      platform: newGroupPlatform,
-      linkedStore: newGroupStore,
-      rules: {
-        mandatoryKeywords: [],
-        forbiddenKeywords: ['esgotado'],
-        minPrice: 5,
-        enableOCR: true,
-        maxPerHour: 35,
-        dedupHours: 12,
-        autoApproveConfidence: newGroupConfidence
-      }
-    });
-
-    setIsAddGroupOpen(false);
-    setNewGroupName('');
-    setNewGroupUrl('');
-  };
-
-  // Open Rules Modal
-  const handleOpenRules = (group: MonitoredGroup) => {
-    setActiveRulesGroup(group);
-    setEditingRules(group.rules || {
-      mandatoryKeywords: [],
-      forbiddenKeywords: [],
-      minPrice: 0,
-      enableOCR: true,
-      maxPerHour: 30,
-      dedupHours: 12,
-      autoApproveConfidence: 0.7
-    });
-  };
-
-  // Save Rules
-  const handleSaveRules = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (activeRulesGroup) {
-      updateMonitoredGroup(activeRulesGroup.id, { rules: editingRules });
-      setActiveRulesGroup(null);
-    }
-  };
-
-  // Trigger Live Test Simulation Capture
-  const handleRunSimulation = async () => {
-    setIsProcessingSim(true);
+  const loadBase = useCallback(async () => {
     try {
-      const targetGroup = simGroupId || (monitoredGroups[0]?.id || 'grp-1');
-      const result = await processCapturedMessageAI(simRawText, targetGroup);
-      
-      addLog(
-        'success',
-        'Monitor IA',
-        `Mensagem processada! Confiança: ${Math.round(result.confidence * 100)}% - Status: ${result.status}`
-      );
-      
-      if (result.status === 'Pendente') {
-        setActiveTab('revisao');
-      } else {
-        setActiveTab('historico');
-      }
-      setIsSimulatorOpen(false);
-    } catch (e) {
-      addLog('error', 'Monitor IA', 'Falha ao simular captura de mensagem.');
-    } finally {
-      setIsProcessingSim(false);
-    }
-  };
+      setError('');
+      const [connectionRows, monitorRows, reviewSettings] = await Promise.all([
+        whatsappApi.listConnections(), monitoringApi.listMonitors(), monitoringApi.getReviewSettings(),
+      ]);
+      setConnections(connectionRows); setMonitors(monitorRows);
+      setReviewRequired(reviewSettings.reviewRequired);
+      setReviewRules(reviewSettings.autoApprovalRules ?? []);
+      setReviewRulesDirty(false);
+      setConnectionId((current) => current || connectionRows.find((item) => item.status === 'connected')?.id || connectionRows[0]?.id || '');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao carregar o monitoramento.'); }
+    finally { setLoading(false); }
+  }, []);
 
-  // Start Edit in Review Item
-  const handleStartEditReview = (item: CapturedMessage) => {
-    setEditingReviewId(item.id);
-    setEditJson(item.extractedJson || {});
-  };
+  const loadCaptures = useCallback(async (append = false, cursor?: string) => {
+    try {
+      const page = await monitoringApi.listCaptures({ connectionId: filterConnectionId || undefined, cursor, limit: 50 });
+      setCaptures((current) => append ? [...current, ...page.items] : page.items);
+      setNextCursor(page.nextCursor);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao carregar capturas.'); }
+  }, [filterConnectionId]);
 
-  // Save Edited Review Item & Approve
-  const handleSaveAndApproveReview = (id: string) => {
-    approveCapturedMessage(id, editJson);
-    setEditingReviewId(null);
-  };
+  useEffect(() => { void loadBase(); }, [loadBase]);
+  useEffect(() => { void loadCaptures(); }, [loadCaptures]);
+  useEffect(() => {
+    if (!connectionId) { setGroups([]); setGroupId(''); return; }
+    void whatsappApi.listConnectionGroups(connectionId).then((rows) => {
+      const active = rows.filter((item) => item.syncStatus === 'active');
+      setGroups(active); setGroupId((current) => active.some((item) => item.id === current) ? current : active[0]?.id || '');
+    }).catch((cause) => setError(cause instanceof Error ? cause.message : 'Falha ao carregar grupos.'));
+  }, [connectionId]);
+  useEffect(() => {
+    let channel: ReturnType<typeof supabase.channel> | null = null;
+    let debounceTimer: number | null = null;
+    let disposed = false;
+    const scheduleLoad = () => {
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      debounceTimer = window.setTimeout(() => { if (!disposed) void loadCaptures(); }, 200);
+    };
+    void supabase.auth.getUser().then(({ data }) => {
+      const userId = data.user?.id;
+      if (!userId || disposed) return;
+      channel = supabase.channel(`captured-messages:${userId}`)
+        .on('postgres_changes', { event:'*', schema:'public', table:'captured_messages', filter:`user_id=eq.${userId}` }, scheduleLoad)
+        .subscribe((status) => { capturesLiveRef.current = status === 'SUBSCRIBED'; });
+    }).catch(() => { capturesLiveRef.current = false; });
+    const interval = window.setInterval(() => {
+      if (!capturesLiveRef.current && document.visibilityState === 'visible') void loadCaptures();
+    }, 30_000);
+    return () => {
+      disposed = true;
+      capturesLiveRef.current = false;
+      if (debounceTimer) window.clearTimeout(debounceTimer);
+      window.clearInterval(interval);
+      if (channel) void supabase.removeChannel(channel);
+    };
+  }, [loadCaptures]);
 
-  // Filtered History List
-  const filteredHistory = capturedMessages.filter(m => {
-    const matchesSearch =
-      m.rawContent.toLowerCase().includes(historySearch.toLowerCase()) ||
-      m.groupName.toLowerCase().includes(historySearch.toLowerCase()) ||
-      (m.extractedJson?.produto || '').toLowerCase().includes(historySearch.toLowerCase());
+  const monitoredGroupIds = useMemo(() => new Set(monitors.map((item) => item.groupId)), [monitors]);
+  const availableGroups = groups.filter((item) => !monitoredGroupIds.has(item.id));
 
-    const matchesStatus =
-      historyStatusFilter === 'todas' ? true : m.status.toLowerCase() === historyStatusFilter.toLowerCase();
-
-    return matchesSearch && matchesStatus;
-  });
+  async function createMonitor(): Promise<void> {
+    if (!groupId) return;
+    setSaving(true); setError('');
+    try {
+      await monitoringApi.createMonitor(groupId, reviewRequired);
+      await loadBase(); setGroupId('');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao ativar monitor.'); }
+    finally { setSaving(false); }
+  }
+  async function toggleReviewRequired(): Promise<void> {
+    const previous = reviewRequired;
+    const next = !previous;
+    setReviewRequired(next); setSavingReview(true); setError('');
+    try {
+      const settings = await monitoringApi.updateReviewSettings({ reviewRequired: next, autoApprovalRules: reviewRules });
+      setReviewRequired(settings.reviewRequired);
+      setReviewRules(settings.autoApprovalRules ?? []);
+    } catch (cause) {
+      setReviewRequired(previous);
+      setError(cause instanceof Error ? cause.message : 'Falha ao alterar a revisão global.');
+    } finally { setSavingReview(false); }
+  }
+  async function saveReviewRules(): Promise<void> {
+    setSavingReview(true); setError('');
+    try {
+      const settings = await monitoringApi.updateReviewSettings({ reviewRequired, autoApprovalRules: reviewRules });
+      setReviewRequired(settings.reviewRequired);
+      setReviewRules(settings.autoApprovalRules ?? []);
+      setReviewRulesDirty(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao salvar as regras do revisor.');
+    } finally { setSavingReview(false); }
+  }
+  async function toggle(monitor: GroupMonitor): Promise<void> {
+    try { await monitoringApi.updateMonitor(monitor.id, { enabled: !monitor.enabled }); await loadBase(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao alterar monitor.'); }
+  }
+  async function remove(monitor: GroupMonitor): Promise<void> {
+    if (!window.confirm(`Remover o monitor de "${monitor.groupName}"? O histórico capturado será preservado.`)) return;
+    try { await monitoringApi.deleteMonitor(monitor.id); await loadBase(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao remover monitor.'); }
+  }
+  async function reprocess(captureId: string): Promise<void> {
+    setReprocessingId(captureId); setError('');
+    try { await monitoringApi.reprocessCapture(captureId); await loadCaptures(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao reprocessar captura.'); }
+    finally { setReprocessingId(null); }
+  }
+  async function clearCaptureHistory(): Promise<void> {
+    if (!window.confirm('Apagar todo o histórico de capturas? Produtos, CTAs, filas e envios já realizados serão preservados.')) return;
+    setClearingHistory(true); setError(''); setNotice('');
+    try {
+      const result = await monitoringApi.clearCaptureHistory();
+      setCaptures([]); setNextCursor(null);
+      setNotice(`${result.deletedCount} captura${result.deletedCount === 1 ? '' : 's'} removida${result.deletedCount === 1 ? '' : 's'} do histórico.`);
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao apagar o histórico de capturas.'); }
+    finally { setClearingHistory(false); }
+  }
+  async function review(captureId: string, decision: 'approved' | 'rejected'): Promise<void> {
+    setReviewingId(captureId); setError('');
+    try { await monitoringApi.reviewCapture(captureId, decision); await loadCaptures(); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao revisar oferta.'); }
+    finally { setReviewingId(null); }
+  }
 
   return (
-    <div className="space-y-6 pb-16">
-      {/* Top Header & Breadcrumb */}
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-xs text-slate-400">
-          <span>Início</span>
-          <ChevronRight className="w-3.5 h-3.5 text-slate-600" />
-          <span className="text-white font-semibold">Monitoramento de Grupos IA</span>
+    <div className="space-y-6 pb-16 text-[#0F172A]">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <h1 className="text-2xl font-medium tracking-tight">Monitoramento de grupos</h1>
+          <p className="mt-1 text-sm text-[#6B6F7B]">Capture mensagens reais de grupos selecionados, sem interpretar ou publicar o conteúdo.</p>
         </div>
-
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2.5">
-              <Bot className="w-6 h-6 text-emerald-400" />
-              Monitoramento de Grupos com Inteligência Artificial
-            </h1>
-            <p className="text-xs text-slate-400 mt-0.5">
-              Acompanhamento de grupos concorrentes, extração automática de ofertas com IA e conversão direta para o seu template.
-            </p>
-          </div>
-
-          {/* Sub-Tab Selector Buttons */}
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-900 border border-slate-800 shrink-0">
-            <button
-              onClick={() => setActiveTab('grupos')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'grupos'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Grupos Monitorados ({monitoredGroups.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('revisao')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all flex items-center gap-1.5 ${
-                activeTab === 'revisao'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              <span>Fila de Revisão</span>
-              {pendingMessages.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-bold bg-amber-500 text-slate-950">
-                  {pendingMessages.length}
-                </span>
-              )}
-            </button>
-            <button
-              onClick={() => setActiveTab('historico')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'historico'
-                  ? 'bg-indigo-600 text-white shadow-md'
-                  : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Histórico ({capturedMessages.length})
-            </button>
-          </div>
-        </div>
+        <button onClick={() => { void loadBase(); void loadCaptures(); }} className="flex items-center gap-2 self-start rounded-lg border border-[#E8E9ED] px-3 py-2 text-sm text-[#6B6F7B] hover:text-[#0F172A]">
+          <RefreshCw className="h-4 w-4" /> Atualizar
+        </button>
       </div>
 
-      {/* ==================================================================== */}
-      {/* SUB-TAB 1: GRUPOS MONITORADOS                                        */}
-      {/* ==================================================================== */}
-      {activeTab === 'grupos' && (
-        <div className="space-y-6">
-          {/* Top Bar Actions */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-5 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-xl">
-            <div className="space-y-1">
-              <h3 className="text-sm font-bold text-white flex items-center gap-2">
-                <Zap className="w-4 h-4 text-amber-400" />
-                Motor de Escuta Ativa em Grupos de Promoção
-              </h3>
-              <p className="text-xs text-slate-400">
-                Cadastre links ou IDs de grupos externos do WhatsApp e Telegram para capturar postagens em tempo real.
-              </p>
-            </div>
+      {error && <div className="rounded-lg border border-red-900/60 bg-red-950/20 px-4 py-3 text-sm text-red-300">{error}</div>}
+      {notice && <div className="rounded-lg border border-emerald-900/60 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-600">{notice}</div>}
 
-            <div className="flex items-center gap-3 shrink-0">
-              <button
-                onClick={() => setIsSimulatorOpen(true)}
-                className="px-4 py-2.5 rounded-2xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center gap-2 border border-slate-700 transition-all shadow-md"
-              >
-                <Sparkles className="w-4 h-4 text-amber-400" />
-                ⚡ Simular Captura ao Vivo
-              </button>
-
-              <button
-                onClick={() => setIsAddGroupOpen(true)}
-                className="px-4 py-2.5 rounded-2xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all hover:scale-105"
-              >
-                <Plus className="w-4 h-4" />
-                + Adicionar Grupo
-              </button>
-            </div>
+      <section className={`${card} p-5`}>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="text-sm font-medium">Revisão antes de cadastrar</h2>
+            <p className="mt-1 max-w-2xl text-xs leading-5 text-[#9CA3AF]">Interruptor global: vale para todos os grupos monitorados e impede que uma automação crie produtos sem sua aprovação.</p>
           </div>
-
-          {/* Cards Grid of Monitored Groups */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {monitoredGroups.length === 0 ? (
-              <div className="col-span-full py-12 text-center rounded-3xl bg-slate-900/50 border border-slate-800 text-xs text-slate-500 space-y-2">
-                <Bot className="w-8 h-8 text-slate-600 mx-auto" />
-                <p className="font-bold text-slate-300">Nenhum grupo cadastrado no momento</p>
-                <p>Clique em "+ Adicionar Grupo" para iniciar a monitoração automática.</p>
-              </div>
-            ) : (
-              monitoredGroups.map(group => (
-                <div
-                  key={group.id}
-                  className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800/80 shadow-xl space-y-5 flex flex-col justify-between hover:border-slate-700 transition-all"
-                >
-                  <div className="space-y-4">
-                    {/* Header: Title & Platform Badge */}
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span
-                            className={`px-2 py-0.5 rounded-md text-[10px] font-bold uppercase tracking-wider ${
-                              group.platform === 'WhatsApp'
-                                ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                                : 'bg-sky-500/20 text-sky-400 border border-sky-500/30'
-                            }`}
-                          >
-                            {group.platform}
-                          </span>
-                          <span className="text-[10px] px-2 py-0.5 rounded-md bg-slate-800 text-slate-300 font-mono">
-                            {group.linkedStore}
-                          </span>
-                        </div>
-                        <h3 className="text-sm font-extrabold text-white line-clamp-1">{group.name}</h3>
-                      </div>
-
-                      <span
-                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${
-                          group.status === 'ativo'
-                            ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                            : 'bg-slate-800 text-slate-400 border-slate-700'
-                        }`}
-                      >
-                        {group.status === 'ativo' ? 'Ativo' : 'Pausado'}
-                      </span>
-                    </div>
-
-                    <p className="text-[11px] font-mono text-slate-400 truncate bg-slate-950 px-3 py-1.5 rounded-xl border border-slate-800/80">
-                      {group.externalIdOrUrl}
-                    </p>
-
-                    {/* Stats Grid */}
-                    <div className="grid grid-cols-3 gap-2 text-center p-3 rounded-2xl bg-slate-950 border border-slate-800/80">
-                      <div>
-                        <span className="text-[10px] text-slate-500 block uppercase">Capturas</span>
-                        <span className="text-xs font-bold text-white font-mono">{group.capturedCount}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-500 block uppercase">Aprovadas</span>
-                        <span className="text-xs font-bold text-emerald-400 font-mono">{group.approvedCount}</span>
-                      </div>
-                      <div>
-                        <span className="text-[10px] text-slate-500 block uppercase">Atividade</span>
-                        <span className="text-[10px] font-medium text-slate-300">{group.lastActivity}</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Actions Row */}
-                  <div className="flex items-center justify-between pt-3 border-t border-slate-800/80 text-xs">
-                    <button
-                      onClick={() => toggleMonitoredGroupStatus(group.id)}
-                      className={`px-3 py-1.5 rounded-xl text-[11px] font-bold transition-all flex items-center gap-1.5 ${
-                        group.status === 'ativo'
-                          ? 'bg-rose-500/10 text-rose-300 hover:bg-rose-500/20 border border-rose-500/20'
-                          : 'bg-emerald-500/10 text-emerald-300 hover:bg-emerald-500/20 border border-emerald-500/20'
-                      }`}
-                    >
-                      {group.status === 'ativo' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
-                      {group.status === 'ativo' ? 'Pausar' : 'Ativar'}
-                    </button>
-
-                    <div className="flex items-center gap-2">
-                      <button
-                        onClick={() => handleOpenRules(group)}
-                        className="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-[11px] font-semibold border border-slate-700 flex items-center gap-1 transition-colors"
-                      >
-                        <Sliders className="w-3.5 h-3.5 text-indigo-400" />
-                        Regras
-                      </button>
-
-                      <button
-                        onClick={() => deleteMonitoredGroup(group.id)}
-                        className="p-1.5 rounded-xl text-slate-400 hover:text-rose-400 transition-colors"
-                        title="Remover grupo"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ==================================================================== */}
-      {/* SUB-TAB 2: FILA DE REVISÃO                                           */}
-      {/* ==================================================================== */}
-      {activeTab === 'revisao' && (
-        <div className="space-y-6">
-          <div className="p-5 rounded-3xl bg-slate-900/90 border border-slate-800 flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-white flex items-center gap-2">
-                <ShieldAlert className="w-4 h-4 text-amber-400" />
-                Fila de Aprovação Manual ({pendingMessages.length} pendentes)
-              </h2>
-              <p className="text-xs text-slate-400">
-                Ofertas capturadas com índice de confiança intermediário aguardando sua validação ou edição de campos.
-              </p>
-            </div>
-
-            <span className="px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 text-xs font-bold font-mono">
-              Autopiloto Filtro Ativo
+          <button
+            type="button"
+            role="switch"
+            aria-checked={reviewRequired}
+            aria-label="Revisão global antes de cadastrar"
+            disabled={savingReview}
+            onClick={() => void toggleReviewRequired()}
+            className={`flex min-w-36 items-center justify-between gap-3 rounded-full border px-3 py-2 text-xs font-medium transition ${reviewRequired ? 'border-emerald-700/70 bg-emerald-950/30 text-emerald-200' : 'border-amber-700/70 bg-amber-950/20 text-amber-200'} disabled:cursor-wait disabled:opacity-60`}
+          >
+            <span>{reviewRequired ? 'ON · revisar' : 'OFF · automático'}</span>
+            <span className={`relative h-5 w-9 rounded-full transition ${reviewRequired ? 'bg-emerald-500' : 'bg-[#D4D4D8]'}`}>
+              <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition ${reviewRequired ? 'left-[18px]' : 'left-0.5'}`} />
             </span>
-          </div>
-
-          {pendingMessages.length === 0 ? (
-            <div className="p-12 text-center rounded-3xl bg-slate-900/40 border border-slate-800 text-xs text-slate-500 space-y-2">
-              <CheckCircle2 className="w-8 h-8 text-emerald-400 mx-auto" />
-              <p className="font-bold text-white">Sua fila de revisão está vazia!</p>
-              <p>Todas as mensagens capturadas foram aprovadas automaticamente ou processadas.</p>
-            </div>
-          ) : (
-            <div className="space-y-6">
-              {pendingMessages.map(item => {
-                const isEditing = editingReviewId === item.id;
-                const json = isEditing ? editJson : item.extractedJson;
-
-                return (
-                  <div
-                    key={item.id}
-                    className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 shadow-xl space-y-6"
-                  >
-                    {/* Header Details */}
-                    <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
-                      <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                          {item.groupName} ({item.platform})
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-mono">{item.createdAt}</span>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-slate-400">Confiança IA:</span>
-                        <span
-                          className={`px-2.5 py-0.5 rounded-full text-xs font-mono font-bold border ${
-                            item.confidence >= 0.8
-                              ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'
-                              : 'bg-amber-500/20 text-amber-400 border-amber-500/30'
-                          }`}
-                        >
-                          {Math.round(item.confidence * 100)}%
-                        </span>
-                      </div>
-                    </div>
-
-                    {/* Comparative View: Before & After */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                      {/* Antes: Raw Message */}
-                      <div className="space-y-2">
-                        <span className="text-xs font-bold text-slate-400 block uppercase">
-                          ANTES: Mensagem Original do Grupo
-                        </span>
-                        <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 text-xs font-mono text-slate-300 whitespace-pre-wrap leading-relaxed max-h-60 overflow-y-auto">
-                          {item.rawContent}
-                        </div>
-                      </div>
-
-                      {/* Depois: Formatted WhatsApp Live Preview */}
-                      <div className="space-y-2">
-                        <span className="text-xs font-bold text-emerald-400 block uppercase flex items-center gap-1.5">
-                          <Eye className="w-3.5 h-3.5" />
-                          DEPOIS: Convertido no Seu Template
-                        </span>
-                        <div className="p-4 rounded-2xl bg-[#0b141a] border border-slate-800 min-h-[160px] flex flex-col justify-end">
-                          <div className="p-3 rounded-xl bg-[#005c4b] text-white text-xs font-sans whitespace-pre-wrap leading-relaxed border border-emerald-500/30 shadow-md">
-                            <div
-                              dangerouslySetInnerHTML={{
-                                __html: formatWhatsAppMarkdown(item.finalText || '')
-                              }}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Editable Extracted Data Panel */}
-                    <div className="p-4 rounded-2xl bg-slate-950/80 border border-slate-800/80 space-y-3">
-                      <div className="flex items-center justify-between border-b border-slate-800 pb-2">
-                        <span className="text-xs font-bold text-white flex items-center gap-1.5">
-                          <Edit3 className="w-3.5 h-3.5 text-indigo-400" />
-                          Campos Extraídos pela IA (Editáveis)
-                        </span>
-
-                        {!isEditing && (
-                          <button
-                            onClick={() => handleStartEditReview(item)}
-                            className="text-[11px] text-indigo-400 hover:text-indigo-300 font-semibold"
-                          >
-                            Editar Campos
-                          </button>
-                        )}
-                      </div>
-
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-xs">
-                        <div>
-                          <label className="text-[10px] text-slate-500 block mb-0.5">Produto</label>
-                          <input
-                            type="text"
-                            disabled={!isEditing}
-                            value={json?.produto || ''}
-                            onChange={e => setEditJson({ ...editJson, produto: e.target.value })}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white disabled:opacity-80"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-slate-500 block mb-0.5">Preço (R$)</label>
-                          <input
-                            type="text"
-                            disabled={!isEditing}
-                            value={json?.preco || ''}
-                            onChange={e => setEditJson({ ...editJson, preco: e.target.value })}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-emerald-400 font-bold disabled:opacity-80"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-slate-500 block mb-0.5">Preço Original (R$)</label>
-                          <input
-                            type="text"
-                            disabled={!isEditing}
-                            value={json?.preco_original || ''}
-                            onChange={e => setEditJson({ ...editJson, preco_original: e.target.value })}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white disabled:opacity-80"
-                          />
-                        </div>
-
-                        <div>
-                          <label className="text-[10px] text-slate-500 block mb-0.5">Cupom</label>
-                          <input
-                            type="text"
-                            disabled={!isEditing}
-                            value={json?.cupom || ''}
-                            onChange={e => setEditJson({ ...editJson, cupom: e.target.value })}
-                            className="w-full bg-slate-900 border border-slate-800 rounded-xl px-2.5 py-1.5 text-white font-mono disabled:opacity-80"
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Bottom Review Actions */}
-                    <div className="flex items-center justify-end gap-3 pt-2">
-                      <button
-                        onClick={() => rejectCapturedMessage(item.id)}
-                        className="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs flex items-center gap-1.5 transition-colors"
-                      >
-                        <XCircle className="w-4 h-4 text-rose-400" />
-                        Descartar
-                      </button>
-
-                      <button
-                        onClick={() => handleSaveAndApproveReview(item.id)}
-                        className="px-6 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-emerald-600/20 transition-all hover:scale-105"
-                      >
-                        <CheckCircle2 className="w-4 h-4" />
-                        Aprovar e Enviar p/ Fila
-                      </button>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
+          </button>
         </div>
-      )}
+        <p className={`mt-3 text-xs ${reviewRequired ? 'text-emerald-600' : 'text-amber-300'}`}>
+          {reviewRequired ? 'Ligado: o revisor decide primeiro; somente aprovações manuais ou regras correspondentes liberam o produto.' : 'Desligado: automações ativas podem cadastrar promoções automaticamente.'}
+        </p>
+        <ProductReviewRulesEditor
+          rules={reviewRules}
+          active={reviewRequired}
+          saving={savingReview}
+          dirty={reviewRulesDirty}
+          onChange={(rules) => { setReviewRules(rules); setReviewRulesDirty(true); }}
+          onSave={() => void saveReviewRules()}
+        />
+      </section>
 
-      {/* ==================================================================== */}
-      {/* SUB-TAB 3: HISTÓRICO DE CONVERSÕES                                   */}
-      {/* ==================================================================== */}
-      {activeTab === 'historico' && (
-        <div className="space-y-6">
-          {/* Filters Bar */}
-          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-4 p-4 rounded-2xl bg-slate-900 border border-slate-800">
-            <div className="relative flex-1">
-              <Search className="w-4 h-4 text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
-              <input
-                type="text"
-                placeholder="Buscar no histórico por produto, palavra-chave ou grupo..."
-                value={historySearch}
-                onChange={e => setHistorySearch(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl pl-10 pr-4 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-slate-400">Status:</span>
-              <select
-                value={historyStatusFilter}
-                onChange={e => setHistoryStatusFilter(e.target.value)}
-                className="bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none"
-              >
-                <option value="todas">Todas</option>
-                <option value="aprovada">Aprovada</option>
-                <option value="pendente">Pendente</option>
-                <option value="rejeitada">Rejeitada</option>
-                <option value="falhou na extração">Falhou na Extração</option>
-              </select>
-            </div>
-          </div>
-
-          {/* History List */}
-          <div className="space-y-4">
-            {filteredHistory.length === 0 ? (
-              <div className="p-12 text-center rounded-3xl bg-slate-900/40 border border-slate-800 text-xs text-slate-500">
-                Nenhum histórico registrado para os filtros selecionados.
-              </div>
-            ) : (
-              filteredHistory.map(item => (
-                <div
-                  key={item.id}
-                  className="p-5 rounded-3xl bg-slate-900/90 border border-slate-800 space-y-4"
-                >
-                  <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
-                    <div className="flex items-center gap-2 text-xs">
-                      <span className="font-bold text-white">{item.groupName}</span>
-                      <span className="text-slate-500 font-mono text-[10px]">{item.createdAt}</span>
-                    </div>
-
-                    <span
-                      className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold border ${
-                        item.status === 'Aprovada'
-                          ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
-                          : item.status === 'Pendente'
-                          ? 'bg-amber-500/20 text-amber-300 border-amber-500/30'
-                          : 'bg-rose-500/20 text-rose-300 border-rose-500/30'
-                      }`}
-                    >
-                      {item.status}
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-slate-500 block uppercase">Original Capturado</span>
-                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 font-mono text-slate-300 line-clamp-3">
-                        {item.rawContent}
-                      </div>
-                    </div>
-
-                    <div className="space-y-1">
-                      <span className="text-[10px] font-bold text-emerald-400 block uppercase">Texto Convertido Final</span>
-                      <div className="p-3 rounded-xl bg-slate-950 border border-slate-800/80 font-mono text-slate-200 line-clamp-3">
-                        {item.finalText || '[Falha na extração]'}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              ))
-            )}
-          </div>
+      <section className={`${card} p-5`}>
+        <div className="mb-5 flex items-center gap-2"><Plus className="h-4 w-4" /><h2 className="text-sm font-medium">Ativar novo monitor</h2></div>
+        <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr_auto] lg:items-end">
+          <label className="space-y-2 text-xs text-[#6B6F7B]">WhatsApp
+            <select value={connectionId} onChange={(event) => setConnectionId(event.target.value)} className="block w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2.5 text-sm text-white">
+              <option value="">Selecione uma conexão</option>
+              {connections.map((item) => <option key={item.id} value={item.id}>{item.label} — {item.status === 'connected' ? 'conectado' : item.status}</option>)}
+            </select>
+          </label>
+          <label className="space-y-2 text-xs text-[#6B6F7B]">Grupo real
+            <select value={groupId} onChange={(event) => setGroupId(event.target.value)} disabled={!connectionId} className="block w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2.5 text-sm text-white disabled:opacity-50">
+              <option value="">{availableGroups.length ? 'Selecione um grupo' : 'Nenhum grupo disponível'}</option>
+              {availableGroups.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.participantsCount})</option>)}
+            </select>
+          </label>
+          <button disabled={!groupId || saving} onClick={() => void createMonitor()} className="rounded-lg bg-[#EDEDED] px-4 py-2.5 text-sm font-medium text-[#111] disabled:cursor-not-allowed disabled:opacity-40">
+            {saving ? 'Ativando…' : 'Ativar monitor'}
+          </button>
         </div>
-      )}
+        {connectionId && groups.length === 0 && <p className="mt-4 text-xs text-[#9CA3AF]">Nenhum grupo sincronizado nesta conexão. Sincronize os grupos na tela de Integrações.</p>}
+      </section>
 
-      {/* ==================================================================== */}
-      {/* MODAL: ADICIONAR GRUPO                                              */}
-      {/* ==================================================================== */}
-      {isAddGroupOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h2 className="text-base font-bold text-white flex items-center gap-2">
-                <Plus className="w-5 h-5 text-emerald-400" />
-                Adicionar Grupo Monitorado
-              </h2>
-              <button onClick={() => setIsAddGroupOpen(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
+      <section className={card}>
+        <div className="border-b border-[#E8E9ED] px-5 py-4"><h2 className="text-sm font-medium">Grupos monitorados</h2></div>
+        {loading ? <p className="p-6 text-sm text-[#9CA3AF]">Carregando…</p> : monitors.length === 0 ? (
+          <div className="p-8 text-center"><MessageSquare className="mx-auto mb-3 h-6 w-6 text-[#6B6F7B]" /><p className="text-sm text-[#6B6F7B]">Nenhum grupo monitorado.</p><p className="mt-1 text-xs text-[#9CA3AF]">Selecione uma conexão e um grupo real acima.</p></div>
+        ) : (
+          <div className="overflow-x-auto"><table className="w-full text-left text-sm"><thead className="text-xs text-[#9CA3AF]"><tr className="border-b border-[#E8E9ED]"><th className="px-5 py-3 font-medium">Grupo</th><th className="px-5 py-3 font-medium">WhatsApp</th><th className="px-5 py-3 font-medium">Status</th><th className="px-5 py-3 font-medium">Última captura</th><th className="px-5 py-3 text-right font-medium">Ações</th></tr></thead>
+          <tbody>{monitors.map((monitor) => <tr key={monitor.id} className="border-b border-[#ECECEF] last:border-0"><td className="px-5 py-4 font-medium">{monitor.groupName}</td><td className="px-5 py-4 text-[#6B6F7B]">{monitor.connectionLabel}</td><td className="px-5 py-4"><span className={`rounded-full border px-2 py-1 text-xs ${monitor.enabled ? 'border-emerald-900 bg-emerald-950/30 text-emerald-600' : 'border-[#D4D4D8] text-[#6B6F7B]'}`}>{monitor.enabled ? 'Ativo' : 'Pausado'}</span></td><td className="px-5 py-4 text-[#9CA3AF]">{monitor.lastActivityAt ? dateTime(monitor.lastActivityAt) : 'Sem capturas'}</td><td className="px-5 py-4"><div className="flex justify-end gap-1"><button title={monitor.enabled ? 'Pausar' : 'Reativar'} onClick={() => void toggle(monitor)} className="rounded-md p-2 text-[#6B6F7B] hover:bg-[#F4F4F6] hover:text-[#0F172A]">{monitor.enabled ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}</button><button title="Remover" onClick={() => void remove(monitor)} className="rounded-md p-2 text-[#6B6F7B] hover:bg-red-950/30 hover:text-red-300"><Trash2 className="h-4 w-4" /></button></div></td></tr>)}</tbody></table></div>
+        )}
+      </section>
 
-            <form onSubmit={handleAddGroupSubmit} className="space-y-4 text-xs">
-              <div>
-                <label className="text-slate-300 block mb-1 font-semibold">Nome do Grupo *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: Promoções Tech Telegram"
-                  value={newGroupName}
-                  onChange={e => setNewGroupName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-300 block mb-1 font-semibold">Link ou ID do Grupo *</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: https://t.me/meugrupo ou link do WhatsApp"
-                  value={newGroupUrl}
-                  onChange={e => setNewGroupUrl(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white font-mono focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-300 block mb-1 font-semibold">Plataforma</label>
-                  <select
-                    value={newGroupPlatform}
-                    onChange={e => setNewGroupPlatform(e.target.value as any)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none"
-                  >
-                    <option value="Telegram">Telegram</option>
-                    <option value="WhatsApp">WhatsApp</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-slate-300 block mb-1 font-semibold">Loja Vinculada</label>
-                  <select
-                    value={newGroupStore}
-                    onChange={e => setNewGroupStore(e.target.value)}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2.5 text-white focus:outline-none"
-                  >
-                    <option value="Todas as Lojas">Todas as Lojas (Auto)</option>
-                    <option value="Amazon">Amazon</option>
-                    <option value="Mercado Livre">Mercado Livre</option>
-                    <option value="Shopee">Shopee</option>
-                    <option value="AliExpress">AliExpress</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="text-slate-300 block mb-1 font-semibold">Limiar para Aprovação Autopiloto (Confiança IA)</label>
-                <input
-                  type="range"
-                  min="0.5"
-                  max="0.95"
-                  step="0.05"
-                  value={newGroupConfidence}
-                  onChange={e => setNewGroupConfidence(parseFloat(e.target.value))}
-                  className="w-full accent-indigo-500"
-                />
-                <span className="text-[10px] text-slate-400 font-mono block text-right">
-                  Exigir {Math.round(newGroupConfidence * 100)}% de confiança para auto-publicar
-                </span>
-              </div>
-
-              <div className="pt-3 flex justify-end gap-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsAddGroupOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-md"
-                >
-                  Salvar Grupo
-                </button>
-              </div>
-            </form>
-          </div>
+      <section className={card}>
+        <div className="flex flex-col gap-3 border-b border-[#E8E9ED] px-5 py-4 sm:flex-row sm:items-center sm:justify-between"><div><h2 className="text-sm font-medium">Capturas recentes</h2><p className="mt-1 text-xs text-[#9CA3AF]">Mais recentes primeiro · atualização automática</p></div>
+          <div className="flex flex-wrap items-center justify-end gap-2"><label className="relative text-xs text-[#9CA3AF]"><select value={filterConnectionId} onChange={(event) => setFilterConnectionId(event.target.value)} className="appearance-none rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] py-2 pl-3 pr-9 text-sm text-[#D4D4D8]"><option value="">Todos os WhatsApps</option>{connections.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}</select><ChevronDown className="pointer-events-none absolute right-3 top-2.5 h-4 w-4" /></label><button type="button" onClick={() => void clearCaptureHistory()} disabled={clearingHistory} className="flex items-center gap-1.5 rounded-lg border border-red-900/70 px-3 py-2 text-xs text-red-300 hover:bg-red-950/30 disabled:cursor-wait disabled:opacity-50"><Trash2 className="h-3.5 w-3.5" />{clearingHistory ? 'Apagando…' : 'Apagar histórico'}</button></div>
         </div>
-      )}
-
-      {/* ==================================================================== */}
-      {/* MODAL: SIMULADOR DE CAPTURA AO VIVO                                  */}
-      {/* ==================================================================== */}
-      {isSimulatorOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
-          <div className="w-full max-w-xl rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-amber-400" />
-                <h2 className="text-base font-bold text-white">Simulador de Captura de Oferta em Tempo Real</h2>
-              </div>
-              <button onClick={() => setIsSimulatorOpen(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="space-y-4 text-xs">
-              <div>
-                <label className="text-slate-300 block mb-1 font-semibold">Grupo de Origem</label>
-                <select
-                  value={simGroupId}
-                  onChange={e => setSimGroupId(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white focus:outline-none"
-                >
-                  {monitoredGroups.map(g => (
-                    <option key={g.id} value={g.id}>
-                      {g.name} ({g.platform})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label className="text-slate-300 block mb-1 font-semibold">Cole a Mensagem Bruta Capturada</label>
-                <textarea
-                  rows={4}
-                  value={simRawText}
-                  onChange={e => setSimRawText(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-2xl p-3 text-xs font-mono text-slate-200 focus:outline-none leading-relaxed"
-                />
-              </div>
-
-              <div className="pt-3 flex justify-end gap-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setIsSimulatorOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-semibold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="button"
-                  onClick={handleRunSimulation}
-                  disabled={isProcessingSim}
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-md flex items-center gap-2"
-                >
-                  {isProcessingSim ? 'Extraindo via IA...' : '⚡ Processar com IA'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* ==================================================================== */}
-      {/* MODAL: REGRAS DO GRUPO                                               */}
-      {/* ==================================================================== */}
-      {activeRulesGroup && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/85 backdrop-blur-md">
-          <div className="w-full max-w-lg rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-5 animate-in fade-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <div className="flex items-center gap-2">
-                <Sliders className="w-5 h-5 text-indigo-400" />
-                <h2 className="text-base font-bold text-white">Regras de {activeRulesGroup.name}</h2>
-              </div>
-              <button onClick={() => setActiveRulesGroup(null)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveRules} className="space-y-4 text-xs">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-slate-300 block mb-1 font-semibold">Preço Mínimo (R$)</label>
-                  <input
-                    type="number"
-                    value={editingRules.minPrice || 0}
-                    onChange={e => setEditingRules({ ...editingRules, minPrice: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-slate-300 block mb-1 font-semibold">Limite por Hora</label>
-                  <input
-                    type="number"
-                    value={editingRules.maxPerHour || 30}
-                    onChange={e => setEditingRules({ ...editingRules, maxPerHour: parseInt(e.target.value) || 30 })}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-white"
-                  />
-                </div>
-              </div>
-
-              <div className="flex items-center gap-6 pt-2">
-                <label className="flex items-center gap-2 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={editingRules.enableOCR}
-                    onChange={e => setEditingRules({ ...editingRules, enableOCR: e.target.checked })}
-                    className="rounded bg-slate-950 border-slate-800 text-indigo-600 focus:ring-0"
-                  />
-                  <span className="text-slate-300 font-semibold">Ativar Leitura OCR em Imagens</span>
-                </label>
-              </div>
-
-              <div className="pt-3 flex justify-end gap-3 border-t border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setActiveRulesGroup(null)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-semibold"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-md"
-                >
-                  Salvar Regras
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+        {captures.length === 0 ? <div className="p-10 text-center"><MessageSquare className="mx-auto mb-3 h-6 w-6 text-[#6B6F7B]" /><p className="text-sm text-[#6B6F7B]">Nenhuma mensagem capturada.</p><p className="mt-1 text-xs text-[#9CA3AF]">Ative um monitor e aguarde uma mensagem enviada por outro participante.</p></div> : (
+          <div className="divide-y divide-[#ECECEF]">{captures.map((capture) => {
+            const source = capture.sources[0];
+            return <article key={capture.id} className="px-5 py-4"><div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between"><div className="min-w-0 flex-1"><div className="mb-2 flex flex-wrap items-center gap-2 text-xs"><span className="font-medium text-[#D4D4D8]">{source?.groupName ?? capture.externalGroupId}</span><ChevronRight className="h-3 w-3 text-[#6B6F7B]" /><span className="text-[#6B6F7B]">{source?.connectionLabel ?? 'WhatsApp'}</span><span className="rounded border border-[#E8E9ED] px-1.5 py-0.5 text-[#6B6F7B]">{typeLabel(capture.messageType)}</span>{capture.sources.length > 1 && <span className="text-[#9CA3AF]">{capture.sources.length} origens</span>}</div><p className="line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-[#D4D4D8]">{excerpt(capture.rawContent)}</p>{capture.links.length > 0 && <div className="mt-2 flex items-center gap-1.5 text-xs text-[#6B6F7B]"><Link2 className="h-3.5 w-3.5" /> {capture.links.length} {capture.links.length === 1 ? 'link' : 'links'}</div>}<AnalysisPanel capture={capture} reprocessing={reprocessingId === capture.id} reviewing={reviewingId === capture.id} onReprocess={() => void reprocess(capture.id)} onApprove={() => void review(capture.id, 'approved')} onReject={() => void review(capture.id, 'rejected')} /></div><div className="shrink-0 text-xs text-[#9CA3AF]"><div>Mensagem capturada</div><time>{dateTime(capture.sentAt)}</time></div></div></article>;
+          })}</div>
+        )}
+        {nextCursor && <div className="border-t border-[#E8E9ED] p-4 text-center"><button onClick={() => void loadCaptures(true, nextCursor)} className="rounded-lg border border-[#E8E9ED] px-4 py-2 text-sm text-[#6B6F7B] hover:text-[#0F172A]">Carregar mais</button></div>}
+      </section>
     </div>
   );
 };

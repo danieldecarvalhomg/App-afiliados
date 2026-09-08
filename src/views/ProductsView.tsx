@@ -1,496 +1,816 @@
-import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { Product, MarketplaceType } from '../types';
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  ShoppingBag,
-  Plus,
-  Search,
-  Filter,
-  Flame,
-  Star,
-  Copy,
-  Check,
-  Send,
-  Wand2,
-  Trash2,
-  Bookmark,
-  ExternalLink,
   AlertTriangle,
+  ArrowLeft,
+  Check,
+  Copy,
+  ExternalLink,
+  Link2,
+  LoaderCircle,
+  MessageSquareText,
+  PackageSearch,
+  Plus,
+  RotateCcw,
+  Save,
+  Send,
+  Settings,
+  ShoppingBag,
   Sparkles,
-  X,
+  Smartphone,
   Tag,
-  DollarSign,
-  Globe,
-  Layers
-} from 'lucide-react';
+  Trash2,
+} from "lucide-react";
+import type {
+  AffiliatePlatform,
+  ProductSourceType,
+} from "../domain/affiliate/types";
+import type { CtaGeneration } from "../domain/cta/types";
+import type {
+  ManualProductInput,
+  ProductRecord,
+} from "../domain/products/types";
+import { reusableSentCtas } from "../domain/products/ReusableProductCtas";
+import { ctaApi } from "../services/ctaApi";
+import { dispatchApi, dispatchNavigation } from "../services/dispatchApi";
+import { productsApi, productsNavigation } from "../services/productsApi";
+import { MarketplaceRadarView } from "./MarketplaceRadarView";
+import { ProductMediaPanel } from "../components/products/ProductMediaPanel";
+import { useApp } from "../context/AppContext";
+import { integrationsNavigation } from "../services/whatsappApi";
+
+const marketplaceLabels: Record<string, string> = {
+  shopee: "Shopee",
+  amazon: "Amazon",
+  mercado_livre: "Mercado Livre",
+  magalu: "Magalu",
+  aliexpress: "AliExpress",
+  other: "Outro",
+  unsupported: "Não suportado",
+  unknown: "Não informado",
+};
+const originLabels: Record<ProductSourceType, string> = {
+  whatsapp: "WhatsApp",
+  marketplace_radar: "Radar",
+  manual: "Manual",
+};
+const retryable = new Set(["resolution_failed", "conversion_failed", "awaiting_companion"]);
+function canRetryAffiliate(product: Pick<ProductRecord, "affiliateStatus" | "marketplace">): boolean {
+  return retryable.has(product.affiliateStatus)
+    || (product.affiliateStatus === "invalid_url" && product.marketplace === "mercado_livre");
+}
+const emptyForm: ManualProductInput = {
+  title: "",
+  marketplace: "unknown",
+  price: null,
+  originalPrice: null,
+  couponCode: "",
+  couponDescription: "",
+  couponLink: "",
+  freeShipping: null,
+  sourceUrl: "",
+  imageUrl: "",
+  category: "",
+  observations: "",
+};
+function readShareTarget(): { title: string; url: string } | null {
+  if (typeof window === "undefined") return null;
+  const params = new URLSearchParams(window.location.search);
+  const title = (params.get("title") ?? "").trim();
+  const directUrl = (params.get("url") ?? "").trim();
+  const text = params.get("text") ?? "";
+  const url = directUrl || text.match(/https?:\/\/[^\s]+/i)?.[0]?.replace(/[),.;]+$/u, "") || "";
+  return url ? { title, url } : null;
+}
+function marketplaceFromUrl(url: string): ManualProductInput["marketplace"] {
+  if (/mercadolivre\.com\.br|meli\.la/i.test(url)) return "mercado_livre";
+  if (/shopee\.com\.br/i.test(url)) return "shopee";
+  if (/amazon\.com\.br|amzn\.to/i.test(url)) return "amazon";
+  return "unknown";
+}
+function money(value: number | null) {
+  return value == null
+    ? "—"
+    : value.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+function statusText(
+  status: ProductRecord["affiliateStatus"],
+  marketplace: ProductRecord["marketplace"] = "unknown",
+) {
+  if (status === "invalid_url" && marketplace === "mercado_livre") {
+    return "Link de origem inválido — pronto para validação automática";
+  }
+  return (
+    (
+      {
+        pending_url: "Sem link do produto",
+        pending: "Conversão pendente",
+        resolving: "Resolvendo link...",
+        resolved: "Link resolvido",
+        converting: "Convertendo...",
+        awaiting_companion: marketplace === "mercado_livre" ? "Aguardando conversão na nuvem" : "Aguardando extensão AfiliHub",
+        converted: "Link afiliado convertido",
+        invalid_url: "Link de origem inválido — use a página do produto",
+        resolution_failed: "Falha ao resolver link",
+        conversion_failed: "Falha ao converter link",
+        unsupported_platform: "Marketplace ainda não suportado",
+        affiliate_account_not_configured: `${marketplaceLabels[marketplace] ?? "Marketplace"} não configurado`,
+      } as Record<string, string>
+    )[status] ?? status
+  );
+}
 
 export const ProductsView: React.FC = () => {
-  const {
-    products,
-    addProduct,
-    updateProduct,
-    deleteProduct,
-    toggleFavoriteProduct,
-    addQueueItem,
-    setActiveTab,
-    extractOfferFromUrl,
-    clearMockData,
-    convertAffiliateUrl
-  } = useApp();
+  const { setActiveTab } = useApp();
+  const sharedTarget = useMemo(() => readShareTarget(), []);
+  const [page, setPage] = useState<"list" | "create">(() =>
+    productsNavigation.consume() === "create" || Boolean(readShareTarget()) ? "create" : "list",
+  );
+  const [section, setSection] = useState<"products" | "radar">("radar");
+  const [products, setProducts] = useState<ProductRecord[]>([]);
+  const [reusableCtas, setReusableCtas] = useState<Map<string, CtaGeneration>>(
+    () => new Map(),
+  );
+  const [origin, setOrigin] = useState<"all" | ProductSourceType>("all");
+  const [form, setForm] = useState<ManualProductInput>(() => sharedTarget ? {
+    ...emptyForm,
+    title: sharedTarget.title,
+    sourceUrl: sharedTarget.url,
+    marketplace: marketplaceFromUrl(sharedTarget.url),
+  } : emptyForm);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [retrying, setRetrying] = useState<string | null>(null);
+  const [preparingOriginal, setPreparingOriginal] = useState<string | null>(
+    null,
+  );
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const [copied, setCopied] = useState<string | null>(null);
+  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [mobileAffiliateProductId, setMobileAffiliateProductId] = useState<string | null>(null);
+  const [mobileAffiliateUrl, setMobileAffiliateUrl] = useState("");
+  const [mobileAttaching, setMobileAttaching] = useState(false);
 
-  const [searchQuery, setSearchQuery] = useState('');
-  const [filterTab, setFilterTab] = useState<'todos' | 'ativos' | 'pausados' | 'quebrados' | 'favoritos'>('todos');
-  const [selectedMarketplace, setSelectedMarketplace] = useState<string>('todos');
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [copiedId, setCopiedId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!sharedTarget || typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    ["title", "text", "url"].forEach((key) => url.searchParams.delete(key));
+    window.history.replaceState({}, "", `${url.pathname}${url.search}${url.hash}`);
+  }, [sharedTarget]);
 
-  // New Product Form State
-  const [urlInput, setUrlInput] = useState('');
-  const [isExtracting, setIsExtracting] = useState(false);
-  const [formData, setFormData] = useState<Partial<Product>>({
-    title: '',
-    originalPrice: 299.90,
-    price: 199.90,
-    discountPercent: 33,
-    category: 'Eletrônicos',
-    marketplace: 'Amazon',
-    rawUrl: '',
-    affiliateUrl: '',
-    couponCode: '',
-    image: 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
-  });
-
-  const handleExtractUrl = async () => {
-    if (!urlInput.trim()) return;
-    setIsExtracting(true);
+  async function load() {
+    setLoading(true);
+    setError(null);
     try {
-      const extracted = await extractOfferFromUrl(urlInput);
-      const marketplaceName = extracted.marketplace || 'Amazon';
-      const convertedLink = convertAffiliateUrl(urlInput, marketplaceName);
-
-      setFormData(prev => ({
-        ...prev,
-        title: extracted.productName || prev.title,
-        price: extracted.price || prev.price,
-        originalPrice: extracted.originalPrice || prev.originalPrice,
-        discountPercent: extracted.discountPercent || prev.discountPercent,
-        marketplace: (marketplaceName as MarketplaceType),
-        category: extracted.category || prev.category,
-        couponCode: extracted.suggestedCoupon || prev.couponCode,
-        rawUrl: urlInput,
-        affiliateUrl: convertedLink,
-      }));
-    } catch (e) {
-      console.error(e);
+      const [listedProducts, generations, completedItems] = await Promise.all([
+        productsApi.list(),
+        ctaApi.history(),
+        dispatchApi.listQueue("completed"),
+      ]);
+      setProducts(listedProducts);
+      setReusableCtas(reusableSentCtas(generations, completedItems));
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Falha ao carregar produtos.",
+      );
     } finally {
-      setIsExtracting(false);
+      setLoading(false);
     }
-  };
+  }
+  useEffect(() => {
+    void load();
+  }, []);
+  useEffect(() => {
+    let disposed = false;
+    let running = false;
+    let timer: number | null = null;
+    const poll = async () => {
+      if (disposed || document.visibilityState === "hidden" || running) return;
+      running = true;
+      try {
+        const latest = await productsApi.list();
+        if (!disposed) setProducts(latest);
+      } catch {
+        // A transient poll failure must not erase the last known phase or
+        // replace a useful foreground error from the initial load.
+      } finally {
+        running = false;
+        if (!disposed) timer = window.setTimeout(() => void poll(), 3000);
+      }
+    };
+    const scheduleNow = () => {
+      if (disposed || document.visibilityState === "hidden") return;
+      if (timer !== null) window.clearTimeout(timer);
+      timer = window.setTimeout(() => void poll(), 0);
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") scheduleNow();
+    };
+    window.addEventListener("focus", scheduleNow);
+    document.addEventListener("visibilitychange", onVisibilityChange);
+    timer = window.setTimeout(() => void poll(), 3000);
+    return () => {
+      disposed = true;
+      if (timer !== null) window.clearTimeout(timer);
+      window.removeEventListener("focus", scheduleNow);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
+  }, []);
+  const visible = useMemo(
+    () =>
+      origin === "all"
+        ? products
+        : products.filter((item) => item.sourceType === origin),
+    [products, origin],
+  );
 
-  const handleSaveProduct = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!formData.title) return;
-    addProduct(formData);
-    setIsAddModalOpen(false);
-    // Reset
-    setUrlInput('');
-    setFormData({
-      title: '',
-      originalPrice: 299.90,
-      price: 199.90,
-      discountPercent: 33,
-      category: 'Eletrônicos',
-      marketplace: 'Amazon',
-      rawUrl: '',
-      affiliateUrl: '',
-      couponCode: '',
-      image: 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
-    });
-  };
-
-  const handleCopyLink = (prod: Product) => {
-    navigator.clipboard.writeText(prod.affiliateUrl);
-    setCopiedId(prod.id);
-    setTimeout(() => setCopiedId(null), 2000);
-  };
-
-  // Filter logic
-  const filteredProducts = products.filter(p => {
-    if (filterTab === 'ativos' && p.status !== 'ativo') return false;
-    if (filterTab === 'pausados' && p.status !== 'pausado') return false;
-    if (filterTab === 'quebrados' && p.status !== 'link_quebrado') return false;
-    if (filterTab === 'favoritos' && !p.isFavorite) return false;
-
-    if (selectedMarketplace !== 'todos' && p.marketplace !== selectedMarketplace) return false;
-
-    if (searchQuery.trim() !== '') {
-      const q = searchQuery.toLowerCase();
-      return p.title.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || p.marketplace.toLowerCase().includes(q);
+  async function saveProduct(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      const created = await productsApi.createManual(form);
+      if (imageFile) await productsApi.uploadMedia(created.id, imageFile);
+      setProducts((current) => [created, ...current]);
+      setImageFile(null);
+      setForm(emptyForm);
+      setNotice(
+        created.sourceUrl
+          ? "Produto salvo. A conversão do link foi iniciada."
+          : "Produto salvo sem link.",
+      );
+      setSection("products");
+      setPage("list");
+      setTimeout(() => void load(), 2500);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Falha ao salvar produto.",
+      );
+    } finally {
+      setSaving(false);
     }
+  }
+  async function retry(product: ProductRecord) {
+    setRetrying(product.id);
+    setError(null);
+    try {
+      await productsApi.retryAffiliate(product.id);
+      setNotice("Nova tentativa agendada.");
+      setTimeout(() => void load(), 2500);
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Falha ao reprocessar link.",
+      );
+    } finally {
+      setRetrying(null);
+    }
+  }
+  async function attachMobileAffiliate(product: ProductRecord) {
+    setMobileAttaching(true);
+    setError(null);
+    try {
+      const updated = await productsApi.completeAffiliate(product.id, mobileAffiliateUrl.trim());
+      setProducts((current) => current.map((item) => item.id === updated.id ? updated : item));
+      setMobileAffiliateProductId(null);
+      setMobileAffiliateUrl("");
+      setNotice("Link afiliado salvo. O produto já pode ser usado nas mensagens e filas.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Falha ao salvar o link afiliado.");
+    } finally {
+      setMobileAttaching(false);
+    }
+  }
+  async function removeProduct(product: ProductRecord) {
+    const confirmed = window.confirm(
+      `Excluir "${product.title}" de Meus Produtos?\n\nO produto não será mais usado em novas CTAs ou automações. CTAs, itens de fila e envios já registrados continuarão no histórico.`,
+    );
+    if (!confirmed) return;
+    setDeleting(product.id);
+    setError(null);
+    setNotice(null);
+    try {
+      await productsApi.delete(product.id);
+      setProducts((current) =>
+        current.filter((item) => item.id !== product.id),
+      );
+      setReusableCtas((current) => {
+        const next = new Map(current);
+        next.delete(product.id);
+        return next;
+      });
+      setNotice(
+        "Produto excluído de Meus Produtos. O histórico de envios foi preservado.",
+      );
+    } catch (cause) {
+      setError(
+        cause instanceof Error ? cause.message : "Falha ao excluir produto.",
+      );
+    } finally {
+      setDeleting(null);
+    }
+  }
+  async function copy(url: string, id: string) {
+    await navigator.clipboard.writeText(url);
+    setCopied(id);
+    setTimeout(() => setCopied(null), 1500);
+  }
+  function openCta(productId: string) {
+    productsNavigation.openMessageComposer(productId);
+    setActiveTab("mensagens");
+  }
+  function sendSavedCta(productId: string) {
+    const generation = reusableCtas.get(productId);
+    if (!generation) return;
+    dispatchNavigation.openQueueComposer(generation.id);
+    setActiveTab("filas");
+  }
+  async function sendOriginalMessage(productId: string) {
+    setPreparingOriginal(productId);
+    setError(null);
+    setNotice(null);
+    try {
+      const generation = await ctaApi.originalMessage(productId);
+      dispatchNavigation.openQueueComposer(generation.id);
+      setActiveTab("filas");
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : "Não foi possível preparar a mensagem original.",
+      );
+    } finally {
+      setPreparingOriginal(null);
+    }
+  }
+  function openShopeeIntegration() {
+    integrationsNavigation.openShopee();
+    setActiveTab("integracoes");
+  }
 
-    return true;
-  });
+  if (page === "create")
+    return (
+      <div className="mx-auto max-w-4xl space-y-6 pb-12">
+        <button
+          onClick={() => setPage("list")}
+          className="flex items-center gap-2 text-sm text-[#6B6F7B] hover:text-[#0F172A]"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Voltar para Produtos
+        </button>
+        <div>
+          <h1 className="text-2xl font-bold">Cadastrar produto</h1>
+          <p className="mt-1 text-sm text-[#6B6F7B]">
+            Cadastro manual. O link, quando informado, passa pela infraestrutura
+            afiliada real.
+          </p>
+        </div>
+        {error && (
+          <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+            {error}
+          </div>
+        )}
+        <form
+          onSubmit={saveProduct}
+          className="space-y-5 rounded-xl border border-[#E8E9ED] bg-[#FFFFFF] p-6"
+        >
+          <label className="block text-sm text-[#D4D4D8]">
+            Nome do produto *
+            <input
+              required
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+              className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2"
+            />
+          </label>
+          <div className="grid gap-4 sm:grid-cols-3">
+            <label className="text-sm text-[#D4D4D8]">
+              Marketplace
+              <select
+                value={form.marketplace}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    marketplace: e.target.value as
+                      | AffiliatePlatform
+                      | "unknown",
+                  })
+                }
+                className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2"
+              >
+                <option value="unknown">Não informado</option>
+                <option value="shopee">Shopee</option>
+                <option value="amazon">Amazon</option>
+                <option value="mercado_livre">Mercado Livre</option>
+                <option value="magalu">Magalu</option>
+                <option value="aliexpress">AliExpress</option>
+                <option value="other">Outro</option>
+              </select>
+            </label>
+            <label className="text-sm text-[#D4D4D8]">
+              Preço
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.price ?? ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    price: e.target.value ? Number(e.target.value) : null,
+                  })
+                }
+                className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2"
+              />
+            </label>
+            <label className="text-sm text-[#D4D4D8]">
+              Preço anterior
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={form.originalPrice ?? ""}
+                onChange={(e) =>
+                  setForm({
+                    ...form,
+                    originalPrice: e.target.value
+                      ? Number(e.target.value)
+                      : null,
+                  })
+                }
+                className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2"
+              />
+            </label>
+          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="text-sm text-[#D4D4D8]">
+              Cupom
+              <input
+                value={form.couponCode ?? ""}
+                onChange={(e) =>
+                  setForm({ ...form, couponCode: e.target.value })
+                }
+                className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2"
+              />
+            </label>
+            <label className="text-sm text-[#D4D4D8]">
+              Descrição do cupom
+              <input
+                value={form.couponDescription ?? ""}
+                onChange={(e) =>
+                  setForm({ ...form, couponDescription: e.target.value })
+                }
+                className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2"
+              />
+            </label>
+          </div>
+          <label className="block text-sm text-[#D4D4D8]">
+            Link do cupom
+            <input
+              type="url"
+              value={form.couponLink ?? ""}
+              onChange={(e) => setForm({ ...form, couponLink: e.target.value })}
+              placeholder="https://..."
+              className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2"
+            />
+            <span className="mt-1 block text-xs text-[#9CA3AF]">Fato independente do link afiliado do produto.</span>
+          </label>
+          <label className="flex items-center gap-2 text-sm text-[#D4D4D8]">
+            <input
+              type="checkbox"
+              checked={form.freeShipping === true}
+              onChange={(e) =>
+                setForm({ ...form, freeShipping: e.target.checked })
+              }
+            />
+            Frete grátis
+          </label>
+          <label className="block text-sm text-[#D4D4D8]">
+            Link do produto
+            <input
+              type="url"
+              value={form.sourceUrl ?? ""}
+              onChange={(e) => setForm({ ...form, sourceUrl: e.target.value })}
+              placeholder="https://..."
+              className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2"
+            />
+            <span className="mt-1 block text-xs text-[#9CA3AF]">
+              O link original será preservado; ele nunca será usado como link
+              afiliado em caso de falha.
+            </span>
+          </label>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="text-sm text-[#D4D4D8]">
+              Imagem do produto
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
+                className="mt-1.5 block w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2 text-xs"
+              />
+              <span className="mt-1 block text-xs text-[#9CA3AF]">
+                Opcional. JPEG, PNG ou WEBP, até 8 MB.
+              </span>
+            </label>
+            <label className="text-sm text-[#D4D4D8]">
+              Categoria
+              <input
+                value={form.category ?? ""}
+                onChange={(e) => setForm({ ...form, category: e.target.value })}
+                className="mt-1.5 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2"
+              />
+            </label>
+          </div>
+          <label className="block text-sm text-[#D4D4D8]">
+            Observações
+            <textarea
+              value={form.observations ?? ""}
+              onChange={(e) =>
+                setForm({ ...form, observations: e.target.value })
+              }
+              className="mt-1.5 min-h-24 w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2"
+            />
+          </label>
+          <div className="flex justify-end">
+            <button
+              disabled={saving}
+              className="flex items-center gap-2 rounded-lg bg-[#EDEDED] px-4 py-2 text-sm font-medium text-[#111] disabled:opacity-50"
+            >
+              {saving ? (
+                <LoaderCircle className="h-4 w-4 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4" />
+              )}
+              Salvar produto
+            </button>
+          </div>
+        </form>
+      </div>
+    );
+
+  if (section === "radar")
+    return (
+      <div className="space-y-6 pb-12">
+        <div className="flex gap-2 border-b border-[#E8E9ED]">
+          <button className="border-b-2 border-white px-4 py-3 text-sm font-medium">
+            Radar de Ofertas
+          </button>
+          <button
+            onClick={() => setSection("products")}
+            className="px-4 py-3 text-sm text-[#6B6F7B]"
+          >
+            Meus Produtos
+          </button>
+        </div>
+        <MarketplaceRadarView
+          onConfigureShopee={openShopeeIntegration}
+          onCreateManual={() => setPage("create")}
+          onPrepared={(product) => {
+            setProducts((current) => [
+              product,
+              ...current.filter((item) => item.id !== product.id),
+            ]);
+            setOrigin("marketplace_radar");
+            setNotice(
+              "Produto preparado. Acompanhe a conversão e siga para o CTA quando estiver pronto.",
+            );
+            setSection("products");
+            setTimeout(() => void load(), 2500);
+          }}
+        />
+      </div>
+    );
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Header Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2.5">
-            <ShoppingBag className="w-6 h-6 text-indigo-400" />
-            Catálogo de Produtos & Ofertas
-          </h1>
-          <p className="text-xs text-slate-400">
-            Gerencie seu acervo de ofertas, converta links e envie direto para as filas de disparo.
-          </p>
-        </div>
-
+      <div className="flex gap-2 border-b border-[#E8E9ED]">
         <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-600 via-purple-600 to-emerald-600 hover:from-indigo-500 hover:to-emerald-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 transition-all flex items-center gap-2 hover:scale-[1.02]"
+          onClick={() => setSection("radar")}
+          className="px-4 py-3 text-sm text-[#6B6F7B] hover:text-[#0F172A]"
         >
-          <Plus className="w-4 h-4" />
-          Adicionar Nova Oferta
+          Radar de Ofertas
+        </button>
+        <button className="border-b-2 border-white px-4 py-3 text-sm font-medium">
+          Meus Produtos
         </button>
       </div>
-
-      {/* Filter Tabs & Search Controls */}
-      <div className="p-4 rounded-2xl bg-slate-900/90 border border-slate-800/80 shadow-xl space-y-4">
-        <div className="flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-4">
-          {/* Tabs */}
-          <div className="flex items-center gap-1 overflow-x-auto p-1 rounded-xl bg-slate-950 border border-slate-800 scrollbar-none">
-            {[
-              { id: 'todos', label: `Todos (${products.length})` },
-              { id: 'ativos', label: `Ativos (${products.filter(p => p.status === 'ativo').length})` },
-              { id: 'pausados', label: `Pausados (${products.filter(p => p.status === 'pausado').length})` },
-              { id: 'quebrados', label: `Links Quebrados (${products.filter(p => p.status === 'link_quebrado').length})` },
-              { id: 'favoritos', label: `Favoritos (${products.filter(p => p.isFavorite).length})` },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setFilterTab(tab.id as any)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition-all ${
-                  filterTab === tab.id
-                    ? 'bg-indigo-600 text-white shadow-md'
-                    : 'text-slate-400 hover:text-white'
-                }`}
-              >
-                {tab.label}
-              </button>
-            ))}
-          </div>
-
-          {/* Search & Marketplace Select */}
-          <div className="flex items-center gap-3">
-            <div className="relative flex-1 sm:w-64">
-              <Search className="w-3.5 h-3.5 absolute left-3 top-3 text-slate-400" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Buscar por nome, categoria..."
-                className="w-full pl-9 pr-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-              />
-            </div>
-
-            <select
-              value={selectedMarketplace}
-              onChange={(e) => setSelectedMarketplace(e.target.value)}
-              className="px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-slate-300 focus:outline-none focus:border-indigo-500"
-            >
-              <option value="todos">Todos os Marketplaces</option>
-              <option value="Amazon">Amazon</option>
-              <option value="Mercado Livre">Mercado Livre</option>
-              <option value="Shopee">Shopee</option>
-              <option value="AliExpress">AliExpress</option>
-              <option value="Magalu">Magalu</option>
-            </select>
-          </div>
+      <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
+        <div>
+          <h1 className="text-2xl font-bold">Meus Produtos</h1>
+          <p className="mt-1 text-sm text-[#6B6F7B]">
+            Produtos do Monitor podem preservar a mensagem original e trocar
+            somente os links; itens já enviados também reutilizam a CTA salva.
+          </p>
         </div>
+        <button
+          onClick={() => setPage("create")}
+          className="flex items-center gap-2 rounded-lg bg-[#EDEDED] px-4 py-2 text-sm font-medium text-[#111]"
+        >
+          <Plus className="h-4 w-4" />
+          Cadastrar produto
+        </button>
       </div>
-
-      {/* Product Cards Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {filteredProducts.length === 0 ? (
-          <div className="col-span-full py-16 px-6 text-center space-y-4 bg-slate-900/40 rounded-3xl border border-slate-800/80">
-            <div className="w-14 h-14 rounded-3xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mx-auto border border-indigo-500/20">
-              <ShoppingBag className="w-7 h-7" />
-            </div>
-            <div className="space-y-1 max-w-md mx-auto">
-              <h3 className="text-base font-bold text-white">Nenhum produto no seu catálogo ainda</h3>
-              <p className="text-xs text-slate-400">
-                Cadastre o seu primeiro produto colando o link do marketplace ou preenchendo as informações.
-              </p>
-            </div>
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg shadow-indigo-600/30 inline-flex items-center gap-2"
+      {notice && (
+        <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-600">
+          {notice}
+        </div>
+      )}
+      {error && (
+        <div className="rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+          {error}
+        </div>
+      )}
+      <div className="flex items-center gap-3 rounded-xl border border-[#E8E9ED] bg-[#FFFFFF] p-4">
+        <label className="text-sm text-[#6B6F7B]">Origem</label>
+        <select
+          value={origin}
+          onChange={(e) => setOrigin(e.target.value as typeof origin)}
+          className="rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2 text-sm"
+        >
+          <option value="all">Todas</option>
+          <option value="whatsapp">WhatsApp</option>
+          <option value="marketplace_radar">Radar</option>
+          <option value="manual">Manual</option>
+        </select>
+      </div>
+      {loading ? (
+        <div className="flex items-center justify-center py-20 text-[#6B6F7B]">
+          <LoaderCircle className="mr-2 h-5 w-5 animate-spin" />
+          Carregando produtos...
+        </div>
+      ) : visible.length === 0 ? (
+        <div className="rounded-xl border border-[#E8E9ED] bg-[#FFFFFF] py-16 text-center">
+          <ShoppingBag className="mx-auto mb-3 h-8 w-8 text-[#9CA3AF]" />
+          <h2 className="font-semibold">Nenhum produto nesta origem</h2>
+          <p className="mt-1 text-sm text-[#6B6F7B]">
+            Produtos do Radar, WhatsApp e cadastro manual aparecerão aqui.
+          </p>
+        </div>
+      ) : (
+        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+          {visible.map((product) => (
+            <article
+              key={product.id}
+              className="flex flex-col justify-between rounded-xl border border-[#E8E9ED] bg-[#FFFFFF] p-5"
             >
-              <Plus className="w-4 h-4" />
-              Adicionar Primeira Oferta
-            </button>
-          </div>
-        ) : (
-          filteredProducts.map(prod => (
-            <div
-              key={prod.id}
-              className={`p-5 rounded-3xl bg-slate-900/90 border transition-all duration-300 flex flex-col justify-between space-y-4 group relative overflow-hidden ${
-                prod.status === 'link_quebrado'
-                  ? 'border-rose-500/40 shadow-rose-950/20'
-                  : 'border-slate-800/80 hover:border-indigo-500/40 hover:shadow-2xl'
-              }`}
-            >
-              {/* Card Header & Badges */}
               <div className="space-y-3">
-                <div className="relative h-44 rounded-2xl overflow-hidden bg-slate-950">
-                  <img
-                    src={prod.image}
-                    alt={prod.title}
-                    className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
-
-                  {/* Badges on top of image */}
-                  <div className="absolute top-3 left-3 flex items-center gap-2">
-                    <span className="px-2.5 py-1 rounded-lg text-[10px] font-bold bg-slate-950/80 backdrop-blur-md text-white border border-slate-700">
-                      {prod.marketplace}
+                <ProductMediaPanel product={product} />
+                <div className="flex flex-wrap gap-2 text-xs">
+                  <span className="rounded bg-[#F4F4F6] px-2 py-1">
+                    {originLabels[product.sourceType]}
+                  </span>
+                  <span className="rounded bg-[#F4F4F6] px-2 py-1">
+                    {marketplaceLabels[product.marketplace]}
+                  </span>
+                  {reusableCtas.has(product.id) && (
+                    <span className="inline-flex items-center gap-1 rounded bg-emerald-500/10 px-2 py-1 text-emerald-600">
+                      <Check className="h-3 w-3" />
+                      CTA validada e enviada
                     </span>
-                    {prod.discountPercent > 0 && (
-                      <span className="px-2 py-1 rounded-lg text-[10px] font-bold bg-emerald-500 text-slate-950 shadow-md">
-                        -{prod.discountPercent}% OFF
-                      </span>
-                    )}
-                  </div>
-
-                  <div className="absolute top-3 right-3 flex items-center gap-1.5">
-                    <button
-                      onClick={() => toggleFavoriteProduct(prod.id)}
-                      className={`p-2 rounded-xl backdrop-blur-md border transition-all ${
-                        prod.isFavorite
-                          ? 'bg-amber-500/20 text-amber-400 border-amber-500/40'
-                          : 'bg-slate-950/60 text-slate-400 border-slate-800 hover:text-white'
-                      }`}
-                    >
-                      <Bookmark className="w-3.5 h-3.5 fill-current" />
-                    </button>
-                  </div>
-
-                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between">
-                    <span className="px-2.5 py-0.5 rounded-md text-[10px] font-semibold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                      {prod.category}
-                    </span>
-                    <span className="flex items-center gap-1 text-[11px] font-bold text-amber-400">
-                      <Flame className="w-3.5 h-3.5" />
-                      {prod.hotScore} HotScore
-                    </span>
-                  </div>
-                </div>
-
-                {/* Title and Pricing */}
-                <div className="space-y-1">
-                  <h3 className="text-sm font-bold text-white line-clamp-2 leading-snug group-hover:text-indigo-300 transition-colors">
-                    {prod.title}
-                  </h3>
-
-                  <div className="flex items-baseline gap-2 pt-1">
-                    <span className="text-lg font-extrabold text-emerald-400">
-                      R$ {prod.price.toFixed(2)}
-                    </span>
-                    {prod.originalPrice > prod.price && (
-                      <span className="text-xs text-slate-500 line-through">
-                        R$ {prod.originalPrice.toFixed(2)}
-                      </span>
-                    )}
-                  </div>
-
-                  {prod.couponCode && (
-                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-indigo-500/10 border border-indigo-500/20 text-indigo-300 text-[11px] font-mono">
-                      <Tag className="w-3 h-3" />
-                      <span>Cupom: <strong>{prod.couponCode}</strong></span>
-                    </div>
                   )}
                 </div>
-              </div>
-
-              {/* Status Indicator & Quick Actions */}
-              <div className="space-y-3 pt-2 border-t border-slate-800/80">
-                <div className="flex items-center justify-between text-[11px]">
-                  <span className="text-slate-400">Status:</span>
-                  {prod.status === 'ativo' && <span className="font-bold text-emerald-400">● Ativo</span>}
-                  {prod.status === 'pausado' && <span className="font-bold text-amber-400">● Pausado</span>}
-                  {prod.status === 'link_quebrado' && <span className="font-bold text-rose-400 flex items-center gap-1"><AlertTriangle className="w-3 h-3" /> Link Quebrado</span>}
+                <h2 className="font-semibold leading-snug">{product.title}</h2>
+                <div>
+                  <span className="text-lg font-bold">
+                    {money(product.price)}
+                  </span>
+                  {product.originalPrice != null && (
+                    <span className="ml-2 text-sm text-[#9CA3AF] line-through">
+                      {money(product.originalPrice)}
+                    </span>
+                  )}
                 </div>
-
-                {/* Buttons Grid */}
-                <div className="grid grid-cols-2 gap-2">
+                {product.couponCode && (
+                  <span className="inline-flex items-center gap-1 text-xs text-[#6B6F7B]">
+                    <Tag className="h-3.5 w-3.5" />
+                    Cupom {product.couponCode}
+                  </span>
+                )}
+              </div>
+              <div className="mt-5 space-y-3 border-t border-[#E8E9ED] pt-4">
+                <div
+                      className={`text-xs ${product.affiliateStatus === "converted" ? "text-emerald-600" : canRetryAffiliate(product) || product.affiliateStatus === "invalid_url" ? "text-red-300" : "text-amber-300"}`}
+                >
+                  {statusText(product.affiliateStatus, product.marketplace)}
+                </div>
+                {product.affiliateStatus === "converted" &&
+                  product.affiliateUrl && (
+                    <>
+                      {product.sourceType === "whatsapp" && (
+                        <button
+                          disabled={preparingOriginal === product.id}
+                          onClick={() => void sendOriginalMessage(product.id)}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg bg-[#EDEDED] py-2 text-sm font-medium text-[#111] disabled:opacity-50"
+                        >
+                          {preparingOriginal === product.id ? (
+                            <LoaderCircle className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <MessageSquareText className="h-4 w-4" />
+                          )}
+                          Usar mensagem original na fila
+                        </button>
+                      )}
+                      {reusableCtas.has(product.id) && (
+                        <button
+                          onClick={() => sendSavedCta(product.id)}
+                          className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#D4D4D8] py-2 text-sm font-medium"
+                        >
+                          <Send className="h-4 w-4" />
+                          Enviar CTA salva para fila
+                        </button>
+                      )}
+                      <button
+                        onClick={() => openCta(product.id)}
+                        className={`flex w-full items-center justify-center gap-2 rounded-lg py-2 text-sm font-medium ${reusableCtas.has(product.id) ? "border border-[#D4D4D8]" : "bg-[#EDEDED] text-[#111]"}`}
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        {reusableCtas.has(product.id)
+                          ? "Criar nova mensagem"
+                          : "Criar mensagem"}
+                      </button>
+                      <button
+                        onClick={() =>
+                          void copy(product.affiliateUrl!, product.id)
+                        }
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#D4D4D8] py-2 text-sm"
+                      >
+                        {copied === product.id ? (
+                          <Check className="h-4 w-4" />
+                        ) : (
+                          <Copy className="h-4 w-4" />
+                        )}
+                        {copied === product.id
+                          ? "Copiado"
+                          : "Copiar link afiliado"}
+                      </button>
+                    </>
+                  )}
+                {canRetryAffiliate(product) && (
                   <button
-                    onClick={() => {
-                      addQueueItem({
-                        productId: prod.id,
-                        productTitle: prod.title,
-                        productImage: prod.image,
-                        price: prod.price,
-                        originalPrice: prod.originalPrice,
-                        marketplace: prod.marketplace,
-                        affiliateUrl: prod.affiliateUrl,
-                        copyText: `🔥 *${prod.title}*\nDe ~R$ ${prod.originalPrice}~ por apenas *R$ ${prod.price}*!\n👉 Comprar: ${prod.affiliateUrl}`
-                      });
-                    }}
-                    className="w-full py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition-all flex items-center justify-center gap-1.5"
+                    disabled={retrying === product.id}
+                    onClick={() => void retry(product)}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#D4D4D8] py-2 text-sm"
                   >
-                    <Send className="w-3.5 h-3.5" />
-                    Enviar p/ Fila
+                    <RotateCcw
+                      className={`h-4 w-4 ${retrying === product.id ? "animate-spin" : ""}`}
+                    />
+                    {product.affiliateStatus === "invalid_url" ? "Validar e converter" : "Tentar novamente"}
                   </button>
-
+                )}
+                {product.marketplace === "mercado_livre" && product.sourceUrl && product.affiliateStatus !== "converted" && (
+                  <div className="rounded-lg border border-violet-500/30 bg-violet-500/10 p-3">
+                    <p className="flex items-center gap-1.5 text-xs font-medium text-violet-100"><Smartphone className="h-3.5 w-3.5" /> Fluxo pelo celular</p>
+                    <p className="mt-1 text-[11px] leading-5 text-violet-200/80">Abra o gerador do Mercado Livre, copie o link <code className="rounded bg-violet-950/60 px-1">meli.la</code> e cole aqui.</p>
+                    {mobileAffiliateProductId === product.id ? <div className="mt-2 space-y-2">
+                      <input value={mobileAffiliateUrl} onChange={(event) => setMobileAffiliateUrl(event.target.value)} placeholder="https://meli.la/..." inputMode="url" autoComplete="url" className="w-full rounded-lg border border-violet-300/30 bg-[#F8FAFC] px-3 py-2 text-xs text-white" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <button type="button" disabled={mobileAttaching || !mobileAffiliateUrl.trim()} onClick={() => void attachMobileAffiliate(product)} className="rounded-lg bg-violet-100 px-3 py-2 text-xs font-medium text-violet-950 disabled:opacity-40">{mobileAttaching ? "Salvando…" : "Salvar link"}</button>
+                        <button type="button" disabled={mobileAttaching} onClick={() => { setMobileAffiliateProductId(null); setMobileAffiliateUrl(""); }} className="rounded-lg border border-violet-300/30 px-3 py-2 text-xs text-violet-100 disabled:opacity-40">Cancelar</button>
+                      </div>
+                    </div> : <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <a href="https://www.mercadolivre.com.br/afiliados/linkbuilder#hub" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-violet-300/30 px-3 py-2 text-xs text-violet-100"><ExternalLink className="h-3.5 w-3.5" /> Abrir gerador</a>
+                      <button type="button" onClick={() => { void copy(product.sourceUrl!, `${product.id}:source`); setMobileAffiliateProductId(product.id); }} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-violet-300/30 px-3 py-2 text-xs text-violet-100"><Copy className="h-3.5 w-3.5" /> Copiar original e colar</button>
+                    </div>}
+                  </div>
+                )}
+                {product.affiliateStatus ===
+                  "affiliate_account_not_configured" && (
                   <button
-                    onClick={() => handleCopyLink(prod)}
-                    className="w-full py-2 px-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition-all flex items-center justify-center gap-1.5"
+                    onClick={openShopeeIntegration}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#D4D4D8] py-2 text-sm"
                   >
-                    {copiedId === prod.id ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    {copiedId === prod.id ? 'Copiado!' : 'Copiar Link'}
+                    <Settings className="h-4 w-4" />
+                    Configurar Shopee
                   </button>
-                </div>
-              </div>
-            </div>
-          ))
-        )}
-      </div>
-
-      {/* Modal: Add New Product */}
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="w-full max-w-xl rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-6 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
-              <div className="flex items-center gap-2">
-                <Sparkles className="w-5 h-5 text-indigo-400" />
-                <h2 className="text-lg font-bold text-white">Cadastrar Nova Oferta com IA</h2>
-              </div>
-              <button onClick={() => setIsAddModalOpen(false)} className="p-1 text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            {/* AI URL Extractor Header */}
-            <div className="p-4 rounded-2xl bg-indigo-950/40 border border-indigo-500/30 space-y-3">
-              <label className="text-xs font-semibold text-indigo-300 block">
-                Cole a URL do Produto no Marketplace (Amazon, Shopee, Mercado Livre):
-              </label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={urlInput}
-                  onChange={(e) => setUrlInput(e.target.value)}
-                  placeholder="https://www.amazon.com.br/dp/B0C15XK432"
-                  className="flex-1 px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-indigo-500"
-                />
-                <button
-                  type="button"
-                  onClick={handleExtractUrl}
-                  disabled={isExtracting}
-                  className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition-all flex items-center gap-1.5 shrink-0"
-                >
-                  <Wand2 className="w-4 h-4" />
-                  {isExtracting ? 'Extraindo...' : 'Extrair com IA'}
-                </button>
-              </div>
-            </div>
-
-            {/* Form Fields */}
-            <form onSubmit={handleSaveProduct} className="space-y-4">
-              <div className="space-y-1">
-                <label className="text-xs font-semibold text-slate-300">Título do Produto:</label>
-                <input
-                  type="text"
-                  required
-                  value={formData.title}
-                  onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder="Ex: Smart TV OLED LG 55"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Preço Atual (R$):</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    required
-                    value={formData.price}
-                    onChange={(e) => setFormData({ ...formData, price: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Preço Original (R$):</label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={formData.originalPrice}
-                    onChange={(e) => setFormData({ ...formData, originalPrice: parseFloat(e.target.value) || 0 })}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Marketplace:</label>
-                  <select
-                    value={formData.marketplace}
-                    onChange={(e) => setFormData({ ...formData, marketplace: e.target.value as MarketplaceType })}
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
+                )}
+                {(product.affiliateStatus === "converted" ? product.affiliateUrl : product.sourceUrl) && (
+                  <a
+                    href={(product.affiliateStatus === "converted" ? product.affiliateUrl : product.sourceUrl)!}
+                    target="_blank"
+                    rel="noreferrer"
+                    title={product.affiliateStatus === "converted" ? "Link de afiliado AfiliHub" : "Link de origem aguardando conversão"}
+                    className={`flex min-w-0 items-center gap-1.5 text-xs hover:underline ${product.affiliateStatus === "converted" ? "text-emerald-600" : "text-[#9CA3AF]"}`}
                   >
-                    <option value="Amazon">Amazon</option>
-                    <option value="Mercado Livre">Mercado Livre</option>
-                    <option value="Shopee">Shopee</option>
-                    <option value="AliExpress">AliExpress</option>
-                    <option value="Magalu">Magalu</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Cupom de Desconto (opcional):</label>
-                  <input
-                    type="text"
-                    value={formData.couponCode}
-                    onChange={(e) => setFormData({ ...formData, couponCode: e.target.value })}
-                    placeholder="Ex: TECH10OFF"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500 font-mono uppercase"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-semibold text-slate-300">Link de Afiliado Convertido:</label>
-                  <input
-                    type="text"
-                    required
-                    value={formData.affiliateUrl}
-                    onChange={(e) => setFormData({ ...formData, affiliateUrl: e.target.value })}
-                    placeholder="https://amzn.to/exemplo"
-                    className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white focus:outline-none focus:border-indigo-500"
-                  />
-                </div>
-              </div>
-
-              <div className="pt-4 flex justify-end gap-3 border-t border-slate-800">
+                    <Link2 className="h-3.5 w-3.5 shrink-0" />
+                    <span className="shrink-0 font-medium">{product.affiliateStatus === "converted" ? "Link AfiliHub:" : "Origem:"}</span>
+                    <span className="truncate">{product.affiliateStatus === "converted" ? product.affiliateUrl : product.sourceUrl}</span>
+                  </a>
+                )}
                 <button
-                  type="button"
-                  onClick={() => setIsAddModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 text-xs font-semibold hover:bg-slate-700"
+                  disabled={deleting === product.id}
+                  onClick={() => void removeProduct(product)}
+                  className="flex w-full items-center justify-center gap-2 rounded-lg border border-red-900/60 py-2 text-sm text-red-300 hover:bg-red-950/20 disabled:opacity-50"
                 >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white text-xs font-semibold shadow-lg shadow-indigo-600/30 hover:opacity-90"
-                >
-                  Salvar Oferta
+                  {deleting === product.id ? (
+                    <LoaderCircle className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                  {deleting === product.id ? "Excluindo…" : "Excluir produto"}
                 </button>
               </div>
-            </form>
-          </div>
+            </article>
+          ))}
         </div>
       )}
     </div>

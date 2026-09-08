@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useCallback, useContext, useState, useEffect, useRef } from 'react';
 import {
   Product,
   QueueConfig,
@@ -15,29 +15,15 @@ import {
   MonitoredGroup,
   CapturedMessage,
   ExtractedDataJSON,
-  CtaProfile,
-  CtaProfileChange,
-  CtaFeedback,
-  CtaContext
+  ProductCollection,
 } from '../types';
-import {
-  INITIAL_PRODUCTS,
-  INITIAL_QUEUES,
-  INITIAL_QUEUE_ITEMS,
-  INITIAL_INTEGRATIONS,
-  INITIAL_GROUPS,
-  INITIAL_CAMPAIGNS,
-  INITIAL_AUTOMATIONS,
-  INITIAL_TEMPLATES,
-  INITIAL_LANDING_PAGES,
-  INITIAL_LEADS,
-  INITIAL_LOGS,
-  INITIAL_SUBSCRIPTION,
-  INITIAL_MONITORED_GROUPS,
-  INITIAL_CAPTURED_MESSAGES
-} from '../data/mockData';
 import { supabaseService } from '../services/supabaseService';
-import { checkSupabaseConnection } from '../lib/supabase';
+import { supabase } from '../lib/supabase';
+import { readJsonResponse } from '../services/apiResponse';
+import { productsApi } from '../services/productsApi';
+import { onProductCatalogChanged } from '../services/productCatalogEvents';
+
+// ─── Tipos internos ────────────────────────────────────────────────────────────
 
 interface NotificationItem {
   id: string;
@@ -49,12 +35,22 @@ interface NotificationItem {
 }
 
 interface AppContextType {
+  // Auth
+  currentUser: any | null;
+
+  // UI
   activeTab: string;
   setActiveTab: (tab: string) => void;
   isSidebarCollapsed: boolean;
   setIsSidebarCollapsed: (collapsed: boolean | ((prev: boolean) => boolean)) => void;
+  isSearchOpen: boolean;
+  setIsSearchOpen: (open: boolean) => void;
+
+  // Dados
   products: Product[];
   setProducts: React.Dispatch<React.SetStateAction<Product[]>>;
+  productCount: number | null;
+  refreshProductCount: () => Promise<void>;
   queues: QueueConfig[];
   setQueues: React.Dispatch<React.SetStateAction<QueueConfig[]>>;
   queueItems: QueueItem[];
@@ -67,277 +63,427 @@ interface AppContextType {
   automations: AutomationRule[];
   templates: CopyTemplate[];
   setTemplates: React.Dispatch<React.SetStateAction<CopyTemplate[]>>;
+  monitoredGroups: MonitoredGroup[];
+  setMonitoredGroups: React.Dispatch<React.SetStateAction<MonitoredGroup[]>>;
+  capturedMessages: CapturedMessage[];
+  setCapturedMessages: React.Dispatch<React.SetStateAction<CapturedMessage[]>>;
+  landingPages: LandingPageItem[];
+  leads: CRMLead[];
+  productCollections: ProductCollection[];
+  logs: SystemLog[];
+  subscription: SubscriptionPlan;
+  refreshSubscription: () => Promise<void>;
+  notifications: NotificationItem[];
+
+  // Operações de Templates
   addTemplate: (templateData: Partial<CopyTemplate>) => CopyTemplate;
   updateTemplate: (id: string, updates: Partial<CopyTemplate>) => void;
   deleteTemplate: (id: string) => void;
   setDefaultTemplate: (id: string) => void;
   toggleTemplateStatus: (id: string) => void;
 
-  // Group Monitoring System
-  monitoredGroups: MonitoredGroup[];
-  setMonitoredGroups: React.Dispatch<React.SetStateAction<MonitoredGroup[]>>;
+  // Operações de Grupos Monitorados
   addMonitoredGroup: (data: Partial<MonitoredGroup>) => MonitoredGroup;
   updateMonitoredGroup: (id: string, updates: Partial<MonitoredGroup>) => void;
   deleteMonitoredGroup: (id: string) => void;
   toggleMonitoredGroupStatus: (id: string) => void;
 
-  capturedMessages: CapturedMessage[];
-  setCapturedMessages: React.Dispatch<React.SetStateAction<CapturedMessage[]>>;
+  // Operações de Mensagens Capturadas
   addCapturedMessage: (msgData: Partial<CapturedMessage>) => CapturedMessage;
   approveCapturedMessage: (id: string, editedData?: Partial<ExtractedDataJSON>) => void;
   rejectCapturedMessage: (id: string) => void;
-  processCapturedMessageAI: (rawText: string, groupId: string, imageUrl?: string) => Promise<CapturedMessage>;
 
-  landingPages: LandingPageItem[];
-  leads: CRMLead[];
-  logs: SystemLog[];
-  subscription: SubscriptionPlan;
-  notifications: NotificationItem[];
-  markNotificationRead: (id: string) => void;
-  clearAllNotifications: () => void;
-  
-  // Quick Actions
+  // Operações de CRM
+  addLead: (lead: Omit<CRMLead, 'id'>) => Promise<boolean>;
+  updateLead: (id: string, updates: Partial<CRMLead>) => Promise<boolean>;
+  deleteLead: (id: string) => Promise<boolean>;
+
+  // Operações da Biblioteca
+  addProductCollection: (name: string) => Promise<boolean>;
+  deleteProductCollection: (id: string) => Promise<boolean>;
+  toggleProductInCollection: (collectionId: string, productId: string) => Promise<boolean>;
+
+  // Operações de Produtos
   addProduct: (productData: Partial<Product>) => Product;
   updateProduct: (id: string, updates: Partial<Product>) => void;
   deleteProduct: (id: string) => void;
   toggleFavoriteProduct: (id: string) => void;
-  
+
+  // Operações de Fila
   addQueueItem: (item: Partial<QueueItem>) => void;
   deleteQueueItem: (id: string) => void;
   shuffleQueue: (queueConfigId: string) => void;
   clearSentQueueItems: (queueConfigId: string) => void;
   toggleQueueStatus: (queueConfigId: string) => void;
   moveQueueItemPriority: (itemId: string, direction: 'up' | 'down') => void;
-  
-  toggleIntegrationStatus: (integrationId: string) => void;
-  updateIntegrationConfig: (integrationId: string, tagAfiliado?: string, apiKey?: string) => void;
-  
+
+  // Operações de Integrações
+  updateIntegrationConfig: (integrationId: string, tagAfiliado?: string) => void;
+
+  // Notificações
+  markNotificationRead: (id: string) => void;
+  clearAllNotifications: () => void;
+
+  // Logs (destinados à UI)
   addLog: (level: 'info' | 'warning' | 'error' | 'success', module: string, message: string, details?: string) => void;
-  clearMockData: () => void;
-  convertAffiliateUrl: (url: string, marketplace: string) => string;
-  
-  // AI helpers
+
+  // IA (via API do servidor — sem fallback fake)
   generateCopyWithAI: (params: any) => Promise<string>;
   extractOfferFromUrl: (url: string) => Promise<any>;
-  
-  // Central CTA Profile
-  ctaProfile: CtaProfile;
-  updateCtaProfile: (changes: Partial<CtaProfile>, triggeredBy?: string) => void;
-  generateCtaFromProfile: (context: CtaContext) => string;
-  resetCtaProfile: () => void;
-  ctaFeedbacks: CtaFeedback[];
-  addCtaFeedback: (feedback: Partial<CtaFeedback>) => void;
-
-  // Global Search
-  isSearchOpen: boolean;
-  setIsSearchOpen: (open: boolean) => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
+// Estado honesto enquanto não existe uma assinatura persistida para o usuário.
+const DEFAULT_SUBSCRIPTION: SubscriptionPlan = {
+  planCode: 'free',
+  name: 'Sem assinatura',
+  priceMonthly: 0,
+  status: 'pendente',
+  renewalDate: '',
+  disparosLimit: 0,
+  disparosUsed: 0,
+  canaisLimit: 0,
+  canaisUsed: 0,
+  iaGenerationsLimit: 0,
+  iaGenerationsUsed: 0,
+  iaGenerationsPerProductLimit: 0,
+  affiliateConversionsLimit: 0,
+  affiliateConversionsUsed: 0,
+  monitoredGroupsLimit: 0,
+  monitoredGroupsUsed: 0,
+  radarRefreshesLimit: 0,
+  radarRefreshesUsed: 0,
+  accountUsersLimit: 1,
+  landingPagesLimit: 0,
+  billingMode: 'preview',
+};
+
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [currentUser, setCurrentUser] = useState<any | null>(null);
   const [activeTab, setActiveTab] = useState<string>('dashboard');
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(() =>
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 1023px)').matches,
+  );
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
 
-  // ─── DEFAULT CENTRAL CTA PROFILE ─────────────────────────────────────────
-  const DEFAULT_CTA_PROFILE: CtaProfile = {
-    tom: 'urgente',
-    usaEmoji: true,
-    emojisPreferidos: ['🔥', '🚨', '💥'],
-    tamanhoPreferido: 'medio',
-    palavrasProibidas: [],
-    palavrasFavoritas: ['corre', 'só hoje', 'últimas unidades'],
-    usaCaixaAlta: false,
-    exemplosBons: [],
-    exemplosRuins: [],
-    observacoesLivres: '',
-    ctasGerados: [],
-    changelog: [],
-    updatedAt: new Date().toISOString()
-  };
-
-  const [ctaProfile, setCtaProfile] = useState<CtaProfile>(() => {
-    try {
-      const saved = localStorage.getItem('affi_cta_profile_v1');
-      return saved ? JSON.parse(saved) : DEFAULT_CTA_PROFILE;
-    } catch {
-      return DEFAULT_CTA_PROFILE;
-    }
-  });
-
-  const [ctaFeedbacks, setCtaFeedbacks] = useState<CtaFeedback[]>(() => {
-    try {
-      const saved = localStorage.getItem('affi_cta_feedbacks_v1');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  // Purge legacy demo data from localStorage on load if present
-  useEffect(() => {
-    const cleaned = localStorage.getItem('affi_cleaned_v3');
-    if (!cleaned) {
-      localStorage.removeItem('affi_queues');
-      localStorage.removeItem('affi_products');
-      localStorage.removeItem('affi_queue_items');
-      localStorage.removeItem('affi_integrations');
-      localStorage.setItem('affi_cleaned_v3', 'true');
-    }
-  }, []);
-
-  const [products, setProducts] = useState<Product[]>(() => {
-    try {
-      const saved = localStorage.getItem('affi_products');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      // Filter out any demo items
-      const clean = parsed.filter((p: any) => p.id && !p.id.includes('prod-1') && !p.id.includes('prod-2') && !p.id.includes('prod-3') && !p.id.includes('prod-4'));
-      if (clean.length !== parsed.length) {
-        localStorage.setItem('affi_products', JSON.stringify(clean));
-      }
-      return clean;
-    } catch {
-      localStorage.removeItem('affi_products');
-      return [];
-    }
-  });
-
-  const [queues, setQueues] = useState<QueueConfig[]>(() => {
-    try {
-      const saved = localStorage.getItem('affi_queues');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      // Filter out any demo queues
-      const clean = parsed.filter((q: any) => q.id && !q.id.includes('queue-1') && !q.id.includes('queue-2') && !q.id.includes('queue-3') && !q.name.includes('Fila Principal') && !q.name.includes('Disparos WhatsApp') && !q.name.includes('Fila Tech'));
-      if (clean.length !== parsed.length) {
-        localStorage.setItem('affi_queues', JSON.stringify(clean));
-      }
-      return clean;
-    } catch {
-      localStorage.removeItem('affi_queues');
-      return [];
-    }
-  });
-
-  const [queueItems, setQueueItems] = useState<QueueItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('affi_queue_items');
-      if (!saved) return [];
-      const parsed = JSON.parse(saved);
-      const clean = parsed.filter((i: any) => i.id && !i.id.includes('qitem-1') && !i.id.includes('qitem-2') && !i.id.includes('qitem-3'));
-      if (clean.length !== parsed.length) {
-        localStorage.setItem('affi_queue_items', JSON.stringify(clean));
-      }
-      return clean;
-    } catch {
-      localStorage.removeItem('affi_queue_items');
-      return [];
-    }
-  });
-
-  const [integrations, setIntegrations] = useState<Integration[]>(() => {
-    try {
-      const isCleaned = localStorage.getItem('affi_cleaned_v3');
-      if (!isCleaned) {
-        localStorage.removeItem('affi_integrations');
-        return INITIAL_INTEGRATIONS;
-      }
-      const saved = localStorage.getItem('affi_integrations');
-      return saved ? JSON.parse(saved) : INITIAL_INTEGRATIONS;
-    } catch {
-      return INITIAL_INTEGRATIONS;
-    }
-  });
-
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productCount, setProductCount] = useState<number | null>(null);
+  const [queues, setQueues] = useState<QueueConfig[]>([]);
+  const [queueItems, setQueueItems] = useState<QueueItem[]>([]);
+  const [integrations, setIntegrations] = useState<Integration[]>([]);
   const [groups, setGroups] = useState<ChannelGroup[]>([]);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [automations, setAutomations] = useState<AutomationRule[]>([]);
-  const [templates, setTemplates] = useState<CopyTemplate[]>(() => {
-    try {
-      const saved = localStorage.getItem('affi_templates_v2');
-      return saved ? JSON.parse(saved) : INITIAL_TEMPLATES;
-    } catch {
-      return INITIAL_TEMPLATES;
-    }
-  });
-  const [monitoredGroups, setMonitoredGroups] = useState<MonitoredGroup[]>(() => {
-    try {
-      const saved = localStorage.getItem('affi_monitored_groups_v2');
-      return saved ? JSON.parse(saved) : INITIAL_MONITORED_GROUPS;
-    } catch {
-      return INITIAL_MONITORED_GROUPS;
-    }
-  });
-
-  const [capturedMessages, setCapturedMessages] = useState<CapturedMessage[]>(() => {
-    try {
-      const saved = localStorage.getItem('affi_captured_messages_v2');
-      return saved ? JSON.parse(saved) : INITIAL_CAPTURED_MESSAGES;
-    } catch {
-      return INITIAL_CAPTURED_MESSAGES;
-    }
-  });
-
+  const [templates, setTemplates] = useState<CopyTemplate[]>([]);
+  const [monitoredGroups, setMonitoredGroups] = useState<MonitoredGroup[]>([]);
+  const [capturedMessages, setCapturedMessages] = useState<CapturedMessage[]>([]);
   const [landingPages, setLandingPages] = useState<LandingPageItem[]>([]);
   const [leads, setLeads] = useState<CRMLead[]>([]);
+  const [productCollections, setProductCollections] = useState<ProductCollection[]>([]);
   const [logs, setLogs] = useState<SystemLog[]>([]);
-  const [subscription] = useState<SubscriptionPlan>(INITIAL_SUBSCRIPTION);
-
+  const [subscription, setSubscription] = useState<SubscriptionPlan>(DEFAULT_SUBSCRIPTION);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
 
-  // Sync with Supabase on mount
-  useEffect(() => {
-    async function initSupabase() {
-      const conn = await checkSupabaseConnection();
-      if (conn.connected) {
-        console.log('Supabase ativo:', conn.message);
-        const remoteProducts = await supabaseService.fetchProducts();
-        if (remoteProducts && remoteProducts.length > 0) {
-          setProducts(remoteProducts);
-        }
-        const remoteQueueItems = await supabaseService.fetchQueueItems();
-        if (remoteQueueItems && remoteQueueItems.length > 0) {
-          setQueueItems(remoteQueueItems);
-        }
-      }
+  // ─── Auth & carregamento de dados ───────────────────────────────────────────
+
+  const clearAllData = () => {
+    setProducts([]);
+    setProductCount(null);
+    setQueues([]);
+    setQueueItems([]);
+    setIntegrations([]);
+    setGroups([]);
+    setCampaigns([]);
+    setAutomations([]);
+    setTemplates([]);
+    setMonitoredGroups([]);
+    setCapturedMessages([]);
+    setLandingPages([]);
+    setLeads([]);
+    setProductCollections([]);
+    setLogs([]);
+    setSubscription(DEFAULT_SUBSCRIPTION);
+  };
+
+  const loadAllData = async (_userId: string) => {
+    try {
+      const [
+        fetchedProducts,
+        fetchedQueues,
+        fetchedQueueItems,
+        fetchedIntegrations,
+        fetchedTemplates,
+        fetchedMonitoredGroups,
+        fetchedCapturedMessages,
+        fetchedLandingPages,
+        fetchedLeads,
+        fetchedLogs,
+        fetchedGroups,
+        fetchedCampaigns,
+        fetchedAutomations,
+        fetchedSubscription,
+        fetchedProductCollections,
+      ] = await Promise.all([
+        supabaseService.fetchProducts(),
+        supabaseService.fetchQueueConfigs(),
+        supabaseService.fetchQueueItems(),
+        supabaseService.fetchIntegrations(),
+        supabaseService.fetchTemplates(),
+        supabaseService.fetchMonitoredGroups(),
+        supabaseService.fetchCapturedMessages(),
+        supabaseService.fetchLandingPages(),
+        supabaseService.fetchLeads(),
+        supabaseService.fetchLogs(),
+        supabaseService.fetchGroups(),
+        supabaseService.fetchCampaigns(),
+        supabaseService.fetchAutomations(),
+        supabaseService.fetchSubscription(),
+        supabaseService.fetchProductCollections(),
+      ]);
+
+      setProducts(fetchedProducts || []);
+      setQueues(fetchedQueues || []);
+      setQueueItems(fetchedQueueItems || []);
+      setIntegrations(fetchedIntegrations || []);
+      setTemplates(fetchedTemplates || []);
+      setMonitoredGroups(fetchedMonitoredGroups || []);
+      setCapturedMessages(fetchedCapturedMessages || []);
+      setLandingPages(fetchedLandingPages || []);
+      setLeads(fetchedLeads || []);
+      setLogs(fetchedLogs || []);
+      setGroups(fetchedGroups);
+      setCampaigns(fetchedCampaigns);
+      setAutomations(fetchedAutomations);
+      setSubscription(fetchedSubscription || DEFAULT_SUBSCRIPTION);
+      setProductCollections(fetchedProductCollections);
+    } catch (error) {
+      console.error('[AfiliHub:AppContext] Falha ao carregar dados:', error);
     }
-    initSupabase();
+  };
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session?.user && !session.user.email_confirmed_at) {
+        void supabase.auth.signOut({ scope: 'local' });
+        setCurrentUser(null);
+        clearAllData();
+      } else if (session) {
+        setCurrentUser(session.user);
+        loadAllData(session.user.id);
+      } else {
+        setCurrentUser(null);
+        clearAllData();
+      }
+    });
+
+    const { data: { subscription: authSub } } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user && !session.user.email_confirmed_at) {
+        void supabase.auth.signOut({ scope: 'local' });
+        setCurrentUser(null);
+        clearAllData();
+      } else if (session) {
+        setCurrentUser(session.user);
+        loadAllData(session.user.id);
+      } else {
+        setCurrentUser(null);
+        clearAllData();
+      }
+    });
+
+    return () => authSub.unsubscribe();
   }, []);
 
-  // Persist state
-  useEffect(() => {
-    localStorage.setItem('affi_products', JSON.stringify(products));
-  }, [products]);
+  const refreshProductCount = useCallback(async (): Promise<void> => {
+    if (!currentUser) {
+      setProductCount(null);
+      return;
+    }
+    try {
+      setProductCount((await productsApi.list()).length);
+    } catch (error) {
+      console.error('[AfiliHub:AppContext] Falha ao carregar contador de produtos:', error);
+      setProductCount(null);
+    }
+  }, [currentUser]);
+
+  const refreshSubscription = useCallback(async (): Promise<void> => {
+    if (!currentUser) {
+      setSubscription(DEFAULT_SUBSCRIPTION);
+      return;
+    }
+    const value = await supabaseService.fetchSubscription();
+    setSubscription(value ?? DEFAULT_SUBSCRIPTION);
+  }, [currentUser]);
+
+  const productCountLiveRef = useRef(false);
 
   useEffect(() => {
-    localStorage.setItem('affi_queues', JSON.stringify(queues));
-  }, [queues]);
+    if (!currentUser) return;
+    void refreshProductCount();
+    const unsubscribe = onProductCatalogChanged(() => void refreshProductCount());
+    const refreshOnFocus = () => void refreshProductCount();
+    window.addEventListener('focus', refreshOnFocus);
+    const channel = supabase.channel(`product-count:${currentUser.id}`)
+      .on('postgres_changes', { event:'*', schema:'public', table:'products', filter:`user_id=eq.${currentUser.id}` }, () => void refreshProductCount())
+      .subscribe((status) => { productCountLiveRef.current = status === 'SUBSCRIBED'; });
+    const interval = window.setInterval(() => { if (!productCountLiveRef.current) void refreshProductCount(); }, 60_000);
+    return () => {
+      unsubscribe();
+      productCountLiveRef.current = false;
+      void supabase.removeChannel(channel);
+      window.removeEventListener('focus', refreshOnFocus);
+      window.clearInterval(interval);
+    };
+  }, [currentUser, refreshProductCount]);
 
   useEffect(() => {
-    localStorage.setItem('affi_queue_items', JSON.stringify(queueItems));
-  }, [queueItems]);
+    if (!currentUser) return;
+    const channel = supabase.channel(`subscription-usage:${currentUser.id}`)
+      .on('postgres_changes', { event:'UPDATE', schema:'public', table:'subscriptions', filter:`user_id=eq.${currentUser.id}` }, () => void refreshSubscription())
+      .subscribe();
+    return () => { void supabase.removeChannel(channel); };
+  }, [currentUser, refreshSubscription]);
 
-  useEffect(() => {
-    localStorage.setItem('affi_integrations', JSON.stringify(integrations));
-  }, [integrations]);
+  const persist = async (operation: () => Promise<boolean>, label: string): Promise<boolean> => {
+    try {
+      const saved = await operation();
+      if (!saved) throw new Error('PERSISTENCE_REJECTED');
+      return true;
+    } catch (error) {
+      console.error(`[AfiliHub:AppContext] Falha ao ${label}.`, error);
+      setNotifications(prev => [{
+        id: crypto.randomUUID(),
+        title: 'Alteração não salva',
+        message: `Não foi possível ${label}. Os dados foram recarregados.`,
+        time: 'Agora',
+        type: 'error',
+        read: false,
+      }, ...prev]);
+      if (currentUser?.id) await loadAllData(currentUser.id);
+      return false;
+    }
+  };
 
-  useEffect(() => {
-    localStorage.setItem('affi_templates_v2', JSON.stringify(templates));
-  }, [templates]);
+  // ─── Logs (UI) ───────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    localStorage.setItem('affi_monitored_groups_v2', JSON.stringify(monitoredGroups));
-  }, [monitoredGroups]);
+  const addLog = (
+    level: 'info' | 'warning' | 'error' | 'success',
+    module: string,
+    message: string,
+    details?: string
+  ) => {
+    const newLog: SystemLog = {
+      id: crypto.randomUUID(),
+      timestamp: new Date().toLocaleString('pt-BR'),
+      level,
+      module,
+      message,
+      details,
+    };
+    setLogs(prev => [newLog, ...prev]);
+    void (async () => {
+      const saved = await supabaseService.saveLog(newLog);
+      if (!saved) console.error('[AfiliHub:AppContext] Não foi possível persistir o log da interface.');
+    })();
+  };
 
-  useEffect(() => {
-    localStorage.setItem('affi_captured_messages_v2', JSON.stringify(capturedMessages));
-  }, [capturedMessages]);
+  // ─── Templates ───────────────────────────────────────────────────────────────
+
+  const addTemplate = (templateData: Partial<CopyTemplate>): CopyTemplate => {
+    const storeName = templateData.store || 'Todas as Lojas';
+    const newTpl: CopyTemplate = {
+      id: crypto.randomUUID(),
+      title: templateData.title || 'Novo Template',
+      category: templateData.category || storeName,
+      store: storeName,
+      content: templateData.content || '',
+      usageCount: 0,
+      status: templateData.status || 'ativo',
+      isDefault: templateData.isDefault || false,
+    };
+
+    setTemplates(prev => {
+      let list = prev;
+      if (newTpl.isDefault) {
+        list = prev.map(t => {
+          if (t.store === storeName) {
+            const updated = { ...t, isDefault: false };
+            void persist(() => supabaseService.saveTemplate(updated), 'atualizar o template padrão');
+            return updated;
+          }
+          return t;
+        });
+      }
+      return [newTpl, ...list];
+    });
+
+    void persist(() => supabaseService.saveTemplate(newTpl), 'criar o template');
+    addLog('success', 'Templates', `Novo template criado: "${newTpl.title}"`);
+    return newTpl;
+  };
+
+  const updateTemplate = (id: string, updates: Partial<CopyTemplate>) => {
+    setTemplates(prev => {
+      const current = prev.find(t => t.id === id);
+      const targetStore = updates.store || current?.store || 'Todas as Lojas';
+
+      return prev.map(t => {
+        if (t.id === id) {
+          const updated = { ...t, ...updates };
+          void persist(() => supabaseService.saveTemplate(updated), 'atualizar o template');
+          return updated;
+        }
+        if (updates.isDefault && t.store === targetStore && t.id !== id) {
+          const updated = { ...t, isDefault: false };
+          void persist(() => supabaseService.saveTemplate(updated), 'atualizar o template padrão');
+          return updated;
+        }
+        return t;
+      });
+    });
+    addLog('info', 'Templates', `Template atualizado.`);
+  };
+
+  const deleteTemplate = (id: string) => {
+    setTemplates(prev => prev.filter(t => t.id !== id));
+    void persist(() => supabaseService.deleteTemplate(id), 'excluir o template');
+    addLog('warning', 'Templates', `Template excluído.`);
+  };
+
+  const setDefaultTemplate = (id: string) => {
+    setTemplates(prev => {
+      const target = prev.find(t => t.id === id);
+      if (!target) return prev;
+
+      return prev.map(t => {
+        if (t.store === target.store) {
+          const updated = { ...t, isDefault: t.id === id };
+          void persist(() => supabaseService.saveTemplate(updated), 'definir o template padrão');
+          return updated;
+        }
+        return t;
+      });
+    });
+    addLog('success', 'Templates', `Template definido como padrão.`);
+  };
+
+  const toggleTemplateStatus = (id: string) => {
+    setTemplates(prev => prev.map(t => {
+      if (t.id === id) {
+        const updated = { ...t, status: t.status === 'ativo' ? 'inativo' as const : 'ativo' as const };
+        void persist(() => supabaseService.saveTemplate(updated), 'alterar o status do template');
+        return updated;
+      }
+      return t;
+    }));
+  };
+
+  // ─── Grupos Monitorados ───────────────────────────────────────────────────────
 
   const addMonitoredGroup = (data: Partial<MonitoredGroup>): MonitoredGroup => {
     const newGrp: MonitoredGroup = {
-      id: 'grp-' + Date.now(),
+      id: crypto.randomUUID(),
       name: data.name || 'Novo Grupo Monitorado',
       platform: data.platform || 'Telegram',
       externalIdOrUrl: data.externalIdOrUrl || '',
@@ -352,38 +498,53 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         enableOCR: true,
         maxPerHour: 30,
         dedupHours: 12,
-        autoApproveConfidence: 0.65
-      }
+        reviewRequired: true,
+      },
     };
     setMonitoredGroups(prev => [newGrp, ...prev]);
+    void persist(() => supabaseService.saveMonitoredGroup(newGrp), 'adicionar o grupo monitorado');
     addLog('success', 'Monitor de Grupos', `Novo grupo adicionado: "${newGrp.name}"`);
     return newGrp;
   };
 
   const updateMonitoredGroup = (id: string, updates: Partial<MonitoredGroup>) => {
-    setMonitoredGroups(prev => prev.map(g => g.id === id ? { ...g, ...updates } : g));
-    addLog('info', 'Monitor de Grupos', `Grupo #${id} atualizado.`);
+    setMonitoredGroups(prev => prev.map(g => {
+      if (g.id === id) {
+        const updated = { ...g, ...updates };
+        void persist(() => supabaseService.saveMonitoredGroup(updated), 'atualizar o grupo monitorado');
+        return updated;
+      }
+      return g;
+    }));
+    addLog('info', 'Monitor de Grupos', `Grupo atualizado.`);
   };
 
   const deleteMonitoredGroup = (id: string) => {
     setMonitoredGroups(prev => prev.filter(g => g.id !== id));
-    addLog('warning', 'Monitor de Grupos', `Grupo #${id} removido.`);
+    void persist(() => supabaseService.deleteMonitoredGroup(id), 'remover o grupo monitorado');
+    addLog('warning', 'Monitor de Grupos', `Grupo removido.`);
   };
 
   const toggleMonitoredGroupStatus = (id: string) => {
     setMonitoredGroups(prev => prev.map(g => {
       if (g.id === id) {
         const nextStatus = g.status === 'ativo' ? 'pausado' : 'ativo';
-        return { ...g, status: nextStatus };
+        const updated = { ...g, status: nextStatus } as MonitoredGroup;
+        void persist(() => supabaseService.saveMonitoredGroup(updated), 'alterar o status do grupo monitorado');
+        return updated;
       }
       return g;
     }));
   };
 
+  // ─── Mensagens Capturadas ─────────────────────────────────────────────────────
+  // processCapturedMessageAI removido: pertence ao MonitorService (Bloco futuro).
+  // Mensagens ficam como dados brutos até implementação real.
+
   const addCapturedMessage = (msgData: Partial<CapturedMessage>): CapturedMessage => {
     const newMsg: CapturedMessage = {
-      id: 'cap-' + Date.now(),
-      groupId: msgData.groupId || 'grp-1',
+      id: crypto.randomUUID(),
+      groupId: msgData.groupId || '',
       groupName: msgData.groupName || 'Grupo Monitorado',
       platform: msgData.platform || 'Telegram',
       rawContent: msgData.rawContent || '',
@@ -393,7 +554,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       status: msgData.status || 'Pendente',
       templateUsedId: msgData.templateUsedId,
       finalText: msgData.finalText,
-      createdAt: 'Agora mesmo'
+      createdAt: new Date().toISOString(),
     };
     setCapturedMessages(prev => [newMsg, ...prev]);
     return newMsg;
@@ -403,7 +564,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetMsg = capturedMessages.find(m => m.id === id);
     if (!targetMsg) return;
 
-    const mergedJson = editedData ? { ...targetMsg.extractedJson, ...editedData } : targetMsg.extractedJson;
+    const mergedJson = editedData
+      ? { ...targetMsg.extractedJson, ...editedData }
+      : targetMsg.extractedJson;
 
     const firstQueue = queues[0];
     const priceNum = parseFloat(mergedJson?.preco || '0') || 0;
@@ -411,257 +574,320 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const market = (mergedJson?.loja || 'Amazon') as any;
 
     addQueueItem({
-      queueConfigId: firstQueue?.id || 'default',
+      queueConfigId: firstQueue?.id || '',
       productTitle: mergedJson?.produto || 'Oferta Monitorada',
-      productImage: targetMsg.imageUrl || 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
+      productImage: targetMsg.imageUrl,
       price: priceNum,
       originalPrice: origPriceNum,
       marketplace: market,
       copyText: targetMsg.finalText || targetMsg.rawContent,
-      affiliateUrl: convertAffiliateUrl(mergedJson?.link || 'https://affi.link/custom', market)
+      affiliateUrl: mergedJson?.link || '',
     });
 
-    setCapturedMessages(prev => prev.map(m => m.id === id ? {
-      ...m,
-      status: 'Aprovada',
-      extractedJson: mergedJson as any
-    } : m));
+    setCapturedMessages(prev => prev.map(m =>
+      m.id === id ? { ...m, status: 'Aprovada' as const, extractedJson: mergedJson as any } : m
+    ));
 
-    setMonitoredGroups(prev => prev.map(g => g.id === targetMsg.groupId ? {
-      ...g,
-      approvedCount: g.approvedCount + 1,
-      lastActivity: 'Agora mesmo'
-    } : g));
+    setMonitoredGroups(prev => prev.map(g => {
+      if (g.id === targetMsg.groupId) {
+        const updated = { ...g, approvedCount: g.approvedCount + 1, lastActivity: 'Agora mesmo' };
+      void persist(() => supabaseService.saveMonitoredGroup(updated), 'atualizar as métricas do grupo');
+        return updated;
+      }
+      return g;
+    }));
 
-    addLog('success', 'Monitor de Grupos', `Oferta #${id} aprovada e enviada para a Fila de Disparo!`);
+    addLog('success', 'Monitor de Grupos', `Oferta aprovada e enviada para a fila de disparo.`);
   };
 
   const rejectCapturedMessage = (id: string) => {
-    setCapturedMessages(prev => prev.map(m => m.id === id ? { ...m, status: 'Rejeitada' } : m));
-    addLog('info', 'Monitor de Grupos', `Mensagem #${id} descartada.`);
+    setCapturedMessages(prev => prev.map(m =>
+      m.id === id ? { ...m, status: 'Rejeitada' as const } : m
+    ));
+    addLog('info', 'Monitor de Grupos', `Mensagem descartada.`);
   };
 
-  const processCapturedMessageAI = async (rawText: string, groupId: string, imageUrl?: string): Promise<CapturedMessage> => {
-    const grp = monitoredGroups.find(g => g.id === groupId) || monitoredGroups[0];
-    
-    const textLower = rawText.toLowerCase();
-    const isNonOffer = textLower.length < 10 || textLower.includes('[figurinha]') || textLower.includes('[áudio]');
-    
-    if (isNonOffer) {
-      const failedMsg = addCapturedMessage({
-        groupId: grp?.id || 'grp-1',
-        groupName: grp?.name || 'Grupo Monitorado',
-        platform: grp?.platform || 'Telegram',
-        rawContent: rawText,
-        imageUrl,
-        extractedJson: null,
-        confidence: 0,
-        status: 'Rejeitada'
-      });
-      return failedMsg;
-    }
+  // ─── CRM ─────────────────────────────────────────────────────────────────────
 
-    // Extract a clean candidate product title from the message
-    let cleanProd = '';
-    const firstLine = rawText.split('\n')[0] || '';
-    let candidate = firstLine
-      .replace(/^[🚨🔥🎯📣📌⚡⏰🛒❗\s]+/g, '')
-      .replace(/(CORRE|GENTE|PROMOÇÃO|OFERTA|IMPERDÍVEL|EXCLUSIVA|OFERTAÇO|BAIXOU|ATENÇÃO|ACHADINHO)/gi, '')
-      .replace(/^[\s\*\-\:\!\,\.\?\(\)]+/g, '')
-      .replace(/\*/g, '')
-      .trim();
+  const addLead = async (lead: Omit<CRMLead, 'id'>): Promise<boolean> => {
+    const created: CRMLead = { ...lead, id: crypto.randomUUID() };
+    setLeads(prev => [created, ...prev]);
+    const saved = await persist(() => supabaseService.saveLead(created), 'criar o lead');
+    if (saved) addLog('success', 'CRM', `Novo lead cadastrado: "${created.name}" (${created.platform})`);
+    return saved;
+  };
 
-    if (candidate.length > 3 && candidate.length < 80) {
-      cleanProd = candidate;
-    } else {
-      cleanProd = 'Smartphone Galaxy S24 Ultra';
-    }
+  const updateLead = async (id: string, updates: Partial<CRMLead>): Promise<boolean> => {
+    const current = leads.find(lead => lead.id === id);
+    if (!current) return false;
+    const updated = { ...current, ...updates, id };
+    setLeads(prev => prev.map(lead => lead.id === id ? updated : lead));
+    return persist(() => supabaseService.saveLead(updated), 'atualizar o lead');
+  };
 
-    let extracted: ExtractedDataJSON = {
-      produto: cleanProd,
-      loja: grp?.linkedStore !== 'Todas as Lojas' ? grp?.linkedStore || 'Amazon' : 'Amazon',
-      preco: '99.90',
-      preco_original: '149.90',
-      cupom: null,
-      cupom_desconto: null,
-      cupom_link: null,
-      link: 'https://amzn.to/exemplo',
-      condicoes_pagamento: 'em até 3x sem juros',
-      preco_unitario: null,
-      preco_recorrencia: null,
-      frete_gratis: true,
-      internacional: false,
-      pix: true,
-      confianca: 0.88
+  const deleteLead = async (id: string): Promise<boolean> => {
+    setLeads(prev => prev.filter(lead => lead.id !== id));
+    const deleted = await persist(() => supabaseService.deleteLead(id), 'excluir o lead');
+    if (deleted) addLog('info', 'CRM', `Lead removido da lista.`);
+    return deleted;
+  };
+
+  // ─── Biblioteca ───────────────────────────────────────────────────────────────
+
+  const addProductCollection = async (name: string): Promise<boolean> => {
+    const normalized = name.trim();
+    if (!normalized) return false;
+    const collection: ProductCollection = {
+      id: crypto.randomUUID(),
+      name: normalized,
+      productIds: [],
+      createdAt: new Date().toISOString(),
+    };
+    setProductCollections(prev => [collection, ...prev]);
+    const saved = await persist(
+      () => supabaseService.saveProductCollection(collection),
+      'criar a coleção',
+    );
+    if (saved) addLog('success', 'Biblioteca', `Nova coleção criada: "${collection.name}"`);
+    return saved;
+  };
+
+  const deleteProductCollection = async (id: string): Promise<boolean> => {
+    setProductCollections(prev => prev.filter(collection => collection.id !== id));
+    return persist(() => supabaseService.deleteProductCollection(id), 'excluir a coleção');
+  };
+
+  const toggleProductInCollection = async (collectionId: string, productId: string): Promise<boolean> => {
+    const collection = productCollections.find(item => item.id === collectionId);
+    if (!collection) return false;
+    const selected = !collection.productIds.includes(productId);
+    setProductCollections(prev => prev.map(item => item.id === collectionId
+      ? {
+          ...item,
+          productIds: selected
+            ? [...item.productIds, productId]
+            : item.productIds.filter(id => id !== productId),
+        }
+      : item));
+    return persist(
+      () => supabaseService.setProductCollectionProduct(collectionId, productId, selected),
+      selected ? 'adicionar o produto à coleção' : 'remover o produto da coleção',
+    );
+  };
+
+  // ─── Produtos ─────────────────────────────────────────────────────────────────
+
+  const addProduct = (productData: Partial<Product>): Product => {
+    const newProduct: Product = {
+      id: crypto.randomUUID(),
+      title: productData.title || 'Novo Produto Afiliado',
+      originalPrice: productData.originalPrice || 0,
+      price: productData.price || 0,
+      discountPercent: productData.discountPercent || 0,
+      rating: productData.rating || 5.0,
+      reviewsCount: productData.reviewsCount || 0,
+      category: productData.category || 'Geral',
+      marketplace: productData.marketplace || 'Amazon',
+      rawUrl: productData.rawUrl || '',
+      affiliateUrl: productData.affiliateUrl || '',
+      couponCode: productData.couponCode || '',
+      image: productData.image || '',
+      status: 'ativo',
+      isFavorite: false,
+      isArchived: false,
+      hotScore: productData.hotScore ?? 80,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      sourceType: productData.sourceType || 'manual', sourceReferenceId: productData.sourceReferenceId ?? null,
+      sourceUrl: productData.sourceUrl || productData.rawUrl || '', couponDescription: productData.couponDescription || '', couponLink: productData.couponLink || '',
+      freeShipping: productData.freeShipping ?? null, affiliateStatus: productData.affiliateStatus || (productData.rawUrl ? 'pending' : 'pending_url'),
+      affiliateConversionId: productData.affiliateConversionId ?? null, observations: productData.observations || '',
     };
 
-    const priceMatch = rawText.match(/r\$\s*([\d\.,]+)/i);
-    if (priceMatch) {
-      extracted.preco = priceMatch[1].replace(',', '.');
-    }
-    const linkMatch = rawText.match(/https?:\/\/[^\s]+/i);
-    if (linkMatch) {
-      extracted.link = linkMatch[0];
-    }
-    const couponMatch = rawText.match(/cupom[:\s]*([a-zA-Z0-9_-]+)/i);
-    if (couponMatch) {
-      extracted.cupom = couponMatch[1];
-    }
+    setProducts(prev => [newProduct, ...prev]);
+    void persist(() => supabaseService.saveProduct(newProduct), 'adicionar o produto');
+    addLog('success', 'Produtos', `Novo produto adicionado: "${newProduct.title}"`);
+    return newProduct;
+  };
 
-    const storeTemplate = templates.find(t => t.store === extracted.loja && t.status === 'ativo' && t.isDefault) ||
-                          templates.find(t => t.store === extracted.loja && t.status === 'ativo') ||
-                          templates.find(t => (t.store === 'Todas as Lojas' || !t.store) && t.status === 'ativo' && t.isDefault) ||
-                          templates.find(t => t.status === 'ativo');
-
-    let finalText = '';
-    let templateId = storeTemplate?.id;
-
-    if (storeTemplate) {
-      const renderData = {
-        cta: '🔥 *SUPER DESCONTO DO DIA!*',
-        produto: extracted.produto,
-        loja: extracted.loja,
-        preco: extracted.preco,
-        preco_original: extracted.preco_original,
-        cupom: extracted.cupom,
-        link: extracted.link,
-        condicoes_pagamento: extracted.condicoes_pagamento,
-        cupom_desconto: extracted.cupom_desconto,
-        cupom_link: extracted.cupom_link,
-        frete_gratis: extracted.frete_gratis,
-        internacional: extracted.internacional,
-        pix: extracted.pix
-      };
-
-      let res = storeTemplate.content;
-      const conditionalRegex = /\[se\s+([a-zA-Z0-9_]+)\]([\s\S]*?)(?:\[senão\]([\s\S]*?))?\[fim\]/g;
-      let prev = '';
-      let iter = 0;
-      while (res !== prev && iter < 5) {
-        prev = res;
-        iter++;
-        res = res.replace(conditionalRegex, (_, vName, ifC, elseC = '') => {
-          const val = (renderData as any)[vName];
-          const isT = val === true || (typeof val === 'string' && val.trim().length > 0) || (typeof val === 'number' && val > 0);
-          return isT ? ifC : elseC;
-        });
+  const updateProduct = (id: string, updates: Partial<Product>) => {
+    setProducts(prev => prev.map(p => {
+      if (p.id === id) {
+        const updated = { ...p, ...updates, updatedAt: new Date().toISOString() };
+        void persist(() => supabaseService.saveProduct(updated), 'atualizar o produto');
+        return updated;
       }
-      res = res.replace(/\{([a-zA-Z0-9_]+)\}/g, (_, vName) => {
-        const val = (renderData as any)[vName];
-        if (val === undefined || val === null || val === false) return '';
-        if (val === true) return 'Sim';
-        return String(val);
-      });
-      finalText = res;
-    } else {
-      finalText = `[Sem template disponível para ${extracted.loja}]\n${rawText}`;
-    }
-
-    const threshold = grp?.rules?.autoApproveConfidence || 0.65;
-    const isAutoApproved = extracted.confianca >= threshold;
-
-    const newMsg = addCapturedMessage({
-      groupId: grp?.id || 'grp-1',
-      groupName: grp?.name || 'Grupo Monitorado',
-      platform: grp?.platform || 'Telegram',
-      rawContent: rawText,
-      imageUrl,
-      extractedJson: extracted,
-      confidence: extracted.confianca,
-      status: isAutoApproved ? 'Aprovada' : 'Pendente',
-      templateUsedId: templateId,
-      finalText
-    });
-
-    if (isAutoApproved) {
-      approveCapturedMessage(newMsg.id);
-    }
-
-    setMonitoredGroups(prev => prev.map(g => g.id === grp?.id ? {
-      ...g,
-      capturedCount: g.capturedCount + 1,
-      lastActivity: 'Agora mesmo'
-    } : g));
-
-    return newMsg;
-  };
-
-  useEffect(() => {
-    localStorage.setItem('affi_templates_v2', JSON.stringify(templates));
-  }, [templates]);
-
-  const addTemplate = (templateData: Partial<CopyTemplate>): CopyTemplate => {
-    const storeName = templateData.store || 'Todas as Lojas';
-    const newTpl: CopyTemplate = {
-      id: 'tpl-' + Date.now(),
-      title: templateData.title || 'Novo Template',
-      category: templateData.category || storeName,
-      store: storeName,
-      content: templateData.content || '',
-      usageCount: 0,
-      status: templateData.status || 'ativo',
-      isDefault: templateData.isDefault || false
-    };
-
-    setTemplates(prev => {
-      let list = prev;
-      if (newTpl.isDefault) {
-        list = prev.map(t => t.store === storeName ? { ...t, isDefault: false } : t);
-      }
-      return [newTpl, ...list];
-    });
-
-    addLog('success', 'Templates', `Novo template criado: "${newTpl.title}"`);
-    return newTpl;
-  };
-
-  const updateTemplate = (id: string, updates: Partial<CopyTemplate>) => {
-    setTemplates(prev => {
-      const current = prev.find(t => t.id === id);
-      const targetStore = updates.store || current?.store || 'Todas as Lojas';
-
-      return prev.map(t => {
-        if (t.id === id) {
-          return { ...t, ...updates };
-        }
-        if (updates.isDefault && t.store === targetStore && t.id !== id) {
-          return { ...t, isDefault: false };
-        }
-        return t;
-      });
-    });
-    addLog('info', 'Templates', `Template #${id} atualizado.`);
-  };
-
-  const deleteTemplate = (id: string) => {
-    setTemplates(prev => prev.filter(t => t.id !== id));
-    addLog('warning', 'Templates', `Template #${id} excluído.`);
-  };
-
-  const setDefaultTemplate = (id: string) => {
-    setTemplates(prev => {
-      const target = prev.find(t => t.id === id);
-      if (!target) return prev;
-
-      return prev.map(t => {
-        if (t.store === target.store) {
-          return { ...t, isDefault: t.id === id };
-        }
-        return t;
-      });
-    });
-    addLog('success', 'Templates', `Template #${id} definido como padrão.`);
-  };
-
-  const toggleTemplateStatus = (id: string) => {
-    setTemplates(prev => prev.map(t => {
-      if (t.id === id) {
-        const newStatus = t.status === 'ativo' ? 'inativo' : 'ativo';
-        return { ...t, status: newStatus };
-      }
-      return t;
+      return p;
     }));
   };
+
+  const deleteProduct = (id: string) => {
+    setProducts(prev => prev.filter(p => p.id !== id));
+    void persist(() => supabaseService.deleteProduct(id), 'remover o produto');
+    addLog('info', 'Produtos', `Produto removido.`);
+  };
+
+  const toggleFavoriteProduct = (id: string) => {
+    setProducts(prev => prev.map(p => {
+      if (p.id === id) {
+        const updated = { ...p, isFavorite: !p.isFavorite };
+        void persist(() => supabaseService.saveProduct(updated), 'favoritar o produto');
+        return updated;
+      }
+      return p;
+    }));
+  };
+
+  // ─── Fila ─────────────────────────────────────────────────────────────────────
+
+  const addQueueItem = (itemData: Partial<QueueItem>) => {
+    const targetQueueId = itemData.queueConfigId || queues[0]?.id || '';
+    const newItem: QueueItem = {
+      id: crypto.randomUUID(),
+      queueConfigId: targetQueueId,
+      productId: itemData.productId || '',
+      productTitle: itemData.productTitle || 'Oferta em Destaque',
+      productImage: itemData.productImage || '',
+      price: itemData.price || 0,
+      originalPrice: itemData.originalPrice,
+      marketplace: itemData.marketplace || 'Amazon',
+      copyText: itemData.copyText || '',
+      affiliateUrl: itemData.affiliateUrl || '',
+      channelIds: itemData.channelIds || [],
+      scheduledFor: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      status: 'pendente',
+      priority: queueItems.filter(i => i.queueConfigId === targetQueueId).length + 1,
+      ...itemData,
+    };
+
+    setQueueItems(prev => [...prev, newItem]);
+    void persist(() => supabaseService.saveQueueItem(newItem), 'adicionar o item à fila');
+
+    setQueues(prev => prev.map(q => {
+      if (q.id === targetQueueId) {
+        const updated = { ...q, totalPending: q.totalPending + 1 };
+        void persist(() => supabaseService.saveQueueConfig(updated), 'atualizar os totais da fila');
+        return updated;
+      }
+      return q;
+    }));
+    addLog('info', 'Filas', `Item adicionado à fila: "${newItem.productTitle}"`);
+  };
+
+  const deleteQueueItem = (id: string) => {
+    const item = queueItems.find(i => i.id === id);
+    if (item) {
+      setQueues(prev => prev.map(q => {
+        if (q.id === item.queueConfigId) {
+          const updated = { ...q, totalPending: Math.max(0, q.totalPending - 1) };
+          void persist(() => supabaseService.saveQueueConfig(updated), 'atualizar os totais da fila');
+          return updated;
+        }
+        return q;
+      }));
+    }
+    setQueueItems(prev => prev.filter(i => i.id !== id));
+    void persist(() => supabaseService.deleteQueueItem(id), 'remover o item da fila');
+  };
+
+  const shuffleQueue = (queueConfigId: string) => {
+    setQueueItems(prev => {
+      const others = prev.filter(i => i.queueConfigId !== queueConfigId);
+      const pending = prev.filter(i => i.queueConfigId === queueConfigId && i.status === 'pendente');
+      const rest = prev.filter(i => i.queueConfigId === queueConfigId && i.status !== 'pendente');
+
+      const shuffled = [...pending];
+      for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+      }
+      shuffled.forEach((item, idx) => {
+        item.priority = idx + 1;
+        void persist(() => supabaseService.saveQueueItem(item), 'reordenar a fila');
+      });
+
+      return [...others, ...shuffled, ...rest];
+    });
+    addLog('success', 'Filas', `Fila embaralhada com sucesso.`);
+  };
+
+  const clearSentQueueItems = (queueConfigId: string) => {
+    setQueueItems(prev => {
+      const toDelete = prev.filter(i => i.queueConfigId === queueConfigId && i.status === 'enviado');
+      void persist(async () => (await Promise.all(toDelete.map(i => supabaseService.deleteQueueItem(i.id)))).every(Boolean), 'limpar os itens enviados');
+      return prev.filter(i => !(i.queueConfigId === queueConfigId && i.status === 'enviado'));
+    });
+    addLog('info', 'Filas', `Itens enviados removidos da fila.`);
+  };
+
+  const toggleQueueStatus = (queueConfigId: string) => {
+    setQueues(prev => prev.map(q => {
+      if (q.id === queueConfigId) {
+        const updated = {
+          ...q,
+          status: (q.status === 'ativa' ? 'pausada' : 'ativa') as 'ativa' | 'pausada',
+          nextDeliveryTime: q.status === 'ativa' ? 'Pausada' : 'Em 15 minutos',
+        };
+        void persist(() => supabaseService.saveQueueConfig(updated), 'alterar o status da fila');
+        return updated;
+      }
+      return q;
+    }));
+  };
+
+  const moveQueueItemPriority = (itemId: string, direction: 'up' | 'down') => {
+    setQueueItems(prev => {
+      const index = prev.findIndex(i => i.id === itemId);
+      if (index === -1) return prev;
+
+      const newItems = [...prev];
+      const targetQueueId = newItems[index].queueConfigId;
+
+      const queuePendingIndices = newItems
+        .map((item, idx) => ({ item, idx }))
+        .filter(({ item }) => item.queueConfigId === targetQueueId && item.status === 'pendente');
+
+      const currentPos = queuePendingIndices.findIndex(({ idx }) => idx === index);
+      if (currentPos === -1) return prev;
+
+      if (direction === 'up' && currentPos > 0) {
+        const idxA = queuePendingIndices[currentPos].idx;
+        const idxB = queuePendingIndices[currentPos - 1].idx;
+        [newItems[idxA], newItems[idxB]] = [newItems[idxB], newItems[idxA]];
+      } else if (direction === 'down' && currentPos < queuePendingIndices.length - 1) {
+        const idxA = queuePendingIndices[currentPos].idx;
+        const idxB = queuePendingIndices[currentPos + 1].idx;
+        [newItems[idxA], newItems[idxB]] = [newItems[idxB], newItems[idxA]];
+      }
+
+      void persist(async () => (await Promise.all(newItems.map(i => supabaseService.saveQueueItem(i)))).every(Boolean), 'alterar a prioridade da fila');
+      return newItems;
+    });
+  };
+
+  // ─── Integrações ──────────────────────────────────────────────────────────────
+  // Salvar configuração NÃO significa conectar.
+  // configurationStatus = 'configured', connectionStatus permanece 'disconnected'.
+
+  const updateIntegrationConfig = (integrationId: string, tagAfiliado?: string) => {
+    setIntegrations(prev => prev.map(int => {
+      if (int.id === integrationId) {
+        const updated = {
+          ...int,
+          tagAfiliado: tagAfiliado !== undefined ? tagAfiliado : int.tagAfiliado,
+          configurationStatus: 'configured' as const,
+          // connectionStatus permanece 'disconnected' — conexão real vem do backend
+          lastSync: 'Configuração salva',
+        };
+        void persist(() => supabaseService.saveIntegration(updated), 'salvar a configuração da integração');
+        return updated;
+      }
+      return int;
+    }));
+    addLog('success', 'Integrações', `Configuração salva. Conexão real disponível em bloco futuro.`);
+  };
+
+  // ─── Notificações ─────────────────────────────────────────────────────────────
 
   const markNotificationRead = (id: string) => {
     setNotifications(prev => prev.map(n => n.id === id ? { ...n, read: true } : n));
@@ -671,464 +897,56 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setNotifications([]);
   };
 
-  const addLog = (level: 'info' | 'warning' | 'error' | 'success', module: string, message: string, details?: string) => {
-    const newLog: SystemLog = {
-      id: 'log-' + Date.now(),
-      timestamp: new Date().toLocaleString('pt-BR'),
-      level,
-      module,
-      message,
-      details,
-    };
-    setLogs(prev => [newLog, ...prev]);
-    supabaseService.saveLog(newLog);
-  };
-
-  const addProduct = (productData: Partial<Product>): Product => {
-    const newProduct: Product = {
-      id: 'prod-' + Date.now(),
-      title: productData.title || 'Novo Produto Afiliado',
-      originalPrice: productData.originalPrice || 199.90,
-      price: productData.price || 149.90,
-      discountPercent: productData.discountPercent || 25,
-      rating: productData.rating || 4.8,
-      reviewsCount: productData.reviewsCount || 100,
-      category: productData.category || 'Geral',
-      marketplace: productData.marketplace || 'Amazon',
-      rawUrl: productData.rawUrl || 'https://amazon.com.br',
-      affiliateUrl: productData.affiliateUrl || 'https://amzn.to/example',
-      couponCode: productData.couponCode || '',
-      image: productData.image || 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
-      status: 'ativo',
-      isFavorite: false,
-      isArchived: false,
-      hotScore: Math.floor(Math.random() * 30) + 70,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-      ...productData,
-    };
-
-    setProducts(prev => [newProduct, ...prev]);
-    supabaseService.saveProduct(newProduct);
-    addLog('success', 'Produtos', `Novo produto adicionado: "${newProduct.title}"`);
-    return newProduct;
-  };
-
-  const updateProduct = (id: string, updates: Partial<Product>) => {
-    setProducts(prev => prev.map(p => {
-      if (p.id === id) {
-        const updated = { ...p, ...updates, updatedAt: new Date().toISOString() };
-        supabaseService.saveProduct(updated);
-        return updated;
-      }
-      return p;
-    }));
-  };
-
-  const deleteProduct = (id: string) => {
-    setProducts(prev => prev.filter(p => p.id !== id));
-    supabaseService.deleteProduct(id);
-    addLog('info', 'Produtos', `Produto #${id} removido.`);
-  };
-
-  const toggleFavoriteProduct = (id: string) => {
-    setProducts(prev => prev.map(p => p.id === id ? { ...p, isFavorite: !p.isFavorite } : p));
-  };
-
-  const addQueueItem = (itemData: Partial<QueueItem>) => {
-    const targetQueueId = itemData.queueConfigId || queues[0]?.id || 'queue-1';
-    const newItem: QueueItem = {
-      id: 'item-' + Date.now(),
-      queueConfigId: targetQueueId,
-      productId: itemData.productId || 'prod-1',
-      productTitle: itemData.productTitle || 'Oferta em Destaque',
-      productImage: itemData.productImage || 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80',
-      price: itemData.price || 99.90,
-      originalPrice: itemData.originalPrice,
-      marketplace: itemData.marketplace || 'Amazon',
-      copyText: itemData.copyText || '🔥 Confira esta oferta incrível!',
-      affiliateUrl: itemData.affiliateUrl || 'https://amzn.to/link',
-      channelIds: itemData.channelIds || ['chan-tg-1'],
-      scheduledFor: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-      status: 'pendente',
-      priority: queueItems.filter(i => i.queueConfigId === targetQueueId).length + 1,
-      ...itemData
-    };
-
-    setQueueItems(prev => [...prev, newItem]);
-    supabaseService.saveQueueItem(newItem);
-    
-    // Update queue config counter
-    setQueues(prev => prev.map(q => q.id === targetQueueId ? { ...q, totalPending: q.totalPending + 1 } : q));
-    addLog('info', 'Filas', `Item adicionado à fila: "${newItem.productTitle}"`);
-  };
-
-  const deleteQueueItem = (id: string) => {
-    const item = queueItems.find(i => i.id === id);
-    if (item) {
-      setQueues(prev => prev.map(q => q.id === item.queueConfigId ? { ...q, totalPending: Math.max(0, q.totalPending - 1) } : q));
-    }
-    setQueueItems(prev => prev.filter(i => i.id !== id));
-  };
-
-  const shuffleQueue = (queueConfigId: string) => {
-    setQueueItems(prev => {
-      const otherItems = prev.filter(i => i.queueConfigId !== queueConfigId);
-      const queueSpecific = prev.filter(i => i.queueConfigId === queueConfigId && i.status === 'pendente');
-      
-      // Fisher-Yates shuffle
-      const shuffled = [...queueSpecific];
-      for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-      }
-
-      // Reassign priorities
-      shuffled.forEach((item, idx) => {
-        item.priority = idx + 1;
-      });
-
-      return [...otherItems, ...shuffled, ...prev.filter(i => i.queueConfigId === queueConfigId && i.status !== 'pendente')];
-    });
-
-    addLog('success', 'Filas', `Fila #${queueConfigId} embaralhada com sucesso.`);
-  };
-
-  const clearSentQueueItems = (queueConfigId: string) => {
-    setQueueItems(prev => prev.filter(i => !(i.queueConfigId === queueConfigId && i.status === 'enviado')));
-    addLog('info', 'Filas', `Itens já enviados da fila #${queueConfigId} foram limpos.`);
-  };
-
-  const toggleQueueStatus = (queueConfigId: string) => {
-    setQueues(prev => prev.map(q => q.id === queueConfigId ? {
-      ...q,
-      status: q.status === 'ativa' ? 'pausada' : 'ativa',
-      nextDeliveryTime: q.status === 'ativa' ? 'Pausada' : 'Em 15 minutos'
-    } : q));
-  };
-
-  const moveQueueItemPriority = (itemId: string, direction: 'up' | 'down') => {
-    setQueueItems(prev => {
-      const index = prev.findIndex(i => i.id === itemId);
-      if (index === -1) return prev;
-      
-      const newItems = [...prev];
-      const targetQueueId = newItems[index].queueConfigId;
-      
-      // Get all pending items in this queue
-      const queuePendingIndices = newItems
-        .map((item, idx) => ({ item, idx }))
-        .filter(({ item }) => item.queueConfigId === targetQueueId && item.status === 'pendente');
-
-      const currentPosInQueue = queuePendingIndices.findIndex(({ idx }) => idx === index);
-      if (currentPosInQueue === -1) return prev;
-
-      if (direction === 'up' && currentPosInQueue > 0) {
-        const idxA = queuePendingIndices[currentPosInQueue].idx;
-        const idxB = queuePendingIndices[currentPosInQueue - 1].idx;
-        [newItems[idxA], newItems[idxB]] = [newItems[idxB], newItems[idxA]];
-      } else if (direction === 'down' && currentPosInQueue < queuePendingIndices.length - 1) {
-        const idxA = queuePendingIndices[currentPosInQueue].idx;
-        const idxB = queuePendingIndices[currentPosInQueue + 1].idx;
-        [newItems[idxA], newItems[idxB]] = [newItems[idxB], newItems[idxA]];
-      }
-
-      return newItems;
-    });
-  };
-
-  const toggleIntegrationStatus = (integrationId: string) => {
-    setIntegrations(prev => prev.map(int => {
-      if (int.id === integrationId) {
-        const newStatus = int.status === 'conectado' ? 'desconectado' : 'conectado';
-        addLog(newStatus === 'conectado' ? 'success' : 'warning', 'Integrações', `Status de ${int.name} alterado para ${newStatus}.`);
-        return { ...int, status: newStatus, lastSync: newStatus === 'conectado' ? 'Conectado agora' : 'Desconectado' };
-      }
-      return int;
-    }));
-  };
-
-  const updateIntegrationConfig = (integrationId: string, tagAfiliado?: string, apiKey?: string) => {
-    setIntegrations(prev => prev.map(int => {
-      if (int.id === integrationId) {
-        return {
-          ...int,
-          tagAfiliado: tagAfiliado !== undefined ? tagAfiliado : int.tagAfiliado,
-          apiKey: apiKey !== undefined ? apiKey : int.apiKey,
-          status: 'conectado',
-          lastSync: 'Configurações salvas'
-        };
-      }
-      return int;
-    }));
-    addLog('success', 'Integrações', `Configurações da integração #${integrationId} atualizadas.`);
-  };
+  // ─── IA (via API servidor) ────────────────────────────────────────────────────
+  // Sem fallback fake: se a API falhar, a Promise rejeita com erro real.
 
   const generateCopyWithAI = async (params: any): Promise<string> => {
-    try {
-      const res = await fetch('/api/ai/generate-copy', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(params),
-      });
-      const data = await res.json();
-      if (data.copy) {
-        addLog('info', 'IA Copywriter', `Cópia gerada com sucesso para ${params.productName || 'Oferta'}`);
-        return data.copy;
-      }
-      throw new Error(data.error || 'Erro na IA');
-    } catch (err: any) {
-      console.warn('Fallback local AI generation:', err);
-      return `🔥 *OFERTA ESPECIAL: ${params.productName || 'Produto em Destaque'}* 🔥\n\n` +
-        `De ~R$ ${params.originalPrice || '299,00'}~ por apenas *R$ ${params.price || '149,90'}*!\n` +
-        (params.couponCode ? `🎟️ Cupom: *${params.couponCode}*\n` : '') +
-        `\n👇 Garanta a sua compra com preço promocional:\n[LINK_AFILIADO]`;
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Faça login para usar a IA.');
+    const res = await fetch('/api/ai/generate-copy', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify(params),
+    });
+    const data = await readJsonResponse<{ success: boolean; data?: { copy?: string }; error?: { message?: string } }>(res);
+    if (data.success && data.data?.copy) {
+      addLog('info', 'IA Copywriter', `Cópia gerada para "${params.productName || 'Oferta'}"`);
+      return data.data.copy;
     }
+    const errorMessage = data.error?.message || 'Erro ao gerar cópia com IA';
+    throw new Error(errorMessage);
   };
 
   const extractOfferFromUrl = async (url: string): Promise<any> => {
-    try {
-      const res = await fetch('/api/ai/extract-offer', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url }),
-      });
-      const data = await res.json();
-      return data;
-    } catch (err) {
-      return {
-        productName: 'Produto Detectado Automaticamente',
-        price: 199.90,
-        originalPrice: 299.90,
-        discountPercent: 33,
-        marketplace: url.includes('shopee') ? 'Shopee' : url.includes('mercadolivre') ? 'Mercado Livre' : 'Amazon',
-        category: 'Geral'
-      };
-    }
-  };
-
-  const convertAffiliateUrl = (url: string, marketplace: string): string => {
-    if (!url) return '';
-    const cleanUrl = url.split('?')[0];
-    const key = marketplace.toLowerCase().replace(/\s+/g, '');
-    const integration = integrations.find(i => i.key === key);
-    const tag = integration?.status === 'conectado' ? integration.tagAfiliado : '';
-
-    if (!tag) return cleanUrl;
-
-    if (key === 'amazon') {
-      return `${cleanUrl}?tag=${tag}`;
-    }
-    if (key === 'mercadolivre') {
-      return `${cleanUrl}?ref=${tag}`;
-    }
-    if (key === 'shopee') {
-      return `${cleanUrl}?sub_id=${tag}`;
-    }
-    if (key === 'aliexpress') {
-      return `${cleanUrl}?aff_id=${tag}`;
-    }
-    return `${cleanUrl}?affiliate=${tag}`;
-  };
-
-  const clearMockData = () => {
-    setProducts([]);
-    setQueueItems([]);
-    setQueues([]);
-    setGroups([]);
-    setCampaigns([]);
-    setAutomations([]);
-    setLandingPages([]);
-    setLeads([]);
-    setLogs([]);
-    setNotifications([]);
-    localStorage.clear();
-  };
-
-  useEffect(() => {
-    localStorage.setItem('affi_cta_profile_v1', JSON.stringify(ctaProfile));
-  }, [ctaProfile]);
-
-  useEffect(() => {
-    localStorage.setItem('affi_cta_feedbacks_v1', JSON.stringify(ctaFeedbacks));
-  }, [ctaFeedbacks]);
-
-  // ─── CTA PROFILE CRUD ────────────────────────────────────────────────────
-  const updateCtaProfile = (changes: Partial<CtaProfile>, triggeredBy = '') => {
-    setCtaProfile(prev => {
-      const changeEntries: CtaProfileChange[] = Object.entries(changes)
-        .filter(([k]) => k !== 'changelog' && k !== 'ctasGerados' && k !== 'updatedAt')
-        .map(([field, newValue]) => ({
-          id: 'chg-' + Date.now() + '-' + Math.random().toString(36).slice(2, 6),
-          timestamp: new Date().toISOString(),
-          field,
-          previousValue: (prev as any)[field],
-          newValue,
-          triggeredByMessage: triggeredBy
-        }));
-
-      return {
-        ...prev,
-        ...changes,
-        changelog: [...(prev.changelog || []), ...changeEntries].slice(-100),
-        updatedAt: new Date().toISOString()
-      };
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session?.access_token) throw new Error('Faça login para usar a IA.');
+    const res = await fetch('/api/ai/extract-offer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.access_token}` },
+      body: JSON.stringify({ url }),
     });
-  };
-
-  const resetCtaProfile = () => {
-    const blank: CtaProfile = {
-      tom: 'urgente',
-      usaEmoji: true,
-      emojisPreferidos: ['🔥', '🚨', '💥'],
-      tamanhoPreferido: 'medio',
-      palavrasProibidas: [],
-      palavrasFavoritas: ['corre', 'só hoje', 'últimas unidades'],
-      usaCaixaAlta: false,
-      exemplosBons: [],
-      exemplosRuins: [],
-      observacoesLivres: '',
-      ctasGerados: [],
-      changelog: [],
-      updatedAt: new Date().toISOString()
-    };
-    setCtaProfile(blank);
-    addLog('warning', 'IA Training', 'Perfil da IA foi reiniciado.');
-  };
-
-  const addCtaFeedback = (feedback: Partial<CtaFeedback>) => {
-    const newFb: CtaFeedback = {
-      id: 'fb-' + Date.now(),
-      ctaText: feedback.ctaText || '',
-      rating: feedback.rating || 'good',
-      editedVersion: feedback.editedVersion,
-      reason: feedback.reason,
-      origin: feedback.origin || 'training',
-      createdAt: new Date().toISOString()
-    };
-    setCtaFeedbacks(prev => [...prev, newFb]);
-
-    if (newFb.rating === 'good') {
-      const cta = newFb.editedVersion || newFb.ctaText;
-      setCtaProfile(prev => ({
-        ...prev,
-        exemplosBons: [...prev.exemplosBons, cta].slice(-20)
-      }));
-    } else if (newFb.rating === 'bad') {
-      setCtaProfile(prev => ({
-        ...prev,
-        exemplosRuins: [...prev.exemplosRuins, newFb.ctaText].slice(-20)
-      }));
+    const data = await readJsonResponse<{ success: boolean; data?: any; error?: { message?: string } }>(res);
+    if (data.success) {
+      return data.data;
     }
+    const errorMessage = data.error?.message || 'Erro ao extrair oferta da URL';
+    throw new Error(errorMessage);
   };
-
-  // ─── ANTI-REPETITION ENGINE ──────────────────────────────────────────────
-  const normalizeCtaFingerprint = (text: string): string => {
-    return text
-      .toLowerCase()
-      .replace(/[\u{1F300}-\u{1FFFF}]/gu, '')
-      .replace(/[^a-záàãâéêíóôõúüç\s]/g, '')
-      .replace(/\s+/g, ' ')
-      .trim()
-      .slice(0, 60);
-  };
-
-  const simScore = (a: string, b: string): number => {
-    if (a === b) return 1;
-    const len = Math.max(a.length, b.length);
-    if (len === 0) return 1;
-    let matches = 0;
-    for (let i = 0; i < Math.min(a.length, b.length); i++) {
-      if (a[i] === b[i]) matches++;
-    }
-    return matches / len;
-  };
-
-  const isCtaRepeated = (candidate: string, history: string[]): boolean => {
-    const fp = normalizeCtaFingerprint(candidate);
-    return history.some(h => simScore(fp, normalizeCtaFingerprint(h)) >= 0.8);
-  };
-
-  const saveCtaToHistory = (cta: string) => {
-    setCtaProfile(prev => ({
-      ...prev,
-      ctasGerados: [...prev.ctasGerados, cta].slice(-200)
-    }));
-  };
-
-  // ─── CTA GENERATION ENGINE ───────────────────────────────────────────────
-  // Generates ONLY the call-to-action phrase — NOT the full offer.
-  // Product, price, link etc. are template variables handled separately.
-  // Context is used only as flavor hints (urgency level, extras mention).
-  const generateCtaFromProfile = (context: CtaContext = {}): string => {
-    const prof = ctaProfile;
-    const { cupom, frete_gratis, pix } = context;
-
-    // ── 100% Clean Engine: Zero hardcoded clichés ("CORRE!", "SÓ AGORA!", etc.) ──
-    // Build strictly using ONLY what the user instructed and saved.
-    const favs = (prof.palavrasFavoritas || []).filter(w => w.length > 0);
-    const emojis = prof.usaEmoji ? (prof.emojisPreferidos || []) : [];
-    const obs = (prof.observacoesLivres || '')
-      .split('\n')
-      .map(o => o.replace(/^[•\-\*]\s*/, '').trim())
-      .filter(Boolean);
-
-    const partes: string[] = [];
-
-    // Add user's explicit favorite phrases/words
-    if (favs.length > 0) {
-      partes.push(favs.join(' '));
-    }
-
-    // Add user's custom observation rules
-    if (obs.length > 0) {
-      partes.push(obs[obs.length - 1]);
-    }
-
-    // Add contextual offer hints if present
-    if (frete_gratis) partes.push('Frete grátis');
-    if (pix)          partes.push('Desconto no PIX');
-    if (cupom)        partes.push(`Cupom ${cupom}`);
-
-    // If user has not set any custom text yet, clean neutral fallback:
-    if (partes.length === 0) {
-      partes.push('Acesse pelo link para aproveitar!');
-    }
-
-    let cta = partes.join(' ').trim();
-
-    if (prof.usaCaixaAlta) {
-      cta = cta.toUpperCase();
-    }
-
-    if (emojis.length > 0) {
-      const e0 = emojis[0];
-      const e1 = emojis.length > 1 ? emojis[1] : '';
-      cta = `${e0} ${cta}${e1 ? ' ' + e1 : ''}`;
-    }
-
-    // Filter prohibited words
-    (prof.palavrasProibidas || []).forEach(w => {
-      if (w) cta = cta.replace(new RegExp(w, 'gi'), '').trim();
-    });
-
-    cta = cta.replace(/\s+/g, ' ').trim();
-
-    saveCtaToHistory(cta);
-    return cta;
-  };
-
-
 
   return (
     <AppContext.Provider
       value={{
+        currentUser,
         activeTab,
         setActiveTab,
         isSidebarCollapsed,
         setIsSidebarCollapsed,
+        isSearchOpen,
+        setIsSearchOpen,
         products,
         setProducts,
+        productCount,
+        refreshProductCount,
         queues,
         setQueues,
         queueItems,
@@ -1157,16 +975,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         addCapturedMessage,
         approveCapturedMessage,
         rejectCapturedMessage,
-        processCapturedMessageAI,
+        addLead,
+        updateLead,
+        deleteLead,
+        productCollections,
+        addProductCollection,
+        deleteProductCollection,
+        toggleProductInCollection,
         landingPages,
         leads,
         logs,
         subscription,
+        refreshSubscription,
         notifications,
         markNotificationRead,
         clearAllNotifications,
-        clearMockData,
-        convertAffiliateUrl,
         addProduct,
         updateProduct,
         deleteProduct,
@@ -1177,19 +1000,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         clearSentQueueItems,
         toggleQueueStatus,
         moveQueueItemPriority,
-        toggleIntegrationStatus,
         updateIntegrationConfig,
         addLog,
         generateCopyWithAI,
         extractOfferFromUrl,
-        ctaProfile,
-        updateCtaProfile,
-        generateCtaFromProfile,
-        resetCtaProfile,
-        ctaFeedbacks,
-        addCtaFeedback,
-        isSearchOpen,
-        setIsSearchOpen,
       }}
     >
       {children}
@@ -1200,7 +1014,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 export const useApp = () => {
   const context = useContext(AppContext);
   if (!context) {
-    throw new Error('useApp must be used within an AppProvider');
+    throw new Error('useApp deve ser usado dentro de AppProvider');
   }
   return context;
 };

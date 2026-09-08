@@ -1,404 +1,115 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { ArrowLeft, Eye, Layers3, Loader2, Megaphone, Pencil, Plus, RefreshCw, Save, Users, Wifi } from 'lucide-react';
 import { useApp } from '../context/AppContext';
-import { Campaign, AutomationRule } from '../types';
-import { Megaphone, Zap, Plus, Play, Pause, TrendingUp, CheckCircle, Clock, Trash2, X, Check } from 'lucide-react';
+import type { CampaignCollection, CreateCampaignCollectionInput } from '../domain/dispatch/types';
+import type { WhatsAppConnection, WhatsAppGroup } from '../domain/whatsapp/types';
+import { dispatchApi, dispatchNavigation } from '../services/dispatchApi';
+import { whatsappApi } from '../services/whatsappApi';
+import { AutomationsView } from './AutomationsView';
+
+type Screen = 'list' | 'create' | 'edit' | 'detail';
+const panel = 'rounded-xl border border-[#E8E9ED] bg-[#FFFFFF]';
+const input = 'w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2.5 text-sm text-[#0F172A] outline-none focus:border-[#6B6F7B]';
 
 export const CampaignsAutomationsView: React.FC = () => {
-  const { campaigns, automations, addLog } = useApp();
-  const [activeTab, setActiveTab] = useState<'campanhas' | 'automacoes'>('campanhas');
-  const [campaignList, setCampaignList] = useState<Campaign[]>(campaigns);
-  const [automationList, setAutomationList] = useState<AutomationRule[]>(automations);
+  const { activeTab } = useApp();
+  const [campaigns, setCampaigns] = useState<CampaignCollection[]>([]);
+  const [connections, setConnections] = useState<WhatsAppConnection[]>([]);
+  const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
+  const [screen, setScreen] = useState<Screen>('list');
+  const [selected, setSelected] = useState<CampaignCollection | null>(null);
+  const [name, setName] = useState('');
+  const [connectionId, setConnectionId] = useState('');
+  const [groupIds, setGroupIds] = useState<string[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
-  const [isCampaignModalOpen, setIsCampaignModalOpen] = useState(false);
-  const [isAutomationModalOpen, setIsAutomationModalOpen] = useState(false);
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [campaignData, connectionData] = await Promise.all([dispatchApi.listCampaigns(), whatsappApi.listConnections()]);
+      setCampaigns(campaignData);
+      setConnections(connectionData);
+      const intent = dispatchNavigation.consumeCampaignIntent();
+      if (intent?.type === 'create') {
+        setSelected(null); setName(''); setConnectionId(connectionData[0]?.id ?? ''); setGroupIds([]); setScreen('create');
+      } else if (intent?.type === 'detail') {
+        const target = campaignData.find((item) => item.id === intent.campaignId) ?? null;
+        setSelected(target); setScreen(target ? 'detail' : 'list');
+      } else {
+        setSelected((current) => current ? campaignData.find((item) => item.id === current.id) ?? null : null);
+      }
+      setError(null);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Falha ao carregar campanhas.');
+    } finally { setLoading(false); }
+  }, []);
 
-  // Campaign Form State
-  const [campName, setCampName] = useState('');
-  const [campType, setCampType] = useState<any>('Disparo Único');
+  useEffect(() => { if (activeTab === 'campanhas') void load(); }, [activeTab, load]);
+  useEffect(() => {
+    if (!connectionId || !['create', 'edit'].includes(screen)) { setGroups([]); return; }
+    let cancelled = false;
+    void whatsappApi.listConnectionGroups(connectionId)
+      .then((items) => { if (!cancelled) setGroups(items); })
+      .catch((cause) => { if (!cancelled) setError(cause instanceof Error ? cause.message : 'Falha ao carregar grupos.'); });
+    return () => { cancelled = true; };
+  }, [connectionId, screen]);
 
-  // Automation Form State
-  const [autoName, setAutoName] = useState('');
-  const [triggerCondition, setTriggerCondition] = useState('Desconto > 30% em Eletrônicos');
-  const [autoAction, setAutoAction] = useState('Publicar no Telegram & WhatsApp');
-
-  const handleCreateCampaign = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!campName.trim()) return;
-
-    const newCamp: Campaign = {
-      id: 'camp-' + Date.now(),
-      name: campName,
-      type: campType,
-      status: 'ativa',
-      targetChannels: ['Telegram VIP', 'WhatsApp Promos'],
-      totalSent: 0,
-      clicks: 0,
-      conversions: 0,
-      revenue: 0,
-      scheduledDate: new Date().toISOString()
-    };
-
-    setCampaignList(prev => [newCamp, ...prev]);
-    addLog('success', 'Campanhas', `Nova campanha criada: "${newCamp.name}"`);
-    setIsCampaignModalOpen(false);
-    setCampName('');
+  const availableGroups = useMemo(() => groups.filter((group) => group.syncStatus === 'active'), [groups]);
+  const selectedConnection = useMemo(() => connections.find((item) => item.id === connectionId) ?? null, [connectionId, connections]);
+  const beginCreate = () => { setSelected(null); setName(''); setConnectionId(connections[0]?.id ?? ''); setGroupIds([]); setError(null); setScreen('create'); };
+  const beginEdit = (campaign: CampaignCollection) => { setSelected(campaign); setName(campaign.name); setConnectionId(campaign.connectionId); setGroupIds(campaign.groups.map((group) => group.whatsappGroupId)); setError(null); setScreen('edit'); };
+  const toggleGroup = (id: string) => setGroupIds((current) => current.includes(id) ? current.filter((value) => value !== id) : [...current, id]);
+  const syncGroups = async () => {
+    if (!selectedConnection || selectedConnection.status !== 'connected') { setError('Conecte o WhatsApp selecionado antes de sincronizar os grupos.'); return; }
+    setBusy('sync'); setError(null);
+    try { setGroups(await whatsappApi.syncGroups(selectedConnection.id)); }
+    catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao sincronizar grupos.'); }
+    finally { setBusy(null); }
+  };
+  const save = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const payload: CreateCampaignCollectionInput = { name: name.trim(), connectionId, groupIds };
+    setBusy('save'); setError(null);
+    try {
+      const saved = screen === 'edit' && selected ? await dispatchApi.updateCampaign(selected.id, payload) : await dispatchApi.createCampaign(payload);
+      setCampaigns((current) => current.some((item) => item.id === saved.id) ? current.map((item) => item.id === saved.id ? saved : item) : [saved, ...current]);
+      setSelected(saved); setScreen('detail');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Não foi possível salvar a campanha.'); }
+    finally { setBusy(null); }
   };
 
-  const handleCreateAutomation = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!autoName.trim()) return;
-
-    const newAuto: AutomationRule = {
-      id: 'auto-' + Date.now(),
-      name: autoName,
-      triggerCondition,
-      action: autoAction,
-      status: 'ativa',
-      triggerCount: 0,
-      lastTriggered: 'Nunca'
-    };
-
-    setAutomationList(prev => [newAuto, ...prev]);
-    addLog('success', 'Automação', `Nova regra de automação criada: "${newAuto.name}"`);
-    setIsAutomationModalOpen(false);
-    setAutoName('');
-  };
-
-  const handleToggleCampaignStatus = (id: string) => {
-    setCampaignList(prev => prev.map(c => c.id === id ? {
-      ...c,
-      status: c.status === 'ativa' ? 'pausada' : 'ativa'
-    } : c));
-  };
-
-  const handleToggleAutomationStatus = (id: string) => {
-    setAutomationList(prev => prev.map(a => a.id === id ? {
-      ...a,
-      status: a.status === 'ativa' ? 'pausada' : 'ativa'
-    } : a));
-  };
-
-  const handleDeleteCampaign = (id: string) => {
-    setCampaignList(prev => prev.filter(c => c.id !== id));
-    addLog('info', 'Campanhas', `Campanha #${id} removida.`);
-  };
-
-  const handleDeleteAutomation = (id: string) => {
-    setAutomationList(prev => prev.filter(a => a.id !== id));
-    addLog('info', 'Automação', `Regra #${id} removida.`);
-  };
-
+  if (activeTab === 'automacoes') return <AutomationsView />;
+  if (screen === 'create' || screen === 'edit') return (
+    <div className="space-y-6 pb-12">
+      <button onClick={() => setScreen(selected ? 'detail' : 'list')} className="flex items-center gap-2 text-sm text-[#6B6F7B]"><ArrowLeft className="h-4 w-4" /> Voltar</button>
+      <header><h1 className="text-2xl font-medium">{screen === 'edit' ? 'Editar campanha' : 'Nova campanha'}</h1><p className="mt-1 text-sm text-[#6B6F7B]">Crie um grupo de grupos para reutilizar ao configurar filas.</p></header>
+      {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+      <form onSubmit={save} className={`${panel} max-w-3xl space-y-6 p-6`}>
+        <label className="block text-xs text-[#6B6F7B]">Nome da campanha<input required maxLength={100} value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Grupos de ofertas" className={`${input} mt-1.5`} /></label>
+        <label className="block text-xs text-[#6B6F7B]">Conexão dos grupos<select required value={connectionId} onChange={(event) => { setConnectionId(event.target.value); setGroupIds([]); }} className={`${input} mt-1.5`}><option value="">Selecione uma conexão</option>{connections.map((connection) => <option key={connection.id} value={connection.id}>{connection.label} · {connection.status}</option>)}</select></label>
+        <section className="space-y-3 border-t border-[#E8E9ED] pt-5">
+          <div className="flex items-center justify-between gap-3"><div><h2 className="text-sm font-medium">Grupos da campanha</h2><p className="mt-1 text-xs text-[#9CA3AF]">{groupIds.length} selecionado{groupIds.length === 1 ? '' : 's'}.</p></div><button type="button" disabled={!connectionId || busy !== null} onClick={() => void syncGroups()} className="flex items-center gap-2 rounded-lg border border-[#E8E9ED] px-3 py-2 text-xs disabled:opacity-40"><RefreshCw className={`h-3.5 w-3.5 ${busy === 'sync' ? 'animate-spin' : ''}`} /> Sincronizar</button></div>
+          {!connectionId ? <div className="rounded-lg border border-dashed border-[#E8E9ED] p-8 text-center text-sm text-[#9CA3AF]">Selecione uma conexão.</div> : availableGroups.length === 0 ? <div className="rounded-lg border border-dashed border-[#E8E9ED] p-8 text-center text-sm text-[#9CA3AF]">Nenhum grupo disponível.</div> : <div className="max-h-80 space-y-2 overflow-y-auto">{availableGroups.map((group) => <label key={group.id} className="flex cursor-pointer items-center gap-3 rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] p-3"><input type="checkbox" checked={groupIds.includes(group.id)} onChange={() => toggleGroup(group.id)} /><span className="min-w-0 flex-1 truncate text-sm">{group.name}</span><span className="text-xs text-[#9CA3AF]">{group.participantsCount.toLocaleString('pt-BR')}</span></label>)}</div>}
+        </section>
+        <div className="flex justify-end gap-3 border-t border-[#E8E9ED] pt-5"><button type="button" onClick={() => setScreen(selected ? 'detail' : 'list')} className="px-4 py-2 text-sm text-[#6B6F7B]">Cancelar</button><button type="submit" disabled={busy !== null || !name.trim() || !connectionId || groupIds.length === 0} className="flex items-center gap-2 rounded-lg bg-[#EDEDED] px-4 py-2 text-sm font-medium text-[#111] disabled:opacity-40">{busy === 'save' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Salvar campanha</button></div>
+      </form>
+    </div>
+  );
+  if (screen === 'detail' && selected) return (
+    <div className="space-y-6 pb-12">
+      <button onClick={() => setScreen('list')} className="flex items-center gap-2 text-sm text-[#6B6F7B]"><ArrowLeft className="h-4 w-4" /> Voltar para campanhas</button>
+      <header className="flex items-start justify-between gap-4"><div><h1 className="text-2xl font-medium">{selected.name}</h1><p className="mt-1 text-sm text-[#6B6F7B]">Agrupamento reutilizável de grupos.</p></div><button onClick={() => beginEdit(selected)} className="flex items-center gap-2 rounded-lg border border-[#E8E9ED] px-3 py-2 text-sm"><Pencil className="h-4 w-4" /> Editar</button></header>
+      <div className="grid gap-4 sm:grid-cols-2"><div className={`${panel} p-4`}><Wifi className="mb-3 h-4 w-4 text-[#9CA3AF]" /><p className="text-xs text-[#9CA3AF]">Conexão</p><p className="mt-1 text-sm">{selected.connectionLabel}</p></div><div className={`${panel} p-4`}><Users className="mb-3 h-4 w-4 text-[#9CA3AF]" /><p className="text-xs text-[#9CA3AF]">Grupos</p><p className="mt-1 text-sm">{selected.groups.length} destino{selected.groups.length === 1 ? '' : 's'}</p></div></div>
+      <section className={`${panel} overflow-hidden`}><div className="border-b border-[#E8E9ED] px-5 py-4"><h2 className="text-sm font-medium">Grupos vinculados</h2></div>{selected.groups.map((group) => <div key={group.id} className="flex items-center justify-between border-b border-[#E8E9ED] px-5 py-4 last:border-0"><span className="text-sm">{group.name}</span><span className="text-xs text-[#9CA3AF]">{group.participantsCount.toLocaleString('pt-BR')} participantes</span></div>)}</section>
+    </div>
+  );
   return (
     <div className="space-y-6 pb-12">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2.5">
-            <Megaphone className="w-6 h-6 text-indigo-400" />
-            Campanhas & Automações Inteligentes
-          </h1>
-          <p className="text-xs text-slate-400">
-            Crie disparos em massa agendados ou configure gatilhos automáticos de queda de preço e novos cupons.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-900 border border-slate-800">
-            <button
-              onClick={() => setActiveTab('campanhas')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'campanhas' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Campanhas ({campaignList.length})
-            </button>
-            <button
-              onClick={() => setActiveTab('automacoes')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'automacoes' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
-              }`}
-            >
-              Regras de Gatilho ({automationList.length})
-            </button>
-          </div>
-
-          {activeTab === 'campanhas' ? (
-            <button
-              onClick={() => setIsCampaignModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-indigo-600/20"
-            >
-              <Plus className="w-4 h-4" />
-              Nova Campanha
-            </button>
-          ) : (
-            <button
-              onClick={() => setIsAutomationModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-emerald-600/20"
-            >
-              <Plus className="w-4 h-4" />
-              Nova Regra
-            </button>
-          )}
-        </div>
-      </div>
-
-      {activeTab === 'campanhas' ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-          {campaignList.length === 0 ? (
-            <div className="col-span-full py-16 px-6 text-center space-y-4 bg-slate-900/40 rounded-3xl border border-slate-800/80">
-              <div className="w-14 h-14 rounded-3xl bg-indigo-500/10 text-indigo-400 flex items-center justify-center mx-auto border border-indigo-500/20">
-                <Megaphone className="w-7 h-7" />
-              </div>
-              <div className="space-y-1 max-w-md mx-auto">
-                <h3 className="text-base font-bold text-white">Nenhuma Campanha Cadastrada</h3>
-                <p className="text-xs text-slate-400">
-                  Crie campanhas de disparo em massa para promover suas ofertas nos canais vinculados.
-                </p>
-              </div>
-              <button
-                onClick={() => setIsCampaignModalOpen(true)}
-                className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg inline-flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Criar Primeira Campanha
-              </button>
-            </div>
-          ) : (
-            campaignList.map(camp => (
-              <div key={camp.id} className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800/80 space-y-4 flex flex-col justify-between">
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                      {camp.type}
-                    </span>
-                    <button
-                      onClick={() => handleToggleCampaignStatus(camp.id)}
-                      className={`text-[10px] font-bold px-2.5 py-0.5 rounded-full border capitalize transition-all ${
-                        camp.status === 'ativa' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'
-                      }`}
-                    >
-                      {camp.status}
-                    </button>
-                  </div>
-
-                  <h3 className="text-sm font-bold text-white">{camp.name}</h3>
-
-                  <div className="grid grid-cols-2 gap-2 text-xs pt-2 border-t border-slate-800">
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">Disparos:</span>
-                      <span className="font-bold text-white">{camp.totalSent}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">Cliques:</span>
-                      <span className="font-bold text-indigo-400">{camp.clicks}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">Conversões:</span>
-                      <span className="font-bold text-emerald-400">{camp.conversions}</span>
-                    </div>
-                    <div>
-                      <span className="text-slate-400 block text-[10px]">Receita:</span>
-                      <span className="font-bold text-emerald-400">R$ {camp.revenue.toFixed(2)}</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="pt-2 flex items-center justify-end">
-                  <button
-                    onClick={() => handleDeleteCampaign(camp.id)}
-                    className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors text-xs flex items-center gap-1"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                    Excluir
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      ) : (
-        <div className="space-y-4">
-          {automationList.length === 0 ? (
-            <div className="py-16 px-6 text-center space-y-4 bg-slate-900/40 rounded-3xl border border-slate-800/80">
-              <div className="w-14 h-14 rounded-3xl bg-emerald-500/10 text-emerald-400 flex items-center justify-center mx-auto border border-emerald-500/20">
-                <Zap className="w-7 h-7" />
-              </div>
-              <div className="space-y-1 max-w-md mx-auto">
-                <h3 className="text-base font-bold text-white">Nenhuma Regra de Automação Cadastrada</h3>
-                <p className="text-xs text-slate-400">
-                  Configure regras automáticas de queda de preço, novos cupons ou ofertas relâmpago.
-                </p>
-              </div>
-              <button
-                onClick={() => setIsAutomationModalOpen(true)}
-                className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-lg inline-flex items-center gap-2"
-              >
-                <Plus className="w-4 h-4" />
-                Criar Primeira Regra
-              </button>
-            </div>
-          ) : (
-            automationList.map(auto => (
-              <div key={auto.id} className="p-5 rounded-2xl bg-slate-900/90 border border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4">
-                <div className="space-y-1">
-                  <div className="flex items-center gap-2">
-                    <Zap className="w-4 h-4 text-amber-400" />
-                    <h3 className="text-sm font-bold text-white">{auto.name}</h3>
-                    <button
-                      onClick={() => handleToggleAutomationStatus(auto.id)}
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded border uppercase transition-all ${
-                        auto.status === 'ativa' ? 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30' : 'bg-slate-800 text-slate-400 border-slate-700'
-                      }`}
-                    >
-                      {auto.status}
-                    </button>
-                  </div>
-                  <p className="text-xs text-slate-400">
-                    <strong className="text-indigo-300">Gatilho:</strong> {auto.triggerCondition} → <strong className="text-emerald-300">Ação:</strong> {auto.action}
-                  </p>
-                </div>
-
-                <div className="flex items-center justify-between md:justify-end gap-4 text-xs text-slate-400">
-                  <div>
-                    <span>Disparado <strong className="text-white">{auto.triggerCount} vezes</strong></span>
-                    <span className="block text-[10px] text-slate-500">Último disparo: {auto.lastTriggered}</span>
-                  </div>
-                  <button
-                    onClick={() => handleDeleteAutomation(auto.id)}
-                    className="p-1.5 rounded-xl bg-slate-800 hover:bg-rose-500/20 text-slate-400 hover:text-rose-400 transition-colors"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {/* Campaign Modal */}
-      {isCampaignModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Megaphone className="w-5 h-5 text-indigo-400" />
-                Nova Campanha de Afiliados
-              </h3>
-              <button onClick={() => setIsCampaignModalOpen(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateCampaign} className="space-y-4 text-xs">
-              <div>
-                <label className="text-slate-400 block mb-1 font-medium">Nome da Campanha</label>
-                <input
-                  type="text"
-                  value={campName}
-                  onChange={e => setCampName(e.target.value)}
-                  placeholder="ex: Ofertas Relâmpago Fim de Semana"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-400 block mb-1 font-medium">Tipo de Disparo</label>
-                <select
-                  value={campType}
-                  onChange={e => setCampType(e.target.value as any)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-indigo-500"
-                >
-                  <option value="Disparo Único">Disparo Único Instantâneo</option>
-                  <option value="Agendado">Agendado com Data & Hora</option>
-                  <option value="Recorrente">Recorrente Diário</option>
-                </select>
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsCampaignModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-md"
-                >
-                  Criar Campanha
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* Automation Modal */}
-      {isAutomationModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <Zap className="w-5 h-5 text-emerald-400" />
-                Nova Regra de Automação
-              </h3>
-              <button onClick={() => setIsAutomationModalOpen(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateAutomation} className="space-y-4 text-xs">
-              <div>
-                <label className="text-slate-400 block mb-1 font-medium">Nome da Regra</label>
-                <input
-                  type="text"
-                  value={autoName}
-                  onChange={e => setAutoName(e.target.value)}
-                  placeholder="ex: Auto Disparo Ofertas > 40% OFF"
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-400 block mb-1 font-medium">Condição de Gatilho</label>
-                <input
-                  type="text"
-                  value={triggerCondition}
-                  onChange={e => setTriggerCondition(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div>
-                <label className="text-slate-400 block mb-1 font-medium">Ação Automática</label>
-                <input
-                  type="text"
-                  value={autoAction}
-                  onChange={e => setAutoAction(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3.5 py-2.5 text-white focus:outline-none focus:border-emerald-500"
-                />
-              </div>
-
-              <div className="pt-2 flex justify-end gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsAutomationModalOpen(false)}
-                  className="px-4 py-2 rounded-xl bg-slate-800 text-slate-300 font-bold hover:bg-slate-700"
-                >
-                  Cancelar
-                </button>
-                <button
-                  type="submit"
-                  className="px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold shadow-md"
-                >
-                  Criar Regra
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <header className="flex flex-col justify-between gap-4 sm:flex-row sm:items-end"><div><h1 className="flex items-center gap-2.5 text-2xl font-medium"><Megaphone className="h-5 w-5" /> Campanhas</h1><p className="mt-1 text-sm text-[#6B6F7B]">Monte grupos de grupos para selecionar dentro da configuração das filas.</p></div><button onClick={beginCreate} disabled={loading} className="flex items-center gap-2 rounded-lg bg-[#EDEDED] px-4 py-2 text-sm font-medium text-[#111] disabled:opacity-40"><Plus className="h-4 w-4" /> Nova campanha</button></header>
+      {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-600">{error}</div>}
+      {loading ? <div className={`${panel} flex items-center justify-center gap-2 py-20 text-sm text-[#6B6F7B]`}><Loader2 className="h-4 w-4 animate-spin" /> Carregando campanhas •••</div> : campaigns.length === 0 ? <div className={`${panel} px-6 py-16 text-center`}><Layers3 className="mx-auto mb-3 h-9 w-9 text-[#D4D4D8]" /><p className="text-sm text-[#6B6F7B]">Nenhuma campanha criada.</p><p className="mt-1 text-xs text-[#9CA3AF]">Crie um agrupamento para reutilizar vários grupos em uma fila.</p></div> : <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">{campaigns.map((campaign) => <article key={campaign.id} className={`${panel} flex flex-col justify-between p-5`}><div><Layers3 className="h-4 w-4 text-[#9CA3AF]" /><h2 className="mt-4 truncate text-sm font-medium">{campaign.name}</h2><div className="mt-4 space-y-2 border-t border-[#E8E9ED] pt-4 text-xs text-[#6B6F7B]"><p className="flex items-center gap-2"><Wifi className="h-3.5 w-3.5" /> {campaign.connectionLabel}</p><p className="flex items-center gap-2"><Users className="h-3.5 w-3.5" /> {campaign.groups.length} grupo{campaign.groups.length === 1 ? '' : 's'}</p></div></div><div className="mt-5 flex justify-end border-t border-[#E8E9ED] pt-4"><button onClick={() => { setSelected(campaign); setScreen('detail'); }} className="flex items-center gap-2 rounded-lg border border-[#E8E9ED] px-3 py-2 text-xs"><Eye className="h-3.5 w-3.5" /> Ver grupos</button></div></article>)}</div>}
     </div>
   );
 };

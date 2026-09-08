@@ -1,6 +1,6 @@
 {
-  "name": "AffiFlow AI - Automação de Afiliados",
-  "description": "Plataforma completa de automação de afiliados com inteligência artificial, filas de postagem, integração com marketplaces e redes sociais.",
+  "name": "AfiliHub — Automação de Afiliados",
+  "description": "Plataforma de automação para afiliados: monitoramento de grupos, conversão de links, geração de copy com IA e disparo de ofertas.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

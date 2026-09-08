@@ -1,148 +1,145 @@
-import React, { useState } from 'react';
-import { useApp } from '../context/AppContext';
-import { ChannelGroup } from '../types';
-import { Send, MessageSquare, Disc, Users, Plus, CheckCircle2, ShieldCheck, AlertCircle } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { Loader2, MessageSquare, RefreshCw, Users } from 'lucide-react';
+import type { WhatsAppConnection, WhatsAppGroup } from '../domain/whatsapp/types';
+import { whatsappApi } from '../services/whatsappApi';
 
 export const GroupsChannelsView: React.FC = () => {
-  const { groups, setGroups, queues, addLog } = useApp();
-  const [isAddModalOpen, setIsAddModalOpen] = useState(false);
-  const [newGroupName, setNewGroupName] = useState('');
-  const [newGroupPlatform, setNewGroupPlatform] = useState<'Telegram' | 'WhatsApp' | 'Discord'>('Telegram');
+  const [connections, setConnections] = useState<WhatsAppConnection[]>([]);
+  const [groups, setGroups] = useState<WhatsAppGroup[]>([]);
+  const [connectionFilter, setConnectionFilter] = useState('all');
+  const [loading, setLoading] = useState(true);
+  const [syncing, setSyncing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleAddGroup = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newGroupName) return;
-    const newGroup: ChannelGroup = {
-      id: 'chan-' + Date.now(),
-      name: newGroupName,
-      platform: newGroupPlatform,
-      type: newGroupPlatform === 'Telegram' ? 'Canal' : 'Grupo',
-      membersCount: 1500,
-      status: 'conectado',
-      dailyLimit: 50,
-      currentDailyCount: 0
-    };
-    setGroups(prev => [...prev, newGroup]);
-    setIsAddModalOpen(false);
-    setNewGroupName('');
-    addLog('success', 'Grupos', `Novo canal/grupo adicionado: ${newGroup.name}`);
+  const load = async () => {
+    try {
+      const [connectionData, groupData] = await Promise.all([
+        whatsappApi.listConnections(),
+        whatsappApi.listGroups(),
+      ]);
+      setConnections(connectionData);
+      setGroups(groupData);
+      setError(null);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Falha ao carregar grupos.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+  }, []);
+
+  const visibleGroups = useMemo(
+    () => groups.filter((group) => connectionFilter === 'all' || group.connectionId === connectionFilter),
+    [connectionFilter, groups],
+  );
+
+  const sync = async () => {
+    const targets = connections.filter((connection) => (
+      connection.status === 'connected'
+      && (connectionFilter === 'all' || connection.id === connectionFilter)
+    ));
+    if (targets.length === 0) {
+      setError('Conecte o WhatsApp selecionado antes de sincronizar os grupos.');
+      return;
+    }
+    setSyncing(true);
+    setError(null);
+    try {
+      await Promise.all(targets.map((connection) => whatsappApi.syncGroups(connection.id)));
+      setGroups(await whatsappApi.listGroups());
+      setConnections(await whatsappApi.listConnections());
+    } catch (syncError) {
+      setError(syncError instanceof Error ? syncError.message : 'Falha ao sincronizar grupos.');
+    } finally {
+      setSyncing(false);
+    }
   };
 
   return (
     <div className="space-y-6 pb-12">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2.5">
-            <Send className="w-6 h-6 text-cyan-400" />
-            Gestão de Grupos & Canais de Transmissão
+          <h1 className="text-2xl font-medium text-[#0F172A] tracking-tight flex items-center gap-2.5">
+            <Users className="w-6 h-6" /> Grupos &amp; Canais
           </h1>
-          <p className="text-xs text-slate-400">
-            Conecte e atribua filas de disparo para seus canais no Telegram, WhatsApp, Discord, Instagram e Facebook.
+          <p className="text-sm text-[#6B6F7B] mt-1">
+            Grupos reais sincronizados, separados pela conexão WhatsApp de origem.
           </p>
         </div>
-
         <button
-          onClick={() => setIsAddModalOpen(true)}
-          className="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md transition-all flex items-center gap-2"
+          onClick={() => void sync()}
+          disabled={syncing || loading}
+          className="px-4 py-2 rounded-lg bg-[#EDEDED] text-[#0F172A] disabled:opacity-50 text-sm font-medium flex items-center justify-center gap-2"
         >
-          <Plus className="w-4 h-4" />
-          Vincular Novo Canal / Grupo
+          {syncing ? <Loader2 className="w-4 h-4 animate-spin" /> : <RefreshCw className="w-4 h-4" />}
+          Sincronizar grupos
         </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {groups.length === 0 ? (
-          <div className="col-span-full py-16 px-6 text-center space-y-4 bg-slate-900/40 rounded-3xl border border-slate-800/80">
-            <div className="w-14 h-14 rounded-3xl bg-cyan-500/10 text-cyan-400 flex items-center justify-center mx-auto border border-cyan-500/20">
-              <Send className="w-7 h-7" />
-            </div>
-            <div className="space-y-1 max-w-md mx-auto">
-              <h3 className="text-base font-bold text-white">Nenhum Canal ou Grupo Vinculado</h3>
-              <p className="text-xs text-slate-400">
-                Conecte seus canais do Telegram, grupos do WhatsApp ou Discord para enviar ofertas em tempo real.
-              </p>
-            </div>
-            <button
-              onClick={() => setIsAddModalOpen(true)}
-              className="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold shadow-lg inline-flex items-center gap-2"
-            >
-              <Plus className="w-4 h-4" />
-              Vincular Primeiro Canal
-            </button>
+      {error && (
+        <div className="p-3.5 rounded-lg bg-[#F4F4F6] border border-red-200 text-red-600 text-sm">
+          {error}
+        </div>
+      )}
+
+      <div className="flex items-center gap-3 p-3 rounded-xl bg-[#FFFFFF] border border-[#E8E9ED]">
+        <MessageSquare className="w-4 h-4 text-[#9CA3AF]" />
+        <label htmlFor="whatsapp-filter" className="text-xs text-[#6B6F7B]">WhatsApp</label>
+        <select
+          id="whatsapp-filter"
+          value={connectionFilter}
+          onChange={(event) => setConnectionFilter(event.target.value)}
+          className="ml-auto min-w-48 px-3 py-2 rounded-lg bg-[#F8FAFC] border border-[#E8E9ED] text-xs text-[#0F172A] focus:outline-none"
+        >
+          <option value="all">Todos</option>
+          {connections.map((connection) => (
+            <option key={connection.id} value={connection.id}>{connection.label}</option>
+          ))}
+        </select>
+      </div>
+
+      <div className="rounded-xl bg-[#FFFFFF] border border-[#E8E9ED] overflow-hidden">
+        <div className="grid grid-cols-[minmax(0,1fr)_minmax(140px,0.5fr)_120px_110px] gap-4 px-5 py-3 border-b border-[#E8E9ED] text-xs text-[#9CA3AF]">
+          <span>Grupo</span>
+          <span>WhatsApp</span>
+          <span>Participantes</span>
+          <span>Status</span>
+        </div>
+        {loading ? (
+          <div className="py-16 flex justify-center"><Loader2 className="w-5 h-5 animate-spin text-[#9CA3AF]" /></div>
+        ) : visibleGroups.length === 0 ? (
+          <div className="py-16 text-center">
+            <Users className="w-8 h-8 text-[#D4D4D8] mx-auto mb-3" />
+            <p className="text-sm text-[#6B6F7B]">Nenhum grupo sincronizado.</p>
+            <p className="text-xs text-[#9CA3AF] mt-1">Conecte um número e use “Sincronizar grupos”.</p>
           </div>
         ) : (
-          groups.map(grp => (
-            <div key={grp.id} className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800/80 shadow-xl space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                  {grp.platform} • {grp.type}
-                </span>
-                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" /> Conectado
-                </span>
+          visibleGroups.map((group) => (
+            <div
+              key={group.id}
+              className="grid grid-cols-[minmax(0,1fr)_minmax(140px,0.5fr)_120px_110px] gap-4 items-center px-5 py-4 border-b last:border-b-0 border-[#E8E9ED] text-sm"
+            >
+              <div className="min-w-0">
+                <p className="text-[#0F172A] truncate">{group.name}</p>
+                <p className="text-[11px] text-[#6B6F7B] truncate mt-0.5">{group.externalGroupId}</p>
               </div>
-
-              <div>
-                <h3 className="text-base font-bold text-white">{grp.name}</h3>
-                <p className="text-xs text-slate-400 flex items-center gap-1 mt-1">
-                  <Users className="w-3.5 h-3.5 text-indigo-400" />
-                  {grp.membersCount.toLocaleString('pt-BR')} membros ativos
-                </p>
-              </div>
-
-              <div className="p-3 rounded-2xl bg-slate-950 border border-slate-800 space-y-1.5 text-xs">
-                <div className="flex items-center justify-between text-[11px] text-slate-400">
-                  <span>Limite Diário de Disparos:</span>
-                  <span className="font-bold text-white">{grp.currentDailyCount} / {grp.dailyLimit}</span>
-                </div>
-                <div className="w-full h-1.5 rounded-full bg-slate-800 overflow-hidden">
-                  <div
-                    className="h-full bg-indigo-500 rounded-full"
-                    style={{ width: `${Math.min(100, (grp.currentDailyCount / grp.dailyLimit) * 100)}%` }}
-                  ></div>
-                </div>
-              </div>
+              <span className="text-[#6B6F7B] truncate">{group.connectionLabel || 'WhatsApp'}</span>
+              <span className="text-[#6B6F7B] tabular-nums">
+                {group.participantsCount.toLocaleString('pt-BR')}
+              </span>
+              <span className={`text-xs ${group.syncStatus === 'active' ? 'text-emerald-600' : 'text-[#9CA3AF]'}`}>
+                {group.syncStatus === 'active' ? 'Disponível' : 'Indisponível'}
+              </span>
             </div>
           ))
         )}
       </div>
-
-      {isAddModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="w-full max-w-md rounded-3xl bg-slate-900 border border-slate-800 shadow-2xl p-6 space-y-4">
-            <h2 className="text-base font-bold text-white">Adicionar Grupo / Canal</h2>
-            <form onSubmit={handleAddGroup} className="space-y-3">
-              <div>
-                <label className="text-xs text-slate-300 block mb-1">Nome do Canal / Grupo:</label>
-                <input
-                  type="text"
-                  required
-                  value={newGroupName}
-                  onChange={(e) => setNewGroupName(e.target.value)}
-                  placeholder="Ex: @promos_tech_vip"
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
-                />
-              </div>
-              <div>
-                <label className="text-xs text-slate-300 block mb-1">Plataforma:</label>
-                <select
-                  value={newGroupPlatform}
-                  onChange={(e) => setNewGroupPlatform(e.target.value as any)}
-                  className="w-full px-3 py-2 rounded-xl bg-slate-950 border border-slate-800 text-xs text-white"
-                >
-                  <option value="Telegram">Telegram</option>
-                  <option value="WhatsApp">WhatsApp</option>
-                  <option value="Discord">Discord</option>
-                </select>
-              </div>
-              <div className="pt-2 flex justify-end gap-2">
-                <button type="button" onClick={() => setIsAddModalOpen(false)} className="px-3 py-1.5 rounded-xl bg-slate-800 text-slate-300 text-xs">Cancelar</button>
-                <button type="submit" className="px-4 py-1.5 rounded-xl bg-indigo-600 text-white text-xs font-semibold">Salvar</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
+      <p className="text-xs text-[#6B6F7B]">
+        Grupos que deixam de aparecer permanecem no histórico como indisponíveis e não são apagados automaticamente.
+      </p>
     </div>
   );
 };

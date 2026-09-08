@@ -1,61 +1,117 @@
 @import "tailwindcss";
 
 @layer base {
+  :root {
+    --bg-base: #F8FAFC;
+    --surface-1: #FFFFFF;
+    --surface-2: #F4F4F6;
+    --surface-3: #ECECEF;
+    --border-default: #E8E9ED;
+    --border-hover: #D4D4D8;
+    --text-primary: #0F172A;
+    --text-secondary: #6B6F7B;
+    --text-muted: #9CA3AF;
+    
+    /* AfiliHub brand system */
+    --brand-pink: #FF2D7D;
+    --brand-coral: #FF6B6B;
+    --brand-orange: #FF9F43;
+    --brand-yellow: #FFC629;
+    --brand-gradient: linear-gradient(135deg, #FF2D7D 0%, #FF6B6B 40%, #FF9F43 72%, #FFC629 100%);
+    
+    /* Functional Semantic States */
+    --color-success: #16A34A;
+    --color-warning: #D97706;
+    --color-danger: #DC2626;
+    --color-info: #2563EB;
+  }
+
   body {
-    background-color: #050506;
-    color: #e2e8f0;
-    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    background-color: var(--bg-base);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    letter-spacing: -0.011em;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Nunito Sans', 'Inter', system-ui, sans-serif;
   }
   
   code, kbd, pre {
     font-family: 'JetBrains Mono', monospace;
   }
+
+  @supports (padding: env(safe-area-inset-bottom)) {
+    body { padding-bottom: env(safe-area-inset-bottom); }
+  }
 }
 
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #050506;
+  background: #F8FAFC;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.1);
+  background: #E8E9ED;
   border-radius: 9999px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.2);
+  background: #D4D4D8;
 }
 
-/* Dark Luxury Glass Effects */
-.glass-panel {
-  background: rgba(10, 10, 11, 0.75);
-  backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+/* Design System Utilities */
+.surface-1 {
+  background-color: #FFFFFF;
+  border: 1px solid #E8E9ED;
 }
 
-.glass-card {
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+.surface-2 {
+  background-color: #F4F4F6;
+  border: 1px solid #E8E9ED;
 }
 
-.glass-card-hover {
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+.surface-3 {
+  background-color: #ECECEF;
+  border: 1px solid #E8E9ED;
 }
 
-.glass-card-hover:hover {
-  background: rgba(255, 255, 255, 0.05);
-  border-color: rgba(255, 255, 255, 0.12);
-  transform: translateY(-1px);
+.card-hover {
+  transition: all 0.2s ease;
 }
 
-/* Mesh Background Overlay */
-.mesh-grid {
-  background-image: radial-gradient(rgba(255, 255, 255, 0.07) 1px, transparent 1px);
-  background-size: 28px 28px;
+.card-hover:hover {
+  border-color: #D4D4D8;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+}
+
+.bg-brand-gradient {
+  background: var(--brand-gradient);
+}
+
+.text-brand-gradient {
+  background: var(--brand-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.font-brand {
+  font-family: 'Nunito Sans', 'Inter', system-ui, sans-serif;
+}
+
+.brand-ring {
+  box-shadow: 0 0 0 1px rgba(255, 45, 125, 0.14), 0 18px 45px rgba(255, 107, 107, 0.12);
+}
+
+.brand-ambient {
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255, 45, 125, 0.11), transparent 28rem),
+    radial-gradient(circle at 88% 74%, rgba(255, 198, 41, 0.13), transparent 28rem),
+    #F8FAFC;
 }

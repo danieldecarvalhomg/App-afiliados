@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><link rel="stylesheet" href="popup.css"><title>AfiliHub Companion</title></head>
+  <body>
+    <main>
+      <header><img class="mark" src="icon.svg" alt=""><div><h1>AfiliHub Companion</h1><p>Mercado Livre Afiliados</p></div></header>
+      <section id="paired" hidden>
+        <div class="status"><span></span><div><strong>Extensão conectada</strong><small id="instance-name"></small></div></div>
+        <button id="open-ml" class="primary">Abrir Mercado Livre</button>
+        <button id="disconnect" class="ghost">Desconectar deste navegador</button>
+      </section>
+      <form id="pair-form">
+        <label>Ambiente<select id="backend"><option value="http://127.0.0.1:3001">AfiliHub local</option><option value="https://achadosdaamanda.click">AfiliHub online</option></select></label>
+        <label>Nome deste navegador<input id="name" maxlength="80" value="Meu Chrome"></label>
+        <label>Código de pareamento<input id="code" maxlength="14" placeholder="ABCD-EFGH-JKLM" autocomplete="one-time-code" required></label>
+        <button class="primary" type="submit">Conectar ao AfiliHub</button>
+      </form>
+      <p id="message" role="status"></p>
+      <footer>v1.1.0 · nenhum cookie ou senha é enviado ao AfiliHub</footer>
+    </main>
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>

@@ -1,0 +1,13 @@
+import{describe,expect,it}from'vitest';import{CtaSlotBoundaryValidator}from'./CtaSlotBoundaryValidator';import{availableCtaBlocks}from'./defaultBlueprint';import type{CtaFacts}from'./types';
+const facts:CtaFacts={productId:'p',title:'Echo Dot',category:null,price:249,originalPrice:399,discountPercent:38,couponCode:'ECHO20',couponDescription:null,freeShipping:true,marketplace:'shopee',affiliateUrl:'https://affiliate.test/a',sourceUrl:'https://source.test'};
+describe('CtaSlotBoundaryValidator',()=>{const validator=new CtaSlotBoundaryValidator(),opening=availableCtaBlocks().find(block=>block.key==='opening')!,cta={...opening,id:'cta_ia',key:'cta_ia'};
+  it('aceita copy linguística dentro do slot',()=>expect(validator.validate([opening],[{blockId:'opening',text:'Olha o que apareceu 👀'}],facts)).toEqual([]));
+  it('permite referência natural ao produto e ao cupom factual conhecido',()=>expect(validator.validate([opening],[{blockId:'opening',text:'Tava de olho no Echo Dot? O cupom ECHO20 também apareceu.'}],facts)).toEqual([]));
+  it('permite porcentagem quando ela faz parte do cupom factual conhecido',()=>expect(validator.validate([cta],[{blockId:'cta_ia',text:'Aproveite o cupom 25% OFF FULL!'}],{...facts,couponCode:'25% OFF FULL'})).toEqual([]));
+  it('rejeita porcentagem comercial diferente do cupom conhecido',()=>expect(validator.validate([cta],[{blockId:'cta_ia',text:'Aproveite 30% OFF!'}],{...facts,couponCode:'25% OFF FULL'})).toContain('AI_SLOT_FACTS_FORBIDDEN'));
+  it.each(['Uma opção para controlar sua casa','Som potente para ouvir músicas','Ótimo para equipar sua cozinha'])('permite conhecimento externo contextual do produto: %s',(text)=>expect(validator.validate([opening],[{blockId:'opening',text}],facts)).toEqual([]));
+  it('rejeita produto, preço, link e CTA vazando pela abertura',()=>{const errors=validator.validate([opening],[{blockId:'opening',text:'Echo Dot por R$ 249, aproveite aqui https://affiliate.test/a'}],facts);expect(errors).toContain('AI_SLOT_FACTS_FORBIDDEN');expect(errors).toContain('AI_SLOT_BOUNDARY_OPENING');});
+  it('rejeita slot não solicitado e slot ausente',()=>{const errors=validator.validate([cta],[{blockId:'other',text:'oi'}],facts);expect(errors).toContain('AI_SLOT_NOT_REQUESTED');expect(errors).toContain('AI_SLOT_MISSING');});
+  it.each(['Bateria com 12 horas de autonomia','Potência de 1200W','Corra, últimas unidades','Oferta só hoje'])('rejeita fato não verificado: %s',(text)=>expect(validator.validate([cta],[{blockId:'cta_ia',text}],facts)).toContain('AI_FACT_UNVERIFIED'));
+  it('aceita especificação quantitativa presente no título',()=>expect(validator.validate([cta],[{blockId:'cta_ia',text:'Uma opção de 20W para conhecer'}],{...facts,title:'Caixa de Som 20W'})).toEqual([]));
+});

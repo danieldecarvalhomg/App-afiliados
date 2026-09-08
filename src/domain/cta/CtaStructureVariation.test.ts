@@ -1,0 +1,13 @@
+import{describe,expect,it}from'vitest';import{defaultCtaBlocks}from'./defaultBlueprint';import{CtaStructureEngine}from'./CtaStructureEngine';import{CtaVariationEngine}from'./CtaVariationEngine';import type{CtaBlueprint,CtaFacts}from'./types';
+const blueprint:CtaBlueprint={id:'b',userId:'u',profileId:'p',version:1,isDefault:true,blocks:defaultCtaBlocks(),createdAt:'',updatedAt:''};
+const facts:CtaFacts={productId:'p',title:'Produto',category:null,price:80,originalPrice:null,discountPercent:null,couponCode:null,couponDescription:null,freeShipping:null,marketplace:'shopee',affiliateUrl:'https://a',sourceUrl:'https://s'};
+describe('Structure Studio',()=>{const engine=new CtaStructureEngine();
+  it('move e normaliza posições',()=>{const value=engine.apply(blueprint,[{type:'move_block',blockId:'price',toIndex:1}]);expect(value.blocks[1].id).toBe('price');expect(value.blocks.map(b=>b.position)).toEqual(value.blocks.map((_,i)=>i));});
+  it('agrupa, desagrupa e remove qualquer bloco do template',()=>{const custom={...defaultCtaBlocks()[0],id:'custom',key:'custom',kind:'custom' as const,fixedText:'oi'};let value=engine.apply(blueprint,[{type:'add_custom_block',block:custom},{type:'group_blocks',blockIds:['price','custom'],groupId:'g'}]);expect(value.blocks.filter(b=>b.groupId==='g')).toHaveLength(2);value=engine.apply(value,[{type:'ungroup_blocks',blockIds:['price','custom']},{type:'remove_custom_block',blockId:'custom'},{type:'remove_custom_block',blockId:'coupon'}]);expect(value.blocks.some(b=>b.id==='custom'||b.id==='coupon')).toBe(false);});
+  it('respeita posição escolhida até para o link',()=>expect(engine.apply(blueprint,[{type:'move_block',blockId:'affiliate_link',toIndex:0}]).blocks[0].id).toBe('affiliate_link'));
+});
+describe('Variation Engine',()=>{const variation=new CtaVariationEngine();
+  it('não reordena os blocos em nenhum modo',()=>{const stable={...blueprint,blocks:blueprint.blocks.map(b=>({...b,frequency:'always' as const}))};for(const mode of ['low','balanced','flexible','custom']as const){const ids=variation.compile(stable,facts,mode,2).blocks.map(b=>b.id);expect(ids).toEqual(stable.blocks.map(b=>b.id).filter(id=>ids.includes(id)));}});
+  it('reconhece saturação',()=>{const sig='x';expect(variation.saturation(sig,[sig],'low')).toBe(true);expect(variation.saturation(sig,[sig,sig,sig],'flexible')).toBe(false);});
+  it('condições removem blocos sem alterar a ordem relativa',()=>{const value=variation.compile(blueprint,facts,'balanced');expect(value.blocks.map(b=>b.key)).not.toContain('coupon');expect(value.blocks.map(b=>b.key)).not.toContain('original_price');expect(value.blocks.map(b=>b.position)).toEqual(value.blocks.map((_,i)=>i));});
+});

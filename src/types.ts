@@ -1,11 +1,33 @@
-export type MarketplaceType = 'Amazon' | 'Mercado Livre' | 'Shopee' | 'AliExpress' | 'Magalu' | 'Hotmart' | 'Kiwify' | 'Braip';
+/**
+ * AfiliHub — Tipos de domínio do frontend
+ *
+ * Tipos usados ativamente pelos componentes React e pelo AppContext.
+ * Tipos de domínio puro (WhatsApp, CTA, Affiliate, Monitoring)
+ * estão em src/domain/ e são importados de lá quando necessário.
+ */
 
-export type ChannelPlatform = 'Telegram' | 'WhatsApp' | 'Discord' | 'Facebook' | 'Instagram' | 'Pinterest';
+export type MarketplaceType =
+  | 'Amazon'
+  | 'Mercado Livre'
+  | 'Shopee'
+  | 'AliExpress'
+  | 'Magalu'
+  | 'Hotmart'
+  | 'Kiwify'
+  | 'Braip';
+
+export type ChannelPlatform =
+  | 'Telegram'
+  | 'WhatsApp'
+  | 'Discord'
+  | 'Facebook'
+  | 'Instagram'
+  | 'Pinterest';
 
 export type ProductStatus = 'ativo' | 'pausado' | 'esgotado' | 'link_quebrado';
 
 export interface Product {
-  id: string;
+  id: string;           // UUID
   title: string;
   originalPrice: number;
   price: number;
@@ -17,20 +39,29 @@ export interface Product {
   rawUrl: string;
   affiliateUrl: string;
   couponCode?: string;
+  couponLink?: string;
   image: string;
   status: ProductStatus;
   isFavorite: boolean;
   isArchived: boolean;
   collectionId?: string;
-  hotScore: number; // 0 - 100
+  hotScore: number;
   createdAt: string;
   updatedAt: string;
+  sourceType: 'whatsapp' | 'marketplace_radar' | 'manual';
+  sourceReferenceId?: string | null;
+  sourceUrl?: string;
+  couponDescription?: string;
+  freeShipping?: boolean | null;
+  affiliateStatus: 'pending_url' | 'pending' | 'resolving' | 'resolved' | 'converting' | 'awaiting_companion' | 'converted' | 'invalid_url' | 'resolution_failed' | 'conversion_failed' | 'unsupported_platform' | 'affiliate_account_not_configured';
+  affiliateConversionId?: string | null;
+  observations?: string;
 }
 
 export type QueueStatus = 'pendente' | 'enviando' | 'enviado' | 'falhou' | 'pausado';
 
 export interface QueueItem {
-  id: string;
+  id: string;           // UUID
   queueConfigId: string;
   productId: string;
   productTitle: string;
@@ -40,16 +71,16 @@ export interface QueueItem {
   marketplace: MarketplaceType;
   copyText: string;
   affiliateUrl: string;
-  channelIds: string[]; // Destination channel IDs
+  channelIds: string[];
   scheduledFor: string;
   sentAt?: string;
   status: QueueStatus;
-  priority: number; // 1 = highest
+  priority: number;
   errorMessage?: string;
 }
 
 export interface QueueConfig {
-  id: string;
+  id: string;           // UUID
   name: string;
   platform: ChannelPlatform;
   channelName: string;
@@ -58,9 +89,9 @@ export interface QueueConfig {
   intervalMinutes: number;
   autoShuffle: boolean;
   peakHoursOnly: boolean;
-  daysOfWeek: string[]; // ['seg', 'ter', 'qua', 'qui', 'sex', 'sab', 'dom']
-  timeWindowStart: string; // "08:00"
-  timeWindowEnd: string; // "22:00"
+  daysOfWeek: string[];
+  timeWindowStart: string;
+  timeWindowEnd: string;
   nextDeliveryTime: string;
   lastDeliveryTime: string;
   totalPending: number;
@@ -69,7 +100,7 @@ export interface QueueConfig {
 }
 
 export interface Campaign {
-  id: string;
+  id: string;           // UUID
   name: string;
   type: 'Disparo Único' | 'Recorrente' | 'Automação' | 'Black Friday' | 'Cupom Relâmpago';
   status: 'ativa' | 'agendada' | 'finalizada' | 'pausada';
@@ -82,7 +113,7 @@ export interface Campaign {
 }
 
 export interface AutomationRule {
-  id: string;
+  id: string;           // UUID
   name: string;
   triggerCondition: string;
   action: string;
@@ -91,15 +122,33 @@ export interface AutomationRule {
   lastTriggered: string;
 }
 
+/**
+ * Integração com marketplace ou canal social.
+ *
+ * configurationStatus: se o usuário configurou as credenciais
+ *   - 'not_configured': nenhuma credencial salva
+ *   - 'configured':     credenciais salvas (não implica conexão ativa)
+ *
+ * connectionStatus: status real da conexão (requer implementação backend)
+ *   - 'disconnected': sem conexão ativa (padrão no Bloco 1)
+ *   - 'connected':    conexão ativa e operacional
+ *   - 'error':        erro na conexão
+ *
+ * Salvar configuração → configurationStatus = 'configured', connectionStatus permanece 'disconnected'
+ * A conexão real virá do backend no bloco correspondente.
+ */
+export type IntegrationConfigStatus = 'not_configured' | 'configured';
+export type IntegrationConnectionStatus = 'disconnected' | 'connected' | 'error';
+
 export interface Integration {
-  id: string;
-  key: string; // 'amazon', 'mercadolivre', 'shopee', 'telegram', 'whatsapp', etc
+  id: string;           // UUID
+  key: string;
   name: string;
   category: 'marketplace' | 'social';
   logoIconName: string;
-  status: 'conectado' | 'desconectado' | 'requer_atencao';
+  configurationStatus: IntegrationConfigStatus;
+  connectionStatus: IntegrationConnectionStatus;
   tagAfiliado?: string;
-  apiKey?: string;
   webhookUrl?: string;
   lastSync: string;
   description: string;
@@ -107,7 +156,7 @@ export interface Integration {
 }
 
 export interface ChannelGroup {
-  id: string;
+  id: string;           // UUID
   name: string;
   platform: ChannelPlatform;
   type: 'Grupo' | 'Canal' | 'Página' | 'Direct';
@@ -119,7 +168,7 @@ export interface ChannelGroup {
 }
 
 export interface CRMLead {
-  id: string;
+  id: string;           // UUID
   name: string;
   handleOrPhone: string;
   platform: ChannelPlatform;
@@ -129,8 +178,15 @@ export interface CRMLead {
   lastActive: string;
 }
 
-export interface CopyTemplate {
+export interface ProductCollection {
   id: string;
+  name: string;
+  productIds: string[];
+  createdAt?: string;
+}
+
+export interface CopyTemplate {
+  id: string;           // UUID
   title: string;
   category: string;
   store: 'Todas as Lojas' | 'Amazon' | 'Mercado Livre' | 'Shopee' | 'AliExpress' | string;
@@ -142,7 +198,7 @@ export interface CopyTemplate {
 }
 
 export interface LandingPageItem {
-  id: string;
+  id: string;           // UUID
   title: string;
   slug: string;
   views: number;
@@ -154,7 +210,7 @@ export interface LandingPageItem {
 }
 
 export interface SystemLog {
-  id: string;
+  id: string;           // UUID
   timestamp: string;
   level: 'info' | 'warning' | 'error' | 'success';
   module: string;
@@ -163,6 +219,7 @@ export interface SystemLog {
 }
 
 export interface SubscriptionPlan {
+  planCode: import('./domain/subscription/plans').PlanCode;
   name: string;
   priceMonthly: number;
   status: 'ativo' | 'pendente' | 'cancelado';
@@ -173,6 +230,16 @@ export interface SubscriptionPlan {
   canaisUsed: number;
   iaGenerationsLimit: number;
   iaGenerationsUsed: number;
+  iaGenerationsPerProductLimit: number | null;
+  affiliateConversionsLimit: number;
+  affiliateConversionsUsed: number;
+  monitoredGroupsLimit: number;
+  monitoredGroupsUsed: number;
+  radarRefreshesLimit: number;
+  radarRefreshesUsed: number;
+  accountUsersLimit: number | null;
+  landingPagesLimit: number | null;
+  billingMode: 'preview' | 'live';
 }
 
 export interface GroupRules {
@@ -183,11 +250,11 @@ export interface GroupRules {
   enableOCR: boolean;
   maxPerHour: number;
   dedupHours: number;
-  autoApproveConfidence: number;
+  reviewRequired: boolean;  // substitui autoApproveConfidence — revisão ON/OFF
 }
 
 export interface MonitoredGroup {
-  id: string;
+  id: string;           // UUID
   name: string;
   platform: 'WhatsApp' | 'Telegram';
   externalIdOrUrl: string;
@@ -218,7 +285,7 @@ export interface ExtractedDataJSON {
 }
 
 export interface CapturedMessage {
-  id: string;
+  id: string;           // UUID
   groupId: string;
   groupName: string;
   platform: 'WhatsApp' | 'Telegram';
@@ -231,57 +298,3 @@ export interface CapturedMessage {
   finalText?: string;
   createdAt: string;
 }
-
-// ============================================================================
-// AI TRAINING — CENTRAL CTA PREFERENCES PROFILE
-// ============================================================================
-
-export interface CtaProfileChange {
-  id: string;
-  timestamp: string;
-  field: string;
-  previousValue: any;
-  newValue: any;
-  triggeredByMessage: string;
-}
-
-export interface CtaProfile {
-  tom: 'descontraido' | 'urgente' | 'formal' | 'divertido' | 'luxuoso' | string;
-  usaEmoji: boolean;
-  emojisPreferidos: string[];
-  tamanhoPreferido: 'curto' | 'medio' | 'longo';
-  palavrasProibidas: string[];
-  palavrasFavoritas: string[];
-  usaCaixaAlta: boolean;
-  exemplosBons: string[];
-  exemplosRuins: string[];
-  observacoesLivres: string;
-  ctasGerados: string[];
-  changelog: CtaProfileChange[];
-  updatedAt: string;
-}
-
-
-
-export interface CtaFeedback {
-  id: string;
-  ctaText: string;
-  rating: 'good' | 'bad' | 'edited';
-  editedVersion?: string;
-  reason?: string;
-  origin: 'training' | 'templates' | 'monitoring';
-  createdAt: string;
-}
-
-export interface CtaContext {
-  produto?: string;
-  loja?: string;
-  preco?: string;
-  preco_original?: string;
-  cupom?: string;
-  link?: string;
-  frete_gratis?: boolean;
-  pix?: boolean;
-  internacional?: boolean;
-}
-

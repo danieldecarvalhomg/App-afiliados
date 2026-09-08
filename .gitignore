@@ -4,5 +4,13 @@ dist/
 coverage/
 .DS_Store
 *.log
+backups/
+.runtime/
+.tmp/
+.codex/
+graphify-out/
+.public-url.txt
+AGENTS.md
+supabase/.temp/
 .env*
 !.env.example

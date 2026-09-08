@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppProvider, useApp } from './context/AppContext';
 import { Sidebar } from './components/Sidebar';
 import { Topbar } from './components/Topbar';
@@ -25,12 +25,33 @@ import { ProfileView } from './views/ProfileView';
 import { TeamSubscriptionView } from './views/TeamSubscriptionView';
 import { GroupMonitoringView } from './views/GroupMonitoringView';
 import { HelpCenterView } from './views/HelpCenterView';
+import { CtaStudioView } from './views/CtaStudioView';
+import { MessagesView } from './views/MessagesView';
+import { supabase } from './lib/supabase';
+import { ConsentBanner } from './components/ConsentBanner';
 
 const MainContent: React.FC = () => {
-  const { activeTab, isSidebarCollapsed, setIsSidebarCollapsed } = useApp();
+  const { activeTab, currentUser, isSidebarCollapsed, setIsSidebarCollapsed } = useApp();
   const [hasEntered, setHasEntered] = useState(false);
+  const [passwordRecovery, setPasswordRecovery] = useState(() =>
+    new URLSearchParams(window.location.search).get('auth') === 'reset',
+  );
 
-  if (!hasEntered) {
+  // A sessão Supabase persiste no browser. Ao recarregar após um restart do
+  // backend, o painel precisa voltar automaticamente sem exigir novo login.
+  useEffect(() => {
+    if (currentUser) setHasEntered(true);
+  }, [currentUser]);
+
+  useEffect(() => {
+    const { data } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'PASSWORD_RECOVERY') setPasswordRecovery(true);
+      if (event === 'SIGNED_OUT') setPasswordRecovery(false);
+    });
+    return () => data.subscription.unsubscribe();
+  }, []);
+
+  if (!hasEntered || passwordRecovery) {
     return <WelcomeAuthView onLoginSuccess={() => setHasEntered(true)} />;
   }
 
@@ -47,6 +68,10 @@ const MainContent: React.FC = () => {
         return <CampaignsAutomationsView />;
       case 'ia':
         return <AiStudioView />;
+      case 'cta-studio':
+        return <CtaStudioView />;
+      case 'mensagens':
+        return <MessagesView />;
       case 'monitoramento':
         return <GroupMonitoringView />;
       case 'landing-pages':
@@ -73,20 +98,12 @@ const MainContent: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#050506] text-slate-200 font-sans selection:bg-indigo-500 selection:text-white relative overflow-x-hidden">
-      {/* Background Ambient Glows */}
-      <div className="fixed top-[-10%] left-[-10%] w-[45%] h-[45%] bg-indigo-900/20 blur-[130px] rounded-full pointer-events-none z-0"></div>
-      <div className="fixed bottom-[-10%] right-[-10%] w-[45%] h-[45%] bg-emerald-900/15 blur-[130px] rounded-full pointer-events-none z-0"></div>
-      <div className="fixed top-[40%] right-[20%] w-[30%] h-[30%] bg-violet-900/10 blur-[120px] rounded-full pointer-events-none z-0"></div>
-      
-      {/* Mesh Overlay */}
-      <div className="fixed inset-0 pointer-events-none opacity-[0.03] mesh-grid z-0"></div>
-
-      {/* Mobile Sidebar Backdrop Mask */}
+    <div className="min-h-screen bg-[#F8FAFC] text-[#0F172A] font-sans relative overflow-x-hidden">
+      {/* Mobile Sidebar Backdrop */}
       {!isSidebarCollapsed && (
         <div 
           onClick={() => setIsSidebarCollapsed(true)} 
-          className="fixed inset-0 z-35 bg-black/60 backdrop-blur-sm lg:hidden pointer-events-auto"
+          className="fixed inset-0 z-35 bg-black/25 backdrop-blur-xs lg:hidden pointer-events-auto"
         />
       )}
 
@@ -109,6 +126,7 @@ export default function App() {
   return (
     <AppProvider>
       <MainContent />
+      <ConsentBanner />
     </AppProvider>
   );
 }

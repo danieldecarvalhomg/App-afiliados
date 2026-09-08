@@ -1,0 +1,15 @@
+import assert from 'node:assert/strict';
+import {readFileSync,writeFileSync} from 'node:fs';
+import {auditUserId,db} from './cta-audit-fixture';
+import {dedupeTrainingItems} from '../src/domain/cta/TrainingIngestionService';
+const fixture=JSON.parse(readFileSync('.runtime/cta-audit-real/ui-fixtures.json','utf8'));
+const {data:source,error}=await db.from('cta_training_sources').select('id,original_content,status,char_count,chunk_count,interpretation').eq('user_id',auditUserId).eq('status','applied').order('created_at',{ascending:false}).limit(1).single();
+if(error)throw error;
+assert.equal(source.status,'applied');assert.equal(source.original_content,fixture.training);
+const {data:items,error:memoryError}=await db.from('cta_memory_items').select('kind,active').eq('user_id',auditUserId).eq('source_id',source.id).eq('active',true);
+if(memoryError)throw memoryError;
+assert.ok(items.some(item=>item.kind==='positive_example'));assert.ok(items.some(item=>item.kind==='negative_example'));
+const reviewedItems=Array.isArray((source.interpretation as any)?.items)?(source.interpretation as any).items:[];
+const deduplicatedItems=dedupeTrainingItems(reviewedItems);
+const report={passed:true,sourceId:source.id,status:source.status,chars:source.char_count,chunks:source.chunk_count,originalExactlyPreserved:true,activeItems:items.length,reviewedItems:reviewedItems.length,deduplicatedItems:deduplicatedItems.length,positiveExamples:items.filter(item=>item.kind==='positive_example').length,negativeExamples:items.filter(item=>item.kind==='negative_example').length};
+writeFileSync('.runtime/cta-audit-real/training-browser-persistence.json',JSON.stringify(report,null,2));console.log(report);

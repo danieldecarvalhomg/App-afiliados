@@ -1,0 +1,7 @@
+const form=document.querySelector('#pair-form');const paired=document.querySelector('#paired');const message=document.querySelector('#message');
+const send=(payload)=>chrome.runtime.sendMessage(payload);
+async function refresh(){const response=await send({type:'PROMOFY_STATUS'});const active=Boolean(response?.data?.paired);form.hidden=active;paired.hidden=!active;document.querySelector('#instance-name').textContent=response?.data?.instance?.name||'Chrome';if(response?.data?.backendUrl)document.querySelector('#backend').value=response.data.backendUrl;}
+form.addEventListener('submit',async(event)=>{event.preventDefault();message.textContent='Conectando…';const response=await send({type:'PROMOFY_PAIR',backendUrl:document.querySelector('#backend').value,name:document.querySelector('#name').value,code:document.querySelector('#code').value.trim().toUpperCase()});message.textContent=response?.success?'Conectado com segurança.':response?.error==='PAIRING_CODE_INVALID'?'Código inválido ou expirado.':'Não foi possível conectar.';await refresh();});
+document.querySelector('#disconnect').addEventListener('click',async()=>{const response=await send({type:'PROMOFY_DISCONNECT'});message.textContent=response?.success?'Extensão desconectada e credencial revogada.':'Não foi possível revogar agora. Tente novamente conectado ao AfiliHub.';await refresh();});
+document.querySelector('#open-ml').addEventListener('click',()=>send({type:'PROMOFY_OPEN_ML'}));
+void refresh();

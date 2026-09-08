@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="afilihub-icon-gradient" x1="52" y1="45" x2="456" y2="470" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF2D7D" />
+      <stop offset="0.42" stop-color="#FF6B6B" />
+      <stop offset="0.76" stop-color="#FF9F43" />
+      <stop offset="1" stop-color="#FFC629" />
+    </linearGradient>
+    <mask id="afilihub-icon-cutout">
+      <rect width="512" height="512" fill="white" />
+      <circle cx="235" cy="251" r="41" fill="black" />
+      <path d="M269 263 390 302" stroke="black" stroke-width="24" stroke-linecap="round" />
+    </mask>
+  </defs>
+  <rect x="32" y="32" width="448" height="448" rx="120" fill="url(#afilihub-icon-gradient)" />
+  <g fill="none" stroke="#FFFFFF" stroke-linecap="round" stroke-linejoin="round" mask="url(#afilihub-icon-cutout)">
+    <path d="M116 374 205 150c11-28 26-40 52-40h7c25 0 41 12 52 40l82 224" stroke-width="76" />
+    <path d="M166 306h190" stroke-width="64" />
+  </g>
+</svg>

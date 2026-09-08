@@ -1,0 +1,63 @@
+import { readFile } from 'node:fs/promises';
+import { describe, expect, it, vi } from 'vitest';
+import { allowedBackend, runMercadoLivreBackgroundGeneration } from './background.js';
+
+describe('AfiliHub Browser Companion security boundary', () => {
+  it('aceita somente backends AfiliHub explicitamente permitidos', () => {
+    expect(allowedBackend('http://127.0.0.1:3001')).toBe(true);
+    expect(allowedBackend('https://achadosdaamanda.click')).toBe(true);
+    expect(allowedBackend('https://evil.example')).toBe(false);
+    expect(allowedBackend('javascript:alert(1)')).toBe(false);
+  });
+
+  it('usa Manifest V3 com permissões mínimas e sem acesso a cookies', async () => {
+    const manifest = JSON.parse(await readFile(new URL('./manifest.json', import.meta.url), 'utf8'));
+    expect(manifest.manifest_version).toBe(3);
+    expect(manifest.version).toBe('1.1.0');
+    expect(manifest.permissions).toEqual(['storage', 'tabs', 'scripting', 'alarms']);
+    expect(manifest.permissions).not.toContain('cookies');
+    expect(manifest.permissions).not.toContain('webRequest');
+    expect(manifest.host_permissions).not.toContain('<all_urls>');
+    expect(manifest.host_permissions.every((value) => /promofy|achadosdaamanda|127\.0\.0\.1|localhost|mercadolivre\.com\.br/u.test(value))).toBe(true);
+  });
+
+  it('não contém automação genérica, leitura de cookies ou código remoto', async () => {
+    const source = await readFile(new URL('./background.js', import.meta.url), 'utf8');
+    expect(source).not.toMatch(/chrome\.cookies|document\.cookie|eval\(|new Function|<all_urls>/u);
+    expect(source).toContain('runMercadoLivreGeneration');
+    expect(source).toContain("'NEEDS_USER_ACTION'");
+    expect(source).toContain("const ADAPTER_VERSION = 4");
+  });
+
+  it('reconhece o gerador e o campo de múltiplas URLs do portal atual', async () => {
+    const source = await readFile(new URL('./background.js', import.meta.url), 'utf8');
+    expect(source).toContain('/afiliados/linkbuilder#hub');
+    expect(source).toContain("const EXTENSION_VERSION = '1.1.0'");
+    expect(source).toContain('textarea[placeholder*="url" i]');
+    expect(source).toContain('gerador de (?:links?|produtos? recomendados?)');
+    expect(source).toContain("candidates.find((item) => item.url?.includes('/afiliados/linkbuilder'))");
+    expect(source).toContain('const deadline = Date.now() + 10_000');
+    expect(source).not.toContain("|| candidates[0]");
+  });
+
+  it('gera em segundo plano pela sessão do Chrome sem criar uma aba', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ tags: [{ tag: 'principal', in_use: true }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ urls: [{ short_url: 'https://meli.la/abc123' }] }), { status: 200 }));
+    const result = await runMercadoLivreBackgroundGeneration({
+      sourceUrl: 'https://produto.mercadolivre.com.br/MLB-1234567890-produto-_JM',
+    }, fetcher);
+    expect(result).toMatchObject({ status: 'SUCCESS', affiliateUrl: 'https://meli.la/abc123', pageType: 'BACKGROUND_API' });
+    expect(fetcher).toHaveBeenLastCalledWith(expect.stringContaining('/createLink'), expect.objectContaining({
+      method: 'POST', body: expect.stringContaining('principal'), credentials: 'include',
+    }));
+  });
+
+  it('não abre aba quando a sessão em segundo plano exige login', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 }));
+    const result = await runMercadoLivreBackgroundGeneration({
+      sourceUrl: 'https://produto.mercadolivre.com.br/MLB-1234567890-produto-_JM',
+    }, fetcher);
+    expect(result).toMatchObject({ status: 'NEEDS_USER_ACTION', errorCode: 'AUTH_REQUIRED' });
+  });
+});

@@ -50,22 +50,22 @@ export const GlobalSearchModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-[#050506]/80 backdrop-blur-md">
-      <div className="w-full max-w-2xl rounded-2xl bg-[#0a0a0b] border border-white/10 shadow-2xl overflow-hidden backdrop-blur-2xl">
+    <div className="fixed inset-0 z-50 flex items-start justify-center pt-20 px-4 bg-[#F8FAFC]/80">
+      <div className="w-full max-w-2xl rounded-xl bg-[#FFFFFF] border border-[#E8E9ED] shadow-2xl overflow-hidden">
         {/* Search Header */}
-        <div className="p-4 border-b border-white/5 flex items-center gap-3">
-          <Search className="w-5 h-5 text-indigo-400" />
+        <div className="p-4 border-b border-[#E8E9ED] flex items-center gap-3 bg-[#F8FAFC]">
+          <Search className="w-5 h-5 text-[#6B6F7B]" />
           <input
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Digite para buscar produtos, filas, integrações ou templates..."
-            className="flex-1 bg-transparent text-sm text-white placeholder-slate-500 focus:outline-none"
+            className="flex-1 bg-transparent text-sm text-[#0F172A] placeholder-[#9CA3AF] focus:outline-none"
             autoFocus
           />
           <button
             onClick={() => setIsSearchOpen(false)}
-            className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-white/5"
+            className="p-1.5 text-[#9CA3AF] hover:text-[#0F172A] rounded-lg hover:bg-[#F4F4F6] transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -74,32 +74,32 @@ export const GlobalSearchModal: React.FC = () => {
         {/* Search Results */}
         <div className="max-h-96 overflow-y-auto p-4 space-y-4">
           {query.trim() === '' ? (
-            <div className="py-8 text-center space-y-2">
-              <p className="text-xs text-slate-400">Sugestões rápidas de navegação:</p>
+            <div className="py-8 text-center space-y-4">
+              <p className="text-xs text-[#6B6F7B]">Sugestões rápidas de navegação:</p>
               <div className="flex flex-wrap justify-center gap-2 pt-2">
                 <button
                   onClick={() => handleNavigate('produtos')}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-indigo-600/20 text-xs text-slate-300 hover:text-indigo-400 transition-colors border border-white/5"
+                  className="px-3 py-1.5 rounded-lg bg-[#F4F4F6] hover:bg-[#F4F4F6] text-xs text-[#0F172A] border border-[#E8E9ED] hover:border-[#D4D4D8] transition-colors"
                 >
                   📦 Ver Produtos em Alta
                 </button>
                 <button
                   onClick={() => handleNavigate('filas')}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-indigo-600/20 text-xs text-slate-300 hover:text-indigo-400 transition-colors border border-white/5"
+                  className="px-3 py-1.5 rounded-lg bg-[#F4F4F6] hover:bg-[#F4F4F6] text-xs text-[#0F172A] border border-[#E8E9ED] hover:border-[#D4D4D8] transition-colors"
                 >
-                  ⚡ Gerenciar Filas Inteligentes
+                  ⚡ Gerenciar Filas
                 </button>
                 <button
                   onClick={() => handleNavigate('ia')}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-indigo-600/20 text-xs text-slate-300 hover:text-indigo-400 transition-colors border border-white/5"
+                  className="px-3 py-1.5 rounded-lg bg-[#F4F4F6] hover:bg-[#F4F4F6] text-xs text-[#0F172A] border border-[#E8E9ED] hover:border-[#D4D4D8] transition-colors"
                 >
-                  ✨ Criar Cópia com IA
+                  ✨ Criar Cópia
                 </button>
                 <button
                   onClick={() => handleNavigate('integracoes')}
-                  className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-indigo-600/20 text-xs text-slate-300 hover:text-indigo-400 transition-colors border border-white/5"
+                  className="px-3 py-1.5 rounded-lg bg-[#F4F4F6] hover:bg-[#F4F4F6] text-xs text-[#0F172A] border border-[#E8E9ED] hover:border-[#D4D4D8] transition-colors"
                 >
-                  🔌 Status das Integrações
+                  🔌 Integrações
                 </button>
               </div>
             </div>
@@ -108,24 +108,24 @@ export const GlobalSearchModal: React.FC = () => {
               {/* Products Match */}
               {filteredProducts.length > 0 && (
                 <div className="space-y-2">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1.5">
-                    <ShoppingBag className="w-3.5 h-3.5 text-indigo-400" />
+                  <div className="text-[10px] font-medium text-[#6B6F7B] uppercase flex items-center gap-1.5">
+                    <ShoppingBag className="w-3.5 h-3.5" />
                     Produtos ({filteredProducts.length})
                   </div>
                   {filteredProducts.slice(0, 3).map(p => (
                     <div
                       key={p.id}
                       onClick={() => handleNavigate('produtos')}
-                      className="p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/10 flex items-center justify-between cursor-pointer transition-colors border border-white/5"
+                      className="p-3 rounded-lg bg-transparent hover:bg-[#F4F4F6] flex items-center justify-between cursor-pointer transition-colors border border-transparent hover:border-[#E8E9ED]"
                     >
                       <div className="flex items-center gap-3">
-                        <img src={p.image} alt={p.title} className="w-8 h-8 rounded-lg object-cover" />
+                        <img src={p.image} alt={p.title} className="w-8 h-8 rounded object-cover" />
                         <div>
-                          <p className="text-xs font-medium text-slate-200 line-clamp-1">{p.title}</p>
-                          <p className="text-[10px] text-slate-400">{p.marketplace} • R$ {p.price.toFixed(2)}</p>
+                          <p className="text-xs font-medium text-[#0F172A] line-clamp-1">{p.title}</p>
+                          <p className="text-[10px] text-[#6B6F7B]">{p.marketplace} • R$ {p.price.toFixed(2)}</p>
                         </div>
                       </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
+                      <ArrowRight className="w-3.5 h-3.5 text-[#9CA3AF]" />
                     </div>
                   ))}
                 </div>
@@ -134,21 +134,21 @@ export const GlobalSearchModal: React.FC = () => {
               {/* Queues Match */}
               {filteredQueues.length > 0 && (
                 <div className="space-y-2">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1.5">
-                    <ListOrdered className="w-3.5 h-3.5 text-emerald-400" />
+                  <div className="text-[10px] font-medium text-[#6B6F7B] uppercase flex items-center gap-1.5">
+                    <ListOrdered className="w-3.5 h-3.5" />
                     Filas de Postagem ({filteredQueues.length})
                   </div>
                   {filteredQueues.map(q => (
                     <div
                       key={q.id}
                       onClick={() => handleNavigate('filas')}
-                      className="p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/10 flex items-center justify-between cursor-pointer transition-colors border border-white/5"
+                      className="p-3 rounded-lg bg-transparent hover:bg-[#F4F4F6] flex items-center justify-between cursor-pointer transition-colors border border-transparent hover:border-[#E8E9ED]"
                     >
                       <div>
-                        <p className="text-xs font-medium text-slate-200">{q.name}</p>
-                        <p className="text-[10px] text-slate-400">{q.platform} • {q.channelName}</p>
+                        <p className="text-xs font-medium text-[#0F172A]">{q.name}</p>
+                        <p className="text-[10px] text-[#6B6F7B]">{q.platform} • {q.channelName}</p>
                       </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
+                      <ArrowRight className="w-3.5 h-3.5 text-[#9CA3AF]" />
                     </div>
                   ))}
                 </div>
@@ -157,21 +157,21 @@ export const GlobalSearchModal: React.FC = () => {
               {/* Integrations Match */}
               {filteredIntegrations.length > 0 && (
                 <div className="space-y-2">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1.5">
-                    <Boxes className="w-3.5 h-3.5 text-cyan-400" />
+                  <div className="text-[10px] font-medium text-[#6B6F7B] uppercase flex items-center gap-1.5">
+                    <Boxes className="w-3.5 h-3.5" />
                     Integrações ({filteredIntegrations.length})
                   </div>
                   {filteredIntegrations.map(i => (
                     <div
                       key={i.id}
                       onClick={() => handleNavigate('integracoes')}
-                      className="p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/10 flex items-center justify-between cursor-pointer transition-colors border border-white/5"
+                      className="p-3 rounded-lg bg-transparent hover:bg-[#F4F4F6] flex items-center justify-between cursor-pointer transition-colors border border-transparent hover:border-[#E8E9ED]"
                     >
                       <div>
-                        <p className="text-xs font-medium text-slate-200">{i.name}</p>
-                        <p className="text-[10px] text-slate-400">{i.description}</p>
+                        <p className="text-xs font-medium text-[#0F172A]">{i.name}</p>
+                        <p className="text-[10px] text-[#6B6F7B]">{i.description}</p>
                       </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
+                      <ArrowRight className="w-3.5 h-3.5 text-[#9CA3AF]" />
                     </div>
                   ))}
                 </div>
@@ -180,21 +180,21 @@ export const GlobalSearchModal: React.FC = () => {
               {/* Templates Match */}
               {filteredTemplates.length > 0 && (
                 <div className="space-y-2">
-                  <div className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1.5">
-                    <Wand2 className="w-3.5 h-3.5 text-violet-400" />
+                  <div className="text-[10px] font-medium text-[#6B6F7B] uppercase flex items-center gap-1.5">
+                    <Wand2 className="w-3.5 h-3.5" />
                     Templates IA ({filteredTemplates.length})
                   </div>
                   {filteredTemplates.map(t => (
                     <div
                       key={t.id}
                       onClick={() => handleNavigate('ia')}
-                      className="p-2.5 rounded-xl bg-white/[0.03] hover:bg-white/10 flex items-center justify-between cursor-pointer transition-colors border border-white/5"
+                      className="p-3 rounded-lg bg-transparent hover:bg-[#F4F4F6] flex items-center justify-between cursor-pointer transition-colors border border-transparent hover:border-[#E8E9ED]"
                     >
                       <div>
-                        <p className="text-xs font-medium text-slate-200">{t.title}</p>
-                        <p className="text-[10px] text-slate-400">Categoria: {t.category}</p>
+                        <p className="text-xs font-medium text-[#0F172A]">{t.title}</p>
+                        <p className="text-[10px] text-[#6B6F7B]">Categoria: {t.category}</p>
                       </div>
-                      <ArrowRight className="w-3.5 h-3.5 text-slate-500" />
+                      <ArrowRight className="w-3.5 h-3.5 text-[#9CA3AF]" />
                     </div>
                   ))}
                 </div>
@@ -204,8 +204,8 @@ export const GlobalSearchModal: React.FC = () => {
         </div>
 
         {/* Footer info */}
-        <div className="p-3 bg-[#050506] border-t border-white/5 flex items-center justify-between text-[11px] text-slate-500">
-          <span>Pressione <kbd className="font-mono text-slate-400">ESC</kbd> para fechar</span>
+        <div className="p-3 bg-[#F8FAFC] border-t border-[#E8E9ED] flex items-center justify-between text-[11px] text-[#9CA3AF]">
+          <span>Pressione <kbd className="font-mono text-[#6B6F7B] bg-[#F4F4F6] px-1 rounded border border-[#E8E9ED]">ESC</kbd> para fechar</span>
           <span>Navegação com teclado disponível</span>
         </div>
       </div>

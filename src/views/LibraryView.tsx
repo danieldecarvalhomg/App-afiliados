@@ -1,38 +1,75 @@
 import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { Bookmark, Search, Layers, Copy, Trash2, FolderPlus, Star, Archive, Plus, X, Check } from 'lucide-react';
+import { Bookmark, Search, Layers, Copy, Trash2, FolderPlus, Star, Archive, Plus, X, Check, ArrowLeft } from 'lucide-react';
 
 export const LibraryView: React.FC = () => {
-  const { products, toggleFavoriteProduct, deleteProduct, updateProduct, addLog } = useApp();
+  const {
+    products,
+    productCollections,
+    toggleFavoriteProduct,
+    updateProduct,
+    addLog,
+    addProductCollection,
+    deleteProductCollection,
+    toggleProductInCollection,
+  } = useApp();
 
   const [activeTab, setActiveTab] = useState<'favoritos' | 'colecoes' | 'arquivados'>('favoritos');
   const [search, setSearch] = useState('');
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [collectionName, setCollectionName] = useState('');
-  const [extraCollections, setExtraCollections] = useState<{ id: string; name: string; count: number }[]>([]);
+  const [selectedCollectionId, setSelectedCollectionId] = useState<string | null>(null);
 
   const favoriteProducts = products.filter(p => p.isFavorite && p.title.toLowerCase().includes(search.toLowerCase()));
   const archivedProducts = products.filter(p => p.isArchived);
 
-  const initialCollections: { id: string; name: string; count: number }[] = [];
+  const selectedCollection = productCollections.find(collection => collection.id === selectedCollectionId) ?? null;
 
-  const allCollections = [...initialCollections, ...extraCollections];
-
-  const handleCreateCollection = (e: React.FormEvent) => {
+  const handleCreateCollection = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!collectionName.trim()) return;
 
-    const newCol = {
-      id: 'col-' + Date.now(),
-      name: collectionName,
-      count: 0
-    };
-
-    setExtraCollections(prev => [...prev, newCol]);
-    addLog('success', 'Biblioteca', `Nova coleção criada: "${newCol.name}"`);
-    setIsModalOpen(false);
+    const saved = await addProductCollection(collectionName);
+    if (!saved) return;
+    setIsCreating(false);
     setCollectionName('');
   };
+
+  if (selectedCollection) {
+    return (
+      <div className="space-y-6 pb-12">
+        <button onClick={() => setSelectedCollectionId(null)} className="flex items-center gap-1 text-sm text-[#6B6F7B] hover:text-[#0F172A]">
+          <ArrowLeft className="h-4 w-4" /> Voltar para coleções
+        </button>
+        <div>
+          <h1 className="text-2xl font-semibold text-[#0F172A]">{selectedCollection.name}</h1>
+          <p className="mt-1 text-sm text-[#6B6F7B]">Selecione os produtos que devem fazer parte desta coleção.</p>
+        </div>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {products.length === 0 ? (
+            <div className="col-span-full rounded-xl border border-[#E8E9ED] bg-[#FFFFFF] p-10 text-center text-sm text-[#6B6F7B]">
+              Cadastre produtos antes de montar uma coleção.
+            </div>
+          ) : products.map(product => {
+            const selected = selectedCollection.productIds.includes(product.id);
+            return (
+              <button
+                key={product.id}
+                onClick={() => void toggleProductInCollection(selectedCollection.id, product.id)}
+                className={`flex items-center gap-3 rounded-xl border p-3 text-left transition-colors ${selected ? 'border-[#EDEDED] bg-[#F4F4F6]' : 'border-[#E8E9ED] bg-[#FFFFFF] hover:border-[#D4D4D8]'}`}
+              >
+                <img src={product.image} alt={product.title} className="h-14 w-14 rounded-lg object-cover" />
+                <span className="min-w-0 flex-1 text-sm text-[#0F172A] line-clamp-2">{product.title}</span>
+                <span className={`flex h-5 w-5 items-center justify-center rounded border ${selected ? 'border-[#EDEDED] bg-[#EDEDED] text-[#111]' : 'border-[#6B6F7B]'}`}>
+                  {selected && <Check className="h-3.5 w-3.5" />}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
 
   const handleArchiveProduct = (id: string) => {
     updateProduct(id, { isArchived: true });
@@ -44,41 +81,102 @@ export const LibraryView: React.FC = () => {
     addLog('info', 'Biblioteca', `Produto #${id} restaurado para o catálogo.`);
   };
 
+  if (isCreating) {
+    return (
+      <div className="space-y-6 pb-12">
+        <div className="flex items-center gap-2 text-sm text-[#6B6F7B]">
+          <button onClick={() => setIsCreating(false)} className="hover:text-[#0F172A] flex items-center gap-1">
+            <ArrowLeft className="w-4 h-4" />
+            Voltar
+          </button>
+          <span>&gt;</span>
+          <span>Biblioteca</span>
+          <span>&gt;</span>
+          <span className="text-[#0F172A]">Nova Coleção</span>
+        </div>
+
+        <div className="bg-[#FFFFFF] border border-[#E8E9ED] rounded-xl p-6">
+          <h2 className="text-lg font-medium text-[#0F172A] mb-6 flex items-center gap-2">
+            <FolderPlus className="w-5 h-5 text-[#6B6F7B]" />
+            Nova Coleção de Ofertas
+          </h2>
+
+          <form onSubmit={handleCreateCollection} className="space-y-6">
+            <div className="space-y-4">
+              <div className="border-b border-[#E8E9ED] pb-2">
+                <h3 className="text-sm font-medium text-[#0F172A]">Detalhes da Coleção</h3>
+              </div>
+
+              <div>
+                <label className="text-sm text-[#6B6F7B] block mb-1">Nome da Coleção</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Ex: Ofertas do Dia do Consumidor"
+                  value={collectionName}
+                  onChange={e => setCollectionName(e.target.value)}
+                  className="w-full bg-[#F8FAFC] border border-[#E8E9ED] rounded-lg px-3 py-2 text-sm text-[#0F172A] focus:outline-none focus:border-[#D4D4D8]"
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-[#E8E9ED]">
+              <button
+                type="button"
+                onClick={() => setIsCreating(false)}
+                className="px-4 py-2 bg-transparent text-[#6B6F7B] hover:text-[#0F172A] rounded-lg text-sm transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                type="submit"
+                className="px-4 py-2 bg-[#EDEDED] hover:bg-white text-[#0F172A] rounded-lg text-sm font-medium transition-colors flex items-center gap-2"
+              >
+                <Check className="w-4 h-4" />
+                Criar Coleção
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6 pb-12">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-extrabold text-white tracking-tight flex items-center gap-2.5">
-            <Bookmark className="w-6 h-6 text-indigo-400" />
-            Biblioteca & Organização de Acervo
+          <h1 className="text-2xl font-semibold text-[#0F172A] tracking-tight flex items-center gap-2.5">
+            <Bookmark className="w-6 h-6 text-[#0F172A]" />
+            Biblioteca & Organização
           </h1>
-          <p className="text-xs text-slate-400">
-            Coleções personalizadas, itens favoritos, históricos de ofertas e ações de duplicação em massa.
+          <p className="text-sm text-[#6B6F7B] mt-1">
+            Coleções personalizadas, itens favoritos e histórico de ofertas.
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-900 border border-slate-800">
+          <div className="flex items-center gap-1 p-1 rounded-xl bg-[#FFFFFF] border border-[#E8E9ED]">
             <button
               onClick={() => setActiveTab('favoritos')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'favoritos' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'favoritos' ? 'bg-[#F4F4F6] text-[#0F172A] border border-[#E8E9ED]' : 'text-[#9CA3AF] hover:text-[#6B6F7B]'
               }`}
             >
               Favoritos ({favoriteProducts.length})
             </button>
             <button
               onClick={() => setActiveTab('colecoes')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'colecoes' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'colecoes' ? 'bg-[#F4F4F6] text-[#0F172A] border border-[#E8E9ED]' : 'text-[#9CA3AF] hover:text-[#6B6F7B]'
               }`}
             >
-              Coleções ({allCollections.length})
+              Coleções ({productCollections.length})
             </button>
             <button
               onClick={() => setActiveTab('arquivados')}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-all ${
-                activeTab === 'arquivados' ? 'bg-indigo-600 text-white shadow-md' : 'text-slate-400 hover:text-white'
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-all ${
+                activeTab === 'arquivados' ? 'bg-[#F4F4F6] text-[#0F172A] border border-[#E8E9ED]' : 'text-[#9CA3AF] hover:text-[#6B6F7B]'
               }`}
             >
               Arquivados ({archivedProducts.length})
@@ -87,8 +185,8 @@ export const LibraryView: React.FC = () => {
 
           {activeTab === 'colecoes' && (
             <button
-              onClick={() => setIsModalOpen(true)}
-              className="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg shadow-indigo-600/20"
+              onClick={() => setIsCreating(true)}
+              className="px-4 py-2 rounded-lg bg-[#EDEDED] hover:bg-white text-[#0F172A] font-medium text-sm flex items-center gap-1.5 transition-colors"
             >
               <Plus className="w-4 h-4" />
               Nova Coleção
@@ -100,27 +198,27 @@ export const LibraryView: React.FC = () => {
       {activeTab === 'favoritos' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {favoriteProducts.length === 0 ? (
-            <div className="col-span-full text-center py-12 bg-slate-900/40 rounded-3xl border border-slate-800 text-xs text-slate-500">
-              Nenhum produto marcado como favorito. Marque o ícone de estrela ⭐ nos produtos do catálogo!
+            <div className="col-span-full text-center py-12 bg-[#FFFFFF] rounded-xl border border-[#E8E9ED] text-sm text-[#6B6F7B]">
+              Nenhum produto marcado como favorito. Marque o ícone de estrela nos produtos do catálogo.
             </div>
           ) : (
             favoriteProducts.map(p => (
-              <div key={p.id} className="p-5 rounded-3xl bg-slate-900/90 border border-slate-800 space-y-3 flex flex-col justify-between">
+              <div key={p.id} className="p-5 rounded-xl bg-[#FFFFFF] border border-[#E8E9ED] space-y-3 flex flex-col justify-between">
                 <div className="space-y-3">
-                  <img src={p.image} alt={p.title} className="w-full h-36 rounded-2xl object-cover" />
-                  <h3 className="text-xs font-bold text-white line-clamp-2">{p.title}</h3>
+                  <img src={p.image} alt={p.title} className="w-full h-36 rounded-lg object-cover" />
+                  <h3 className="text-sm font-medium text-[#0F172A] line-clamp-2">{p.title}</h3>
                 </div>
-                <div className="flex items-center justify-between text-xs pt-2 border-t border-slate-800">
-                  <span className="font-bold text-emerald-400">R$ {p.price.toFixed(2)}</span>
-                  <div className="flex items-center gap-2">
+                <div className="flex items-center justify-between text-sm pt-4 border-t border-[#E8E9ED]">
+                  <span className="font-medium text-emerald-600">R$ {p.price.toFixed(2)}</span>
+                  <div className="flex items-center gap-3">
                     <button
                       onClick={() => handleArchiveProduct(p.id)}
-                      className="text-slate-400 hover:text-white text-[11px]"
+                      className="text-[#6B6F7B] hover:text-[#0F172A] transition-colors"
                       title="Arquivar Produto"
                     >
-                      <Archive className="w-3.5 h-3.5" />
+                      <Archive className="w-4 h-4" />
                     </button>
-                    <button onClick={() => toggleFavoriteProduct(p.id)} className="text-rose-400 text-[11px] font-semibold">
+                    <button onClick={() => toggleFavoriteProduct(p.id)} className="text-[#EF4444] hover:text-[#EF4444]/80 text-sm font-medium transition-colors">
                       Remover
                     </button>
                   </div>
@@ -133,19 +231,32 @@ export const LibraryView: React.FC = () => {
 
       {activeTab === 'colecoes' && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-          {allCollections.map(col => (
-            <div key={col.id} className="p-6 rounded-3xl bg-slate-900/90 border border-slate-800 space-y-3">
+          {productCollections.length === 0 ? (
+            <div className="col-span-full rounded-xl border border-[#E8E9ED] bg-[#FFFFFF] p-10 text-center text-sm text-[#6B6F7B]">
+              Nenhuma coleção criada.
+            </div>
+          ) : productCollections.map(col => (
+            <div key={col.id} className="p-6 rounded-xl bg-[#FFFFFF] border border-[#E8E9ED] space-y-3">
               <div className="flex items-center gap-2">
-                <Layers className="w-5 h-5 text-indigo-400" />
-                <h3 className="text-sm font-bold text-white">{col.name}</h3>
+                <Layers className="w-5 h-5 text-[#0F172A]" />
+                <h3 className="text-sm font-medium text-[#0F172A]">{col.name}</h3>
               </div>
-              <p className="text-xs text-slate-400">{col.count} ofertas vinculadas nesta coleção</p>
-              <button
-                onClick={() => addLog('info', 'Coleções', `Coleção "${col.name}" visualizada.`)}
-                className="w-full py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-xs font-semibold text-slate-200"
-              >
-                Abrir Coleção
-              </button>
+              <p className="text-sm text-[#6B6F7B]">{col.productIds.length} ofertas vinculadas nesta coleção</p>
+              <div className="mt-2 flex gap-2">
+                <button
+                  onClick={() => setSelectedCollectionId(col.id)}
+                  className="flex-1 rounded-lg border border-[#E8E9ED] bg-transparent py-2 text-sm font-medium text-[#0F172A] hover:border-[#D4D4D8]"
+                >
+                  Gerenciar produtos
+                </button>
+                <button
+                  onClick={() => void deleteProductCollection(col.id)}
+                  className="rounded-lg border border-red-200 p-2 text-[#EF4444] hover:bg-red-50"
+                  title="Excluir coleção"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           ))}
         </div>
@@ -154,63 +265,25 @@ export const LibraryView: React.FC = () => {
       {activeTab === 'arquivados' && (
         <div className="space-y-4">
           {archivedProducts.length === 0 ? (
-            <div className="text-xs text-slate-400 text-center py-12 bg-slate-900/40 rounded-3xl border border-slate-800">
+            <div className="text-sm text-[#6B6F7B] text-center py-12 bg-[#FFFFFF] rounded-xl border border-[#E8E9ED]">
               Nenhum item arquivado no momento.
             </div>
           ) : (
             archivedProducts.map(p => (
-              <div key={p.id} className="p-4 rounded-2xl bg-slate-900/80 border border-slate-800 flex items-center justify-between text-xs">
+              <div key={p.id} className="p-4 rounded-xl bg-[#FFFFFF] border border-[#E8E9ED] flex items-center justify-between text-sm">
                 <div className="flex items-center gap-3">
-                  <img src={p.image} className="w-10 h-10 rounded-xl object-cover" />
-                  <span className="font-bold text-white">{p.title}</span>
+                  <img src={p.image} className="w-10 h-10 rounded-lg object-cover" />
+                  <span className="font-medium text-[#0F172A]">{p.title}</span>
                 </div>
                 <button
                   onClick={() => handleRestoreProduct(p.id)}
-                  className="px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[11px]"
+                  className="px-4 py-2 rounded-lg bg-transparent border border-[#E8E9ED] hover:border-[#D4D4D8] text-[#0F172A] font-medium text-sm transition-colors"
                 >
-                  Restaurar ao Catálogo
+                  Restaurar
                 </button>
               </div>
             ))
           )}
-        </div>
-      )}
-
-      {isModalOpen && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-md flex items-center justify-center p-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-3xl p-6 w-full max-w-md space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-base font-bold text-white flex items-center gap-2">
-                <FolderPlus className="w-5 h-5 text-indigo-400" />
-                Nova Coleção de Ofertas
-              </h3>
-              <button onClick={() => setIsModalOpen(false)} className="text-slate-400 hover:text-white">
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <form onSubmit={handleCreateCollection} className="space-y-4">
-              <div>
-                <label className="text-xs text-slate-400 block mb-1">Nome da Coleção</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Ex: Ofertas do Dia do Consumidor"
-                  value={collectionName}
-                  onChange={e => setCollectionName(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 rounded-xl px-3 py-2 text-xs text-white focus:outline-none focus:border-indigo-500"
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center justify-center gap-2"
-              >
-                <Check className="w-4 h-4" />
-                Criar Coleção
-              </button>
-            </form>
-          </div>
         </div>
       )}
     </div>

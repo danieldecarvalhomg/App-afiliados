@@ -1,0 +1,20 @@
+{
+  "name": "AfiliHub — O hub de quem vive de afiliação",
+  "short_name": "AfiliHub",
+  "description": "Ofertas, conteúdo, automações e canais de afiliados em um só lugar.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#F8FAFC",
+  "theme_color": "#FF2D7D",
+  "lang": "pt-BR",
+  "share_target": {
+    "action": "/",
+    "method": "GET",
+    "enctype": "application/x-www-form-urlencoded",
+    "params": { "title": "title", "text": "text", "url": "url" }
+  },
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
