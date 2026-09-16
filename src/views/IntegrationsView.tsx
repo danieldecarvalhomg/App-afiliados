@@ -321,9 +321,10 @@ export const IntegrationsView: React.FC = () => {
     setMercadoLivreTestJob(created);
   });
   const beginRemoteLogin = () => {
-    // Reserve the tab while the click still has a user gesture. Mobile browsers
-    // block window.open when it is called after the async API request resolves.
-    const loginTab = window.open('about:blank', '_blank');
+    // iOS suspends the original page as soon as an about:blank tab opens, so the
+    // async request never gets a chance to navigate that tab. Mobile uses the
+    // current tab; desktop can safely reserve a separate one.
+    const loginTab = isMobileExperience ? null : window.open('about:blank', '_blank');
     if (loginTab) loginTab.opener = null;
     void run('ml:remote-login', async()=>{
       let login: Awaited<ReturnType<typeof mercadoLivreAffiliateApi.beginRemoteLogin>>;
@@ -336,6 +337,10 @@ export const IntegrationsView: React.FC = () => {
       setRemoteLoginExpiresAt(login.expiresAt);
       setRemoteLoginUrl(login.liveUrl);
       setRemoteLoginLinkCopied(false);
+      if (isMobileExperience) {
+        window.location.assign(login.liveUrl);
+        return;
+      }
       if (loginTab && !loginTab.closed) {
         loginTab.location.href = login.liveUrl;
         loginTab.focus?.();
