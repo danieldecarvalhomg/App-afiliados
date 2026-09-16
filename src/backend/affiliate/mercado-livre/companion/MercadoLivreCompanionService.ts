@@ -142,9 +142,9 @@ export class MercadoLivreCompanionService {
     };
   }
 
-  async beginRemoteLogin(userId: string) {
+  async beginRemoteLogin(userId: string, mobile = false) {
     if (!this.remote) throw new MercadoLivreCompanionError('REMOTE_BROWSER_NOT_CONFIGURED', 'Navegador remoto não configurado.');
-    return this.remote.beginLogin(userId);
+    return this.remote.beginLogin(userId, { mobile });
   }
 
   async verifyRemoteLogin(userId: string) {

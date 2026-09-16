@@ -36,7 +36,7 @@ export const mercadoLivreAffiliateApi={
   revoke:(instanceId:string)=>request<void>(`/instances/${encodeURIComponent(instanceId)}`,{method:'DELETE'}),
   test:(sourceUrl:string,trackingLabel?:string)=>request<BrowserCompanionJobSummary>('/test',{method:'POST',body:JSON.stringify({sourceUrl,trackingLabel})}),
   job:(jobId:string)=>request<BrowserCompanionJobSummary>(`/jobs/${encodeURIComponent(jobId)}`),
-  beginRemoteLogin:()=>request<{liveUrl:string;expiresAt:string}>('/remote/login',{method:'POST'}),
+  beginRemoteLogin:(mobile = false)=>request<{liveUrl:string;expiresAt:string}>('/remote/login',{method:'POST',body:JSON.stringify({mobile})}),
   verifyRemoteLogin:()=>request<{ready:boolean;status:string}>('/remote/verify',{method:'POST'}),
   testRemote:(sourceUrl:string,trackingLabel?:string)=>request<BrowserCompanionJobSummary>('/remote/test',{method:'POST',body:JSON.stringify({sourceUrl,trackingLabel})}),
 };

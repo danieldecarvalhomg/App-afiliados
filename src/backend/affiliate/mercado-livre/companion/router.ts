@@ -109,7 +109,7 @@ export function createMercadoLivreCompanionRouter(service: MercadoLivreCompanion
     catch (error) { failure(res, error); }
   });
   router.post('/user/remote/login', async (req, res) => {
-    try { const id = await owner(req, res); if (id) res.status(201).json({ success: true, data: await service.beginRemoteLogin(id) }); }
+    try { const id = await owner(req, res); if (id) res.status(201).json({ success: true, data: await service.beginRemoteLogin(id, req.body?.mobile === true) }); }
     catch (error) { failure(res, error); }
   });
   router.post('/user/remote/verify', async (req, res) => {

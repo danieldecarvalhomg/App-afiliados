@@ -30,7 +30,7 @@ describe('RemoteBrowserProvider', () => {
     const provider = new HyperbrowserProvider('hb-key', fetcher as typeof fetch);
 
     await expect(provider.createProfile('usuario-1')).resolves.toBe('profile-1');
-    await expect(provider.createSession('profile-1', { interactive: true, persistChanges: true }))
+    await expect(provider.createSession('profile-1', { interactive: true, persistChanges: true, mobile: true }))
       .resolves.toEqual({ id: 'session-1', connectUrl: 'wss://hyperbrowser.test', liveUrl: 'https://live.test' });
     await provider.stopSession('session-1');
 
@@ -38,7 +38,7 @@ describe('RemoteBrowserProvider', () => {
       method: 'POST', headers: expect.objectContaining({ 'x-api-key': 'hb-key' }),
     }));
     const sessionBody = JSON.parse(String(fetcher.mock.calls[1][1]?.body));
-    expect(sessionBody).toMatchObject({ timeoutMinutes: 15, profile: { id: 'profile-1', persistChanges: true } });
+    expect(sessionBody).toMatchObject({ timeoutMinutes: 15, screen: { width: 412, height: 915 }, profile: { id: 'profile-1', persistChanges: true } });
     expect(fetcher).toHaveBeenNthCalledWith(3, 'https://api.hyperbrowser.ai/api/session/session-1/stop', expect.objectContaining({ method: 'PUT' }));
   });
 

@@ -77,6 +77,8 @@ export const IntegrationsView: React.FC = () => {
   const [mercadoLivreTestJob, setMercadoLivreTestJob] = useState<Awaited<ReturnType<typeof mercadoLivreAffiliateApi.test>> | null>(null);
   const [mobileUrlCopied, setMobileUrlCopied] = useState(false);
   const [remoteLoginExpiresAt, setRemoteLoginExpiresAt] = useState<string | null>(null);
+  const [remoteLoginUrl, setRemoteLoginUrl] = useState<string | null>(null);
+  const [remoteLoginLinkCopied, setRemoteLoginLinkCopied] = useState(false);
   const isMobileExperience = useMemo(() => isMobileDevice(), []);
   const [navigationIntent] = useState(() => integrationsNavigation.consume());
 
@@ -318,16 +320,35 @@ export const IntegrationsView: React.FC = () => {
       : await mercadoLivreAffiliateApi.test(mercadoLivreTestUrl.trim());
     setMercadoLivreTestJob(created);
   });
-  const beginRemoteLogin = () => void run('ml:remote-login', async()=>{
-    const login = await mercadoLivreAffiliateApi.beginRemoteLogin();
-    setRemoteLoginExpiresAt(login.expiresAt);
-    window.open(login.liveUrl, '_blank', 'noopener,noreferrer');
-    await reloadMercadoLivre();
-  });
+  const beginRemoteLogin = () => {
+    // Reserve the tab while the click still has a user gesture. Mobile browsers
+    // block window.open when it is called after the async API request resolves.
+    const loginTab = window.open('about:blank', '_blank');
+    if (loginTab) loginTab.opener = null;
+    void run('ml:remote-login', async()=>{
+      let login: Awaited<ReturnType<typeof mercadoLivreAffiliateApi.beginRemoteLogin>>;
+      try {
+        login = await mercadoLivreAffiliateApi.beginRemoteLogin(isMobileExperience);
+      } catch (error) {
+        if (loginTab && !loginTab.closed) loginTab.close();
+        throw error;
+      }
+      setRemoteLoginExpiresAt(login.expiresAt);
+      setRemoteLoginUrl(login.liveUrl);
+      setRemoteLoginLinkCopied(false);
+      if (loginTab && !loginTab.closed) {
+        loginTab.location.href = login.liveUrl;
+        loginTab.focus?.();
+      }
+      await reloadMercadoLivre();
+    });
+  };
   const verifyRemoteLogin = () => void run('ml:remote-verify', async()=>{
     const result = await mercadoLivreAffiliateApi.verifyRemoteLogin();
     if (!result.ready) throw new Error('O login ainda não foi concluído na janela segura.');
     setRemoteLoginExpiresAt(null);
+    setRemoteLoginUrl(null);
+    setRemoteLoginLinkCopied(false);
     await reloadMercadoLivre();
   });
   useEffect(()=>{if(!mercadoLivreOpen)return;const timer=window.setInterval(()=>void reloadMercadoLivre().catch(()=>undefined),5000);return()=>window.clearInterval(timer);},[mercadoLivreOpen,reloadMercadoLivre]);
@@ -881,12 +902,21 @@ export const IntegrationsView: React.FC = () => {
             </div>
 
             {mercadoLivreStatus?.remote.configured && (mercadoLivreStatus.remote.status !== "READY" || (mercadoLivreStatus.remote.preferredProvider && mercadoLivreStatus.remote.provider !== mercadoLivreStatus.remote.preferredProvider)) && <div className="mt-5 rounded-xl border border-violet-200 bg-violet-50 p-4">
-              <p className="text-sm font-medium text-violet-100">{mercadoLivreStatus.remote.status === "READY" ? "Migrar para o provedor mais econômico" : "Conectar geração automática na nuvem"}</p>
-              <p className="mt-1 text-xs leading-5 text-violet-700/80">{mercadoLivreStatus.remote.status === "READY" ? "O Hyperbrowser já está disponível no servidor. Conecte sua conta uma vez; o perfil atual do Browserbase será preservado como contingência." : "Abra a janela segura, entre no Mercado Livre e volte aqui para validar. Senha, 2FA e CAPTCHA são digitados diretamente no navegador remoto e não passam pelo AfiliHub."}</p>
-              <div className="mt-3 flex flex-wrap gap-2">
+              <p className="text-sm font-medium text-violet-950">{mercadoLivreStatus.remote.status === "READY" ? "Migrar para o provedor mais econômico" : "Conectar geração automática na nuvem"}</p>
+              <p className="mt-1 text-xs leading-5 text-violet-800/80">{mercadoLivreStatus.remote.status === "READY" ? "O Hyperbrowser já está disponível no servidor. Conecte sua conta uma vez; o perfil atual do Browserbase será preservado como contingência." : "Abra a janela segura, entre no Mercado Livre e volte aqui para validar. Senha, 2FA e CAPTCHA são digitados diretamente no navegador remoto e não passam pelo AfiliHub."}</p>
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
                 <button type="button" onClick={beginRemoteLogin} disabled={busy !== null} className="rounded-lg bg-violet-100 px-4 py-2 text-sm font-medium text-violet-950 disabled:opacity-50">{busy === "ml:remote-login" ? "Abrindo…" : mercadoLivreStatus.remote.loginInProgress ? "Abrir nova sessão" : mercadoLivreStatus.remote.status === "READY" ? "Conectar Hyperbrowser" : "Conectar na nuvem"}</button>
-                {(mercadoLivreStatus.remote.loginInProgress || remoteLoginExpiresAt) && <button type="button" onClick={verifyRemoteLogin} disabled={busy !== null} className="rounded-lg border border-violet-300/30 px-4 py-2 text-sm text-violet-100 disabled:opacity-50">{busy === "ml:remote-verify" ? "Validando…" : "Já entrei — validar"}</button>}
+                {(mercadoLivreStatus.remote.loginInProgress || remoteLoginExpiresAt) && <button type="button" onClick={verifyRemoteLogin} disabled={busy !== null} className="rounded-lg border border-violet-300 px-4 py-2 text-sm text-violet-950 disabled:opacity-50">{busy === "ml:remote-verify" ? "Validando…" : "Já entrei — validar"}</button>}
               </div>
+              {isMobileExperience && remoteLoginUrl && <div className="mt-4 rounded-lg border border-violet-200 bg-white/80 p-3">
+                <p className="text-sm font-medium text-violet-950">Login seguro pronto</p>
+                <p className="mt-1 text-xs leading-5 text-violet-900/70">Se a aba não abriu automaticamente, toque no botão abaixo. Depois de entrar no Mercado Livre, volte para esta aba e toque em “Já entrei — validar”.</p>
+                <div className="mt-3 flex flex-col gap-2 min-[380px]:flex-row">
+                  <a href={remoteLoginUrl} target="_blank" rel="noopener noreferrer" className="inline-flex min-h-11 flex-1 items-center justify-center rounded-lg bg-violet-600 px-4 py-2 text-sm font-medium text-white">Abrir login novamente</a>
+                  <button type="button" onClick={() => void navigator.clipboard?.writeText(remoteLoginUrl).then(() => { setRemoteLoginLinkCopied(true); window.setTimeout(() => setRemoteLoginLinkCopied(false), 1800); })} className="inline-flex min-h-11 items-center justify-center gap-2 rounded-lg border border-violet-200 px-4 py-2 text-sm text-violet-950"><Copy className="h-4 w-4" />{remoteLoginLinkCopied ? "Link copiado" : "Copiar link"}</button>
+                </div>
+                <p className="mt-2 text-[11px] text-violet-900/60">A sessão expira em {new Date(remoteLoginExpiresAt ?? Date.now()).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}.</p>
+              </div>}
             </div>}
 
             {!mercadoLivreStatus?.remote.configured && <div className="mt-5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Motor remoto ainda não configurado no servidor. Adicione <code className="rounded bg-amber-950/50 px-1">HYPERBROWSER_API_KEY</code> (recomendado) ou <code className="rounded bg-amber-950/50 px-1">BROWSERBASE_API_KEY</code>; até lá, a extensão continua funcionando como fallback.</div>}

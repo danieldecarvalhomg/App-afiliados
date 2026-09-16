@@ -1,4 +1,4 @@
-import { chromium, type Browser, type Page } from 'playwright-core';
+import { chromium, type Browser, type BrowserContext, type Page } from 'playwright-core';
 import { createHash } from 'node:crypto';
 import { extractMercadoLivreItemId, MercadoLivreAffiliateLinkValidator, normalizeMercadoLivreProductUrl } from '../AffiliateLinkValidator';
 import { extractMercadoLivreProductUrls } from '../MercadoLivreLinkRecoveryService';
@@ -15,6 +15,39 @@ import {
 } from './RemoteBrowserProvider';
 
 const AFFILIATE_API = 'https://www.mercadolivre.com.br/affiliate-program/api/v2/affiliates';
+const ANDROID_VIEWPORT = { width: 412, height: 915 };
+
+async function configureAndroidSession(browser: Browser, context: BrowserContext, page: Page): Promise<void> {
+  await page.setViewportSize(ANDROID_VIEWPORT);
+  const browserVersion = browser.version();
+  const chromeVersion = /^\d+(?:\.\d+){3}$/u.test(browserVersion) ? browserVersion : '131.0.0.0';
+  const chromeMajor = chromeVersion.split('.')[0];
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('Emulation.setDeviceMetricsOverride', {
+    width: ANDROID_VIEWPORT.width,
+    height: ANDROID_VIEWPORT.height,
+    screenWidth: ANDROID_VIEWPORT.width,
+    screenHeight: ANDROID_VIEWPORT.height,
+    deviceScaleFactor: 2.625,
+    mobile: true,
+  });
+  await cdp.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 });
+  await cdp.send('Emulation.setUserAgentOverride', {
+    userAgent: `Mozilla/5.0 (Linux; Android 14; Pixel 7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/${chromeVersion} Mobile Safari/537.36`,
+    acceptLanguage: 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+    platform: 'Linux armv8l',
+    userAgentMetadata: {
+      brands: [{ brand: 'Chromium', version: chromeMajor }, { brand: 'Google Chrome', version: chromeMajor }],
+      fullVersionList: [{ brand: 'Chromium', version: chromeVersion }, { brand: 'Google Chrome', version: chromeVersion }],
+      fullVersion: chromeVersion,
+      platform: 'Android',
+      platformVersion: '14.0.0',
+      architecture: 'arm',
+      model: 'Pixel 7',
+      mobile: true,
+    },
+  });
+}
 
 interface ActiveLogin { browser: Browser; page: Page; sessionId: string; provider: RemoteBrowserProvider; }
 interface OpenedRemoteSession { id: string; connectUrl: string; liveUrl: string | null; provider: RemoteBrowserProvider; }
@@ -195,7 +228,7 @@ export class MercadoLivreRemoteBrowserService {
     };
   }
 
-  async beginLogin(userId: string): Promise<{ liveUrl: string; expiresAt: string }> {
+  async beginLogin(userId: string, options: { mobile?: boolean } = {}): Promise<{ liveUrl: string; expiresAt: string }> {
     this.ensureConfigured();
     const provider = this.preferredProvider();
     const current = await this.repository.get(userId);
@@ -208,10 +241,11 @@ export class MercadoLivreRemoteBrowserService {
     });
     if (!current || current.contextId !== contextId) await this.repository.create(userId, contextId);
     await this.closeLogin(userId);
-    const session = await provider.createSession(profileId, { interactive: true, persistChanges: true });
+    const session = await provider.createSession(profileId, { interactive: true, persistChanges: true, mobile: options.mobile });
     const browser = await chromium.connectOverCDP(session.connectUrl);
     const context = browser.contexts()[0];
     const page = context.pages()[0] ?? await context.newPage();
+    if (options.mobile) await configureAndroidSession(browser, context, page);
     await page.goto('https://www.mercadolivre.com.br/afiliados/hub', { waitUntil: 'domcontentloaded', timeout: 60_000 });
     this.logins.set(userId, { browser, page, sessionId: session.id, provider });
     await this.repository.update(userId, { status: 'CONNECTING', activeSessionId: session.id, errorCode:null });

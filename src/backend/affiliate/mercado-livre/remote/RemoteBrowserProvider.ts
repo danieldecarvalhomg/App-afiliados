@@ -9,6 +9,7 @@ export interface RemoteBrowserSession {
 export interface RemoteBrowserSessionOptions {
   interactive: boolean;
   persistChanges: boolean;
+  mobile?: boolean;
 }
 
 export interface RemoteBrowserProvider {
@@ -93,6 +94,7 @@ export class BrowserbaseProvider implements RemoteBrowserProvider {
   }
 
   async createSession(profileId: string, options: RemoteBrowserSessionOptions): Promise<RemoteBrowserSession> {
+    const viewport = options.mobile ? { width: 412, height: 915 } : { width: 1440, height: 900 };
     const created = await this.request<{ id: string; connectUrl: string }>('/sessions', {
       method: 'POST',
       body: JSON.stringify({
@@ -100,7 +102,7 @@ export class BrowserbaseProvider implements RemoteBrowserProvider {
         keepAlive: options.interactive,
         timeout: options.interactive ? 900 : 180,
         proxies: process.env.BROWSERBASE_USE_PROXY === 'true',
-        browserSettings: { context: { id: profileId, persist: options.persistChanges }, viewport: { width: 1440, height: 900 } },
+        browserSettings: { context: { id: profileId, persist: options.persistChanges }, viewport },
         userMetadata: { integration: 'mercado_livre_affiliate' },
       }),
     });
@@ -149,6 +151,7 @@ export class HyperbrowserProvider implements RemoteBrowserProvider {
 
   async createSession(profileId: string, options: RemoteBrowserSessionOptions): Promise<RemoteBrowserSession> {
     const useProxy = process.env.HYPERBROWSER_USE_PROXY === 'true';
+    const screen = options.mobile ? { width: 412, height: 915 } : { width: 1440, height: 900 };
     const created = await this.request<{ id: string; wsEndpoint: string; liveUrl?: string }>('/session', {
       method: 'POST',
       body: JSON.stringify({
@@ -158,7 +161,7 @@ export class HyperbrowserProvider implements RemoteBrowserProvider {
         solveCaptchas: process.env.HYPERBROWSER_SOLVE_CAPTCHAS === 'true',
         acceptCookies: true,
         timeoutMinutes: options.interactive ? 15 : 3,
-        screen: { width: 1440, height: 900 },
+        screen,
         profile: { id: profileId, persistChanges: options.persistChanges },
       }),
     });
