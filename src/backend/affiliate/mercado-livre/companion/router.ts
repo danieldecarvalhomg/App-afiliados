@@ -65,6 +65,12 @@ export function createMercadoLivreCompanionRouter(service: MercadoLivreCompanion
       res.json({ success: true, data: await service.heartbeat(instance, req.body ?? {}) });
     } catch (error) { failure(res, error); }
   });
+  router.post('/extension/session/sync', async (req, res) => {
+    try {
+      const instance = await companion(req, res, service); if (!instance) return;
+      res.json({ success: true, data: await service.syncSession(instance, req.body ?? {}) });
+    } catch (error) { failure(res, error); }
+  });
   router.post('/extension/disconnect', async (req, res) => {
     try {
       const instance = await companion(req, res, service); if (!instance) return;

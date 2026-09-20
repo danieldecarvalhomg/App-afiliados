@@ -1,14 +1,15 @@
-const EXTENSION_VERSION = '1.1.0';
-const ADAPTER_VERSION = 4;
+const EXTENSION_VERSION = '1.2.0';
+const ADAPTER_VERSION = 5;
 const PORTAL_URL = 'https://www.mercadolivre.com.br/afiliados/linkbuilder#hub';
 const AFFILIATE_API_URL = 'https://www.mercadolivre.com.br/affiliate-program/api/v2/affiliates';
 const ALLOWED_BACKENDS = new Set([
   'http://127.0.0.1:3001',
   'http://localhost:3001',
-  'https://achadosdaamanda.click',
+  'https://afilihub-production.up.railway.app',
 ]);
 let processing = false;
 let pollTimer = null;
+let lastSessionSyncAt = 0;
 
 export function allowedBackend(raw) {
   try { return ALLOWED_BACKENDS.has(new URL(raw).origin); }
@@ -89,6 +90,35 @@ async function affiliateApi(path, init = {}, fetcher = fetch) {
     throw error;
   }
   return payload?.data ?? payload;
+}
+
+export function serializeMercadoLivreCookies(cookies) {
+  if (!Array.isArray(cookies)) return '';
+  return cookies
+    .filter((cookie) => typeof cookie?.name === 'string' && cookie.name && typeof cookie?.value === 'string')
+    .sort((left, right) => (right.path?.length || 0) - (left.path?.length || 0))
+    .map((cookie) => `${cookie.name}=${cookie.value}`)
+    .join('; ');
+}
+
+async function syncMercadoLivreSession(force = false) {
+  if (!force && Date.now() - lastSessionSyncAt < 10 * 60_000) return;
+  if (!chrome.cookies?.getAll) throw new Error('COOKIE_ACCESS_UNAVAILABLE');
+  const tagsPayload = await affiliateApi('/getTags', { method: 'GET' });
+  const tags = Array.isArray(tagsPayload) ? tagsPayload
+    : Array.isArray(tagsPayload?.tags) ? tagsPayload.tags
+      : Array.isArray(tagsPayload?.data) ? tagsPayload.data : [];
+  const trackingTag = tags.find((item) => item?.in_use === true)?.tag
+    || tags.find((item) => typeof item?.tag === 'string' && item.tag)?.tag
+    || null;
+  const cookies = await chrome.cookies.getAll({ url: `${AFFILIATE_API_URL}/getTags` });
+  const sessionCookie = serializeMercadoLivreCookies(cookies);
+  if (!trackingTag || sessionCookie.length < 20) throw new Error('DIRECT_SESSION_INVALID');
+  await api('/session/sync', {
+    method: 'POST',
+    body: JSON.stringify({ sessionCookie, trackingTag }),
+  });
+  lastSessionSyncAt = Date.now();
 }
 
 function normalizedJobUrl(job) {
@@ -355,7 +385,9 @@ async function poll() {
   try {
     const state = await settings();
     if (!state.companionToken) return;
-    await heartbeat(await inspectMercadoLivreSession()).catch(() => undefined);
+    const mercadoLivreStatus = await inspectMercadoLivreSession();
+    if (mercadoLivreStatus === 'READY') await syncMercadoLivreSession().catch(() => undefined);
+    await heartbeat(mercadoLivreStatus).catch(() => undefined);
     const job = await api('/jobs/claim', { method: 'POST', body: '{}' });
     if (job) {
       const result = await executeJob(job);

@@ -3,8 +3,8 @@ import { MercadoLivreCompanionService } from './MercadoLivreCompanionService';
 
 const now = new Date().toISOString();
 const instance = {
-  id: 'instance-a', userId: 'user-a', name: 'Chrome', status: 'ONLINE', extensionVersion: '1.1.0',
-  adapterVersion: 4, mercadoLivreStatus: 'READY', lastSeenAt: now, lastSuccessAt: null,
+  id: 'instance-a', userId: 'user-a', name: 'Chrome', status: 'ONLINE', extensionVersion: '1.2.0',
+  adapterVersion: 5, mercadoLivreStatus: 'READY', lastSeenAt: now, lastSuccessAt: null,
   lastErrorCode: null, tokenExpiresAt: new Date(Date.now() + 60_000).toISOString(), createdAt: now, revokedAt: null,
 };
 const job = {
@@ -13,7 +13,7 @@ const job = {
   normalizedUrl: 'https://produto.mercadolivre.com.br/MLB-1234567890-produto-_JM', trackingLabel: null,
   status: 'PROCESSING', claimedBy: 'instance-a', claimedAt: now, completedAt: null,
   expiresAt: new Date(Date.now() + 60_000).toISOString(), resultUrl: null, itemId: null,
-  errorCode: null, adapterVersion: 4, createdAt: now, updatedAt: now,
+  errorCode: null, adapterVersion: 5, createdAt: now, updatedAt: now,
 };
 
 function repository(overrides: Record<string, unknown> = {}) {
@@ -39,7 +39,7 @@ describe('MercadoLivreCompanionService', () => {
 
   it('emite credencial própria limitada e nunca a persiste em texto puro', async () => {
     const repo = repository();
-    const result = await new MercadoLivreCompanionService(repo as any, {} as any).pair({ code: 'ABCD-EFGH-JKLM', name: 'Chrome', extensionVersion: '1.1.0', adapterVersion: 4 });
+    const result = await new MercadoLivreCompanionService(repo as any, {} as any).pair({ code: 'ABCD-EFGH-JKLM', name: 'Chrome', extensionVersion: '1.2.0', adapterVersion: 5 });
     expect(result.token).toMatch(/^pc_/u);
     const persisted = (repo.consumePairing as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(persisted.tokenHash).not.toBe(result.token);
@@ -48,15 +48,25 @@ describe('MercadoLivreCompanionService', () => {
 
   it('retoma jobs que exigiam ação quando a sessão volta a READY', async () => {
     const repo = repository();
-    await new MercadoLivreCompanionService(repo as any, {} as any).heartbeat(instance as any, { mercadoLivreStatus: 'READY', extensionVersion: '1.1.0', adapterVersion: 4 });
+    await new MercadoLivreCompanionService(repo as any, {} as any).heartbeat(instance as any, { mercadoLivreStatus: 'READY', extensionVersion: '1.2.0', adapterVersion: 5 });
     expect(repo.resumeUserActionJobs).toHaveBeenCalledWith('user-a');
+  });
+
+  it('sincroniza a sessão somente por uma instância autenticada e sem alterar o conteúdo', async () => {
+    const sync = vi.fn(async () => undefined);
+    const service = new MercadoLivreCompanionService(repository() as any, {} as any, undefined, null, sync);
+    const result = await service.syncSession(instance as any, {
+      sessionCookie: 'session=abc123; affiliate=xyz789', trackingTag: 'principal',
+    });
+    expect(result.status).toBe('READY');
+    expect(sync).toHaveBeenCalledWith('user-a', 'session=abc123; affiliate=xyz789', 'principal');
   });
 
   it('expõe a versão do adaptador do servidor mesmo com health legado', async () => {
     const repo = repository();
     const result = await new MercadoLivreCompanionService(repo as any, {} as any).status('user-a');
-    expect(result.global.adapterVersion).toBe(4);
-    expect(result.required).toMatchObject({ extensionVersion: '1.1.0', adapterVersion: 4 });
+    expect(result.global.adapterVersion).toBe(5);
+    expect(result.required).toMatchObject({ extensionVersion: '1.2.0', adapterVersion: 5 });
   });
 
   it('impede outra instância de concluir o job', async () => {

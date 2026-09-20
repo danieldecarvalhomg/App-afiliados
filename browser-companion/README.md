@@ -17,11 +17,12 @@ Depois de substituir os arquivos da pasta, abra `chrome://extensions` e clique n
 
 ## iPhone e Android
 
-O Safari e o Chrome mobile não aceitam esta extensão de desktop. No celular, abra o Gerador de Links do Mercado Livre, cole a URL do produto e copie o link `meli.la`. No produto do AfiliHub, use **Colar link afiliado do celular**; o backend valida o resultado e atualiza a conversão no Supabase. O AfiliHub também pode ser instalado na tela inicial pelo menu de compartilhamento do Safari ou pelo menu de instalação do Chrome.
+O Safari e o Chrome mobile não aceitam esta extensão de desktop. A extensão é necessária somente para a sincronização inicial da sessão: depois disso, o motor próprio converte no backend e o AfiliHub pode gerar links pelo iPhone ou Android mesmo com o computador desligado. Quando a sessão expirar, abra novamente o Chrome conectado para renová-la.
 
 ## Segurança
 
-- Não solicita permissão `cookies`, `webRequest` ou `<all_urls>`.
+- Solicita `cookies` somente nos hosts explícitos do Mercado Livre e envia apenas os cookies aplicáveis ao endpoint de afiliados para o backend autorizado.
+- A sessão é cifrada com AES-256-GCM antes de ser persistida e nunca é devolvida ao frontend.
 - Não lê nem envia senha, CAPTCHA, 2FA, localStorage ou sessionStorage.
 - O token próprio do Companion só autentica rotas de heartbeat e jobs do usuário pareado.
 - O backend nunca envia JavaScript ou seletores para execução; o adapter é versionado dentro da extensão.

@@ -66,6 +66,11 @@ export class MercadoLivreAffiliateLinkValidator {
       if (!productPath || !tracking) {
         throw new MercadoLivreCompanionError('INVALID_AFFILIATE_URL', 'A URL não possui identificação de afiliado.');
       }
+      const sourceItem = extractMercadoLivreItemId(source.toString());
+      const affiliateItem = extractMercadoLivreItemId(affiliate.toString());
+      if (sourceItem && affiliateItem && sourceItem !== affiliateItem) {
+        throw new MercadoLivreCompanionError('LINK_VALIDATION_FAILED', 'O resultado aponta para outro produto.');
+      }
     }
     return affiliate.toString();
   }

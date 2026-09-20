@@ -36,6 +36,8 @@ import { MercadoLivreCompanionService } from "./src/backend/affiliate/mercado-li
 import { MercadoLivreRemoteSessionRepository } from "./src/backend/affiliate/mercado-livre/remote/MercadoLivreRemoteSessionRepository";
 import { MercadoLivreRemoteBrowserService } from "./src/backend/affiliate/mercado-livre/remote/MercadoLivreRemoteBrowserService";
 import { MercadoLivreHybridAdapter } from "./src/backend/affiliate/mercado-livre/MercadoLivreHybridAdapter";
+import { MercadoLivreDirectClient } from "./src/backend/affiliate/mercado-livre/direct/MercadoLivreDirectClient";
+import { MercadoLivreDirectAdapter } from "./src/backend/affiliate/mercado-livre/direct/MercadoLivreDirectAdapter";
 import { MercadoLivreLinkRecoveryService } from "./src/backend/affiliate/mercado-livre/MercadoLivreLinkRecoveryService";
 import { createMercadoLivreCompanionRouter } from "./src/backend/affiliate/mercado-livre/companion/router";
 import { AmazonCreatorsApiClient } from "./src/backend/affiliate/AmazonCreatorsApiClient";
@@ -220,8 +222,47 @@ const mercadoLivreRemoteRepository = supabaseAdmin
 const mercadoLivreRemoteService = mercadoLivreRemoteRepository
   ? new MercadoLivreRemoteBrowserService(mercadoLivreRemoteRepository)
   : null;
-const mercadoLivreHybridAdapter = mercadoLivreCompanionAdapter || mercadoLivreRemoteService
-  ? new MercadoLivreHybridAdapter(mercadoLivreRemoteService, mercadoLivreCompanionAdapter)
+const mercadoLivreDirectClient = new MercadoLivreDirectClient();
+const mercadoLivreDirectAdapter = mercadoLivreRemoteRepository
+  ? new MercadoLivreDirectAdapter(
+      mercadoLivreDirectClient,
+      mercadoLivreRemoteRepository,
+      undefined,
+      affiliateRepository ? async (userId, errorCode) => {
+        await affiliateRepository.setValidationStatus(userId, 'mercado_livre', 'invalid', errorCode);
+      } : undefined,
+    )
+  : null;
+const shopeeDiscoveryProvider = new ShopeeDiscoveryProvider();
+const amazonCreatorsApiClient = new AmazonCreatorsApiClient();
+const amazonDiscoveryProvider = new AmazonDiscoveryProvider(
+  amazonCreatorsApiClient,
+);
+const mercadoLivreDiscoveryProvider = new MercadoLivreDiscoveryProvider(
+  fetch,
+  'https://api.mercadolibre.com',
+  mercadoLivreRemoteService ?? undefined,
+);
+const affiliateAccountService = affiliateRepository
+  ? new AffiliateAccountService(
+      affiliateRepository,
+      affiliateEncryptionConfigured() ? encryptAffiliateCredentials : undefined,
+      {
+        shopee: async (credentials) => {
+          await shopeeDiscoveryProvider.getDeals({ credentials, limit: 1 });
+        },
+        amazon: async (credentials) => {
+          await amazonCreatorsApiClient.validate(credentials);
+        },
+        mercado_livre: async (credentials) => {
+          if (mercadoLivreDirectClient.configured(credentials)) await mercadoLivreDirectClient.validate(credentials);
+          else await mercadoLivreDiscoveryProvider.validate(credentials);
+        },
+      },
+    )
+  : null;
+const mercadoLivreHybridAdapter = mercadoLivreDirectAdapter || mercadoLivreCompanionAdapter || mercadoLivreRemoteService
+  ? new MercadoLivreHybridAdapter(mercadoLivreDirectAdapter, mercadoLivreRemoteService, mercadoLivreCompanionAdapter)
   : null;
 const mercadoLivreCompanionService = mercadoLivreCompanionRepository && mercadoLivreCompanionAdapter
   ? new MercadoLivreCompanionService(
@@ -229,6 +270,15 @@ const mercadoLivreCompanionService = mercadoLivreCompanionRepository && mercadoL
       mercadoLivreCompanionAdapter,
       undefined,
       mercadoLivreRemoteService,
+      affiliateAccountService ? async (userId, sessionCookie, trackingTag) => {
+        const result = await affiliateAccountService.syncMercadoLivreSession(userId, sessionCookie, trackingTag);
+        if (!result.success) throw new Error(result.error.code);
+      } : null,
+      affiliateRepository && mercadoLivreDirectAdapter ? async (userId, sourceUrl, trackingLabel) => {
+        const account = await affiliateRepository.getConfiguredAccount(userId, 'mercado_livre');
+        if (!account || !mercadoLivreDirectAdapter.configured(account.credentials)) return null;
+        return mercadoLivreDirectAdapter.generate(userId, account.id, sourceUrl, account.credentials, trackingLabel);
+      } : null,
     )
   : null;
 const affiliateLinks = new AffiliateLinkService([
@@ -256,33 +306,6 @@ const affiliateConversionService = affiliateRepository
   : null;
 const affiliateWorker = affiliateConversionService
   ? new AffiliateConversionWorker(affiliateConversionService)
-  : null;
-const shopeeDiscoveryProvider = new ShopeeDiscoveryProvider();
-const amazonCreatorsApiClient = new AmazonCreatorsApiClient();
-const amazonDiscoveryProvider = new AmazonDiscoveryProvider(
-  amazonCreatorsApiClient,
-);
-const mercadoLivreDiscoveryProvider = new MercadoLivreDiscoveryProvider(
-  fetch,
-  'https://api.mercadolibre.com',
-  mercadoLivreRemoteService ?? undefined,
-);
-const affiliateAccountService = affiliateRepository
-  ? new AffiliateAccountService(
-      affiliateRepository,
-      affiliateEncryptionConfigured() ? encryptAffiliateCredentials : undefined,
-      {
-        shopee: async (credentials) => {
-          await shopeeDiscoveryProvider.getDeals({ credentials, limit: 1 });
-        },
-        amazon: async (credentials) => {
-          await amazonCreatorsApiClient.validate(credentials);
-        },
-        mercado_livre: async (credentials) => {
-          await mercadoLivreDiscoveryProvider.validate(credentials);
-        },
-      },
-    )
   : null;
 let whatsAppManager: WhatsAppConnectionManager | null = null;
 let whatsAppMediaReferences: WhatsAppMediaReferenceService | null = null;

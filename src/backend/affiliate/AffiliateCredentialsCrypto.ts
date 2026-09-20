@@ -19,9 +19,15 @@ export function encryptAffiliatePayload(value: unknown): Envelope {
 }
 export function decryptAffiliateCredentials(value: unknown): AffiliateProviderCredentials {
   const parsed = decryptAffiliatePayload(value) as AffiliateProviderCredentials;
-  if (!parsed.appId || !parsed.secret || (parsed.partnerTag != null && typeof parsed.partnerTag !== 'string')
-    || (parsed.accessToken != null && typeof parsed.accessToken !== 'string')
-    || (parsed.refreshToken != null && typeof parsed.refreshToken !== 'string')) throw new Error('AFFILIATE_CREDENTIALS_INVALID');
+  const optionalStrings: Array<keyof AffiliateProviderCredentials> = [
+    'appId', 'secret', 'partnerTag', 'accessToken', 'refreshToken',
+    'sessionCookie', 'trackingTag', 'sessionSyncedAt',
+  ];
+  const apiCredentials = Boolean(parsed?.appId && parsed?.secret);
+  const directSession = Boolean(parsed?.sessionCookie && parsed?.trackingTag);
+  if (!parsed || typeof parsed !== 'object'
+    || optionalStrings.some((field) => parsed[field] != null && typeof parsed[field] !== 'string')
+    || (!apiCredentials && !directSession)) throw new Error('AFFILIATE_CREDENTIALS_INVALID');
   return parsed;
 }
 export function decryptAffiliatePayload(value: unknown): unknown {

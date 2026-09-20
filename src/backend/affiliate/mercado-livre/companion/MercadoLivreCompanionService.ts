@@ -51,6 +51,10 @@ export class MercadoLivreCompanionService {
     private readonly adapter: MercadoLivreBrowserCompanionAdapter,
     private readonly validator = new MercadoLivreAffiliateLinkValidator(),
     private readonly remote: MercadoLivreRemoteBrowserService | null = null,
+    private readonly sessionSync: ((userId: string, sessionCookie: string, trackingTag: string) => Promise<void>) | null = null,
+    private readonly directTest: ((userId: string, sourceUrl: string, trackingLabel: string | null) => Promise<{
+      affiliateUrl: string; itemId: string | null; trackingLabel: string | null;
+    } | null>) | null = null,
   ) {}
 
   async createPairing(userId: string, requestedName: unknown) {
@@ -81,6 +85,17 @@ export class MercadoLivreCompanionService {
   async authenticate(rawToken: string): Promise<MercadoLivreCompanionInstance | null> {
     if (!rawToken.startsWith('pc_') || rawToken.length < 40) return null;
     return this.repository.authenticate(hash(rawToken));
+  }
+
+  async syncSession(instance: MercadoLivreCompanionInstance, input: Record<string, unknown>) {
+    if (!this.sessionSync) throw new MercadoLivreCompanionError('DIRECT_ENGINE_UNAVAILABLE', 'Sincronização do motor próprio indisponível.');
+    const sessionCookie = clean(input.sessionCookie, 32_768);
+    const trackingTag = clean(input.trackingTag, 80);
+    if (sessionCookie.length < 20 || /[\r\n]/u.test(sessionCookie) || !trackingTag) {
+      throw new MercadoLivreCompanionError('DIRECT_SESSION_INVALID', 'Sessão inválida.');
+    }
+    await this.sessionSync(instance.userId, sessionCookie, trackingTag);
+    return { status: 'READY', syncedAt: new Date().toISOString() };
   }
 
   async heartbeat(instance: MercadoLivreCompanionInstance, input: Record<string, unknown>) {
@@ -172,7 +187,18 @@ export class MercadoLivreCompanionService {
   async createTest(userId: string, sourceUrl: unknown, trackingLabel?: unknown) {
     const source = clean(sourceUrl, 2_000);
     if (!source) throw new Error('SOURCE_URL_REQUIRED');
-    const job = await this.adapter.enqueue(userId, source, clean(trackingLabel, 80) || null);
+    const label = clean(trackingLabel, 80) || null;
+    const direct = await this.directTest?.(userId, source, label);
+    if (direct) {
+      const now = new Date().toISOString();
+      return {
+        id: `direct-${Date.now()}`, status: 'SUCCESS', sourceUrl: source,
+        trackingLabel: direct.trackingLabel, resultUrl: direct.affiliateUrl,
+        itemId: direct.itemId, errorCode: null, expiresAt: now,
+        createdAt: now, updatedAt: now,
+      };
+    }
+    const job = await this.adapter.enqueue(userId, source, label);
     return this.publicJob(job);
   }
 

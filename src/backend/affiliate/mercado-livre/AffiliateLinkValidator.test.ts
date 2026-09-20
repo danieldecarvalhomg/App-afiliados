@@ -26,6 +26,10 @@ describe('MercadoLivreAffiliateLinkValidator', () => {
     expect(validator.validate(source, candidate)).toBe(candidate);
   });
 
+  it('rejeita link completo atribuído para outro produto', () => {
+    expect(() => validator.validate(source, 'https://www.mercadolivre.com.br/MLB-9999999999-outro-_JM?matt_word=promofy&matt_tool=123')).toThrow();
+  });
+
   it.each([source, 'http://meli.la/inseguro', 'https://example.com/afiliado', 'https://www.mercadolivre.com.br/login'])
   ('rejeita resultado não afiliado ou inseguro: %s', (candidate) => {
     expect(() => validator.validate(source, candidate)).toThrow();

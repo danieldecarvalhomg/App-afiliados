@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js';
 import type { AffiliateRepository, ConversionCompletion } from '../../domain/affiliate/AffiliateRepository';
-import type { AffiliateAccountSummary, AffiliateConversion, AffiliateConversionStatus, AffiliatePlatform, ConfigurableAffiliatePlatform, ProductSourceType } from '../../domain/affiliate/types';
+import type { AffiliateAccountSummary, AffiliateConversion, AffiliateConversionStatus, AffiliatePlatform, AffiliateProviderCredentials, ConfigurableAffiliatePlatform, ProductSourceType } from '../../domain/affiliate/types';
 import type { ManualProductInput, ProductRecord } from '../../domain/products/types';
 import { calculateDiscount, extractExplicitCouponDescription } from '../../domain/monitoring/promotionValidation';
 import { selectPrimaryProductLink } from '../../domain/affiliate/PrimaryProductLinkSelector';
@@ -110,7 +110,7 @@ export class SupabaseAffiliateRepository implements AffiliateRepository {
   constructor(private readonly db: SupabaseClient) {}
   async listAccountSummaries(userId: string): Promise<AffiliateAccountSummary[]> {
     const [{ data, error }, { data: companions, error: companionError }] = await Promise.all([
-      this.db.from('affiliate_accounts').select('id,platform,status,provider,last_error_code,encrypted_credentials,validation_status,validation_error_code').eq('user_id', userId),
+      this.db.from('affiliate_accounts').select('id,platform,status,provider,last_error_code,encrypted_credentials,validation_status,validation_error_code,updated_at').eq('user_id', userId),
       this.db.from('browser_companion_instances').select('id,name,status,extension_version,adapter_version,mercado_livre_status,last_seen_at,last_success_at,last_error_code,token_expires_at,revoked_at')
         .eq('user_id',userId).is('revoked_at',null).gt('token_expires_at',new Date().toISOString()).order('last_seen_at',{ascending:false,nullsFirst:false}),
     ]);
@@ -122,10 +122,17 @@ export class SupabaseAffiliateRepository implements AffiliateRepository {
       ?? companionRows[0];
     return (data ?? []).map((row: Row) => {
       if (row.platform === 'mercado_livre') {
-        const configured = Boolean(mlCompanion);
-        const catalogApiConfigured = Boolean(row.encrypted_credentials) && row.validation_status === 'valid';
-        return { id:row.id,platform:row.platform,configured,configurationStatus:configured?'valid':'not_configured',provider:'mercado_livre_browser_companion_v1',lastErrorCode:mlCompanion?.last_error_code??row.validation_error_code??row.last_error_code??null,
-          catalogApiConfigured, catalogApiStatus: row.encrypted_credentials ? row.validation_status ?? 'pending_validation' : 'not_configured',
+        let credentials: AffiliateProviderCredentials | null = null;
+        try { credentials = row.encrypted_credentials ? decryptAffiliateCredentials(row.encrypted_credentials) : null; }
+        catch { credentials = null; }
+        const sessionConfigured = Boolean(credentials?.sessionCookie && credentials?.trackingTag && row.validation_status === 'valid');
+        const companionConfigured = Boolean(mlCompanion);
+        const configured = sessionConfigured || companionConfigured;
+        const catalogApiConfigured = Boolean(credentials?.appId && credentials?.secret && credentials?.accessToken);
+        const provider = sessionConfigured ? 'mercado_livre_unofficial_v1'
+          : companionConfigured ? 'mercado_livre_browser_companion_v1' : row.provider;
+        return { id:row.id,platform:row.platform,configured,configurationStatus:configured?'valid':row.validation_status??'not_configured',provider,lastErrorCode:mlCompanion?.last_error_code??row.validation_error_code??row.last_error_code??null,
+          sessionConfigured, catalogApiConfigured, catalogApiStatus: catalogApiConfigured ? row.validation_status ?? 'pending_validation' : 'not_configured',
           browserCompanion:mlCompanion?{instanceId:mlCompanion.id,name:mlCompanion.name,status:mlCompanion.status,extensionVersion:mlCompanion.extension_version,mercadoLivreStatus:mlCompanion.mercado_livre_status,lastSeenAt:mlCompanion.last_seen_at,lastSuccessAt:mlCompanion.last_success_at,adapterVersion:Number(mlCompanion.adapter_version??1)}:undefined };
       }
       const configurationStatus = row.validation_status ?? (row.status === 'error' ? 'error' : row.status === 'configured' && row.encrypted_credentials ? 'pending_validation' : 'not_configured'); const configured = configurationStatus === 'valid'; return ({ id: row.id, platform: row.platform, configured,
@@ -140,14 +147,27 @@ export class SupabaseAffiliateRepository implements AffiliateRepository {
   async setValidationStatus(userId: string, platform: ConfigurableAffiliatePlatform, status: 'valid' | 'invalid' | 'error', errorCode?: string): Promise<void> {
     const { error } = await this.db.from('affiliate_accounts').update({ validation_status: status, validation_error_code: errorCode ?? null, validated_at: new Date().toISOString(), updated_at: new Date().toISOString() }).eq('user_id', userId).eq('platform',platform); if (error) throw error;
   }
+  async getAccountCredentials(userId: string, platform: ConfigurableAffiliatePlatform): Promise<AffiliateProviderCredentials | null> {
+    const { data, error } = await this.db.from('affiliate_accounts').select('encrypted_credentials')
+      .eq('user_id', userId).eq('platform', platform).maybeSingle();
+    if (error) throw error;
+    if (!data?.encrypted_credentials) return null;
+    return decryptAffiliateCredentials(data.encrypted_credentials);
+  }
   async getConfiguredAccount(userId: string, platform: AffiliatePlatform) {
     if (!['shopee','amazon','mercado_livre'].includes(platform)) return null;
     if (platform === 'mercado_livre') {
       const [{data:account,error},{data:instance,error:instanceError}]=await Promise.all([
-        this.db.from('affiliate_accounts').select('id').eq('user_id',userId).eq('platform','mercado_livre').eq('status','configured').eq('validation_status','valid').maybeSingle(),
+        this.db.from('affiliate_accounts').select('id,encrypted_credentials').eq('user_id',userId).eq('platform','mercado_livre').eq('status','configured').eq('validation_status','valid').maybeSingle(),
         this.db.from('browser_companion_instances').select('id').eq('user_id',userId).is('revoked_at',null).neq('status','REVOKED').gt('token_expires_at',new Date().toISOString()).limit(1).maybeSingle(),
       ]);
-      if(error)throw error;if(instanceError)throw instanceError;return account&&instance?{id:account.id,credentials:{appId:'browser-companion',secret:'scoped-extension-token'}}:null;
+      if(error)throw error;if(instanceError)throw instanceError;
+      if (!account) return null;
+      if (account.encrypted_credentials) {
+        const credentials = decryptAffiliateCredentials(account.encrypted_credentials);
+        if (credentials.sessionCookie && credentials.trackingTag) return { id:account.id, credentials };
+      }
+      return instance ? {id:account.id,credentials:{appId:'browser-companion',secret:'scoped-extension-token'}} : null;
     }
     const { data, error } = await this.db.from('affiliate_accounts').select('id,encrypted_credentials,status')
       .eq('user_id', userId).eq('platform', platform).eq('status', 'configured').eq('validation_status','valid').maybeSingle();

@@ -19,6 +19,7 @@ export interface AffiliateAccountSummary {
   configurationStatus: 'not_configured' | 'pending_validation' | 'valid' | 'invalid' | 'error';
   provider: string;
   lastErrorCode: string | null;
+  sessionConfigured?: boolean;
   catalogApiConfigured?: boolean;
   catalogApiStatus?: 'not_configured' | 'pending_validation' | 'valid' | 'invalid' | 'error';
   browserCompanion?: {
@@ -39,6 +40,9 @@ export interface AffiliateProviderCredentials {
   partnerTag?: string;
   accessToken?: string;
   refreshToken?: string;
+  sessionCookie?: string;
+  trackingTag?: string;
+  sessionSyncedAt?: string;
 }
 export interface AffiliateProviderInput {
   url: string;

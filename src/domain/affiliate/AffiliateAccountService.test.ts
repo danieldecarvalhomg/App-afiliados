@@ -41,3 +41,33 @@ describe('validação de conta afiliada Shopee', () => {
     expect(setShopeeValidationStatus).toHaveBeenCalledWith('user-a', 'shopee', 'error', 'SHOPEE_VALIDATION_ERROR');
   });
 });
+
+describe('sincronização da sessão Mercado Livre', () => {
+  it('valida antes de persistir e preserva as credenciais de catálogo', async () => {
+    const validate = vi.fn(async () => undefined);
+    const upsertAccount = vi.fn(async () => undefined);
+    const setValidationStatus = vi.fn(async () => undefined);
+    const repository = {
+      getAccountCredentials: vi.fn(async () => ({ appId: 'app-id', secret: 'secret-123', accessToken: 'oauth-token' })),
+      upsertAccount, setValidationStatus,
+    } as unknown as AffiliateRepository;
+    const protect = vi.fn((value) => ({ encrypted: value }));
+    const service = new AffiliateAccountService(repository, protect, { mercado_livre: validate });
+    const result = await service.syncMercadoLivreSession('user-a', 'session=abc123; affiliate=xyz789', 'principal');
+    expect(result).toMatchObject({ success: true });
+    expect(validate).toHaveBeenCalledWith(expect.objectContaining({ accessToken: 'oauth-token', sessionCookie: expect.stringContaining('session='), trackingTag: 'principal' }));
+    expect(upsertAccount).toHaveBeenCalledWith('user-a', 'mercado_livre', 'mercado_livre_unofficial_v1', expect.any(Object));
+    expect(setValidationStatus).toHaveBeenCalledWith('user-a', 'mercado_livre', 'valid');
+  });
+
+  it('não persiste uma sessão recusada pelo Mercado Livre', async () => {
+    const upsertAccount = vi.fn();
+    const repository = { getAccountCredentials: vi.fn(async () => null), upsertAccount } as unknown as AffiliateRepository;
+    const service = new AffiliateAccountService(repository, (value) => ({ value }), {
+      mercado_livre: async () => { throw new Error('AUTH_REQUIRED'); },
+    });
+    await expect(service.syncMercadoLivreSession('user-a', 'session=abc123; affiliate=xyz789', 'principal'))
+      .resolves.toMatchObject({ success: false, error: { code: 'MERCADO_LIVRE_SESSION_INVALID' } });
+    expect(upsertAccount).not.toHaveBeenCalled();
+  });
+});

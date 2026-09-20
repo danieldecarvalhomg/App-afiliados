@@ -194,12 +194,10 @@ export class MercadoLivreCompanionRepository {
     if (!data) return false;
     const { data: remaining } = await this.db.from('browser_companion_instances').select('id')
       .eq('user_id', userId).is('revoked_at', null).neq('status', 'REVOKED').limit(1);
-    if (!(remaining ?? []).length) {
-      await this.db.from('affiliate_accounts').update({
-        validation_status: 'invalid', validation_error_code: 'COMPANION_NOT_PAIRED',
-        updated_at: now,
-      }).eq('user_id', userId).eq('platform', 'mercado_livre');
-    }
+    // A extensão pode ser removida depois que sincronizou a sessão com o motor
+    // próprio. A ausência do conector não invalida uma sessão backend válida;
+    // getConfiguredAccount ainda exige extensão quando não há sessão cifrada.
+    void remaining;
     return true;
   }
 

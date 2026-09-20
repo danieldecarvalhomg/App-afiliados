@@ -18,6 +18,7 @@ export interface AffiliateRepository {
   listAccountSummaries(userId: string): Promise<AffiliateAccountSummary[]>;
   upsertAccount(userId: string, platform: ConfigurableAffiliatePlatform, provider: string, encryptedCredentials: Record<string, unknown>): Promise<void>;
   setValidationStatus(userId: string, platform: ConfigurableAffiliatePlatform, status: 'valid' | 'invalid' | 'error', errorCode?: string): Promise<void>;
+  getAccountCredentials(userId: string, platform: ConfigurableAffiliatePlatform): Promise<AffiliateProviderCredentials | null>;
   getConfiguredAccount(userId: string, platform: AffiliatePlatform): Promise<AffiliateAccountWithCredentials | null>;
   getDeclaredMarketplace(conversion: AffiliateConversion): Promise<AffiliatePlatform | 'unknown' | null>;
   claimNext(workerId: string, staleBefore: string): Promise<AffiliateConversion | null>;

@@ -4,7 +4,7 @@ import { MercadoLivreBrowserCompanionAdapter } from './MercadoLivreBrowserCompan
 const source = 'https://produto.mercadolivre.com.br/MLB-1234567890-produto-_JM';
 const instance = {
   id: 'instance-a', userId: 'user-a', name: 'Chrome', status: 'ONLINE',
-  extensionVersion: '1.1.0', adapterVersion: 4, mercadoLivreStatus: 'READY',
+  extensionVersion: '1.2.0', adapterVersion: 5, mercadoLivreStatus: 'READY',
   lastSeenAt: new Date().toISOString(), lastSuccessAt: null, lastErrorCode: null,
   tokenExpiresAt: new Date(Date.now() + 60_000).toISOString(), createdAt: new Date().toISOString(), revokedAt: null,
 };
@@ -13,7 +13,7 @@ const job = {
   operationKey: 'key', sourceUrl: source, normalizedUrl: source, trackingLabel: 'promofy_manual',
   status: 'PENDING', claimedBy: null, claimedAt: null, completedAt: null,
   expiresAt: new Date(Date.now() + 60_000).toISOString(), resultUrl: null, itemId: null,
-  errorCode: null, adapterVersion: 4, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  errorCode: null, adapterVersion: 5, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
 };
 
 function repository(overrides: Record<string, unknown> = {}) {
