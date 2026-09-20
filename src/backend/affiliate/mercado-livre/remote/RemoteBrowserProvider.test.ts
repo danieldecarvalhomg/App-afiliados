@@ -38,7 +38,7 @@ describe('RemoteBrowserProvider', () => {
       method: 'POST', headers: expect.objectContaining({ 'x-api-key': 'hb-key' }),
     }));
     const sessionBody = JSON.parse(String(fetcher.mock.calls[1][1]?.body));
-    expect(sessionBody).toMatchObject({ timeoutMinutes: 15, screen: { width: 412, height: 915 }, profile: { id: 'profile-1', persistChanges: true } });
+    expect(sessionBody).toMatchObject({ timeoutMinutes: 15, screen: { width: 500, height: 915 }, profile: { id: 'profile-1', persistChanges: true } });
     expect(fetcher).toHaveBeenNthCalledWith(3, 'https://api.hyperbrowser.ai/api/session/session-1/stop', expect.objectContaining({ method: 'PUT' }));
   });
 

@@ -151,7 +151,9 @@ export class HyperbrowserProvider implements RemoteBrowserProvider {
 
   async createSession(profileId: string, options: RemoteBrowserSessionOptions): Promise<RemoteBrowserSession> {
     const useProxy = process.env.HYPERBROWSER_USE_PROXY === 'true';
-    const screen = options.mobile ? { width: 412, height: 915 } : { width: 1440, height: 900 };
+    // Hyperbrowser rejects physical screens narrower than 500 px. The page is
+    // still emulated as a 412 px Android device over CDP after the connection.
+    const screen = options.mobile ? { width: 500, height: 915 } : { width: 1440, height: 900 };
     const created = await this.request<{ id: string; wsEndpoint: string; liveUrl?: string }>('/session', {
       method: 'POST',
       body: JSON.stringify({

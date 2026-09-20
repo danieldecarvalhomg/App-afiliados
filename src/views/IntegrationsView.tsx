@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { QRCodeSVG } from "qrcode.react";
 import {
   ArrowLeft,
@@ -75,7 +76,6 @@ export const IntegrationsView: React.FC = () => {
   const [companionPairing, setCompanionPairing] = useState<{ code: string; expiresAt: string } | null>(null);
   const [mercadoLivreTestUrl, setMercadoLivreTestUrl] = useState("");
   const [mercadoLivreTestJob, setMercadoLivreTestJob] = useState<Awaited<ReturnType<typeof mercadoLivreAffiliateApi.test>> | null>(null);
-  const [mobileUrlCopied, setMobileUrlCopied] = useState(false);
   const [remoteLoginExpiresAt, setRemoteLoginExpiresAt] = useState<string | null>(null);
   const [remoteLoginUrl, setRemoteLoginUrl] = useState<string | null>(null);
   const [remoteLoginLinkCopied, setRemoteLoginLinkCopied] = useState(false);
@@ -357,6 +357,14 @@ export const IntegrationsView: React.FC = () => {
     await reloadMercadoLivre();
   });
   useEffect(()=>{if(!mercadoLivreOpen)return;const timer=window.setInterval(()=>void reloadMercadoLivre().catch(()=>undefined),5000);return()=>window.clearInterval(timer);},[mercadoLivreOpen,reloadMercadoLivre]);
+  useEffect(()=>{
+    if(!mercadoLivreOpen)return;
+    const previousOverflow=document.body.style.overflow;
+    document.body.style.overflow='hidden';
+    const closeOnEscape=(event:KeyboardEvent)=>{if(event.key==='Escape')setMercadoLivreOpen(false);};
+    window.addEventListener('keydown',closeOnEscape);
+    return()=>{document.body.style.overflow=previousOverflow;window.removeEventListener('keydown',closeOnEscape);};
+  },[mercadoLivreOpen]);
   useEffect(()=>{
     if(!mercadoLivreTestJob || ['SUCCESS','FAILED','EXPIRED','NEEDS_USER_ACTION','CANCELLED'].includes(mercadoLivreTestJob.status)) return;
     const timer=window.setInterval(()=>void mercadoLivreAffiliateApi.job(mercadoLivreTestJob.id).then(setMercadoLivreTestJob).catch(()=>undefined),1500);
@@ -881,12 +889,12 @@ export const IntegrationsView: React.FC = () => {
         </div>
       )}
 
-      {mercadoLivreOpen && (
-        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onMouseDown={() => setMercadoLivreOpen(false)}>
-          <div className="w-full max-w-2xl max-h-[92vh] overflow-y-auto rounded-2xl bg-[#FFFFFF] border border-[#E8E9ED] p-4 sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
-            <div className="flex items-start justify-between gap-4">
-              <div><h2 className="text-lg font-medium text-[#0F172A]">Mercado Livre — Programa de Afiliados</h2><p className="mt-1 text-xs text-[#9CA3AF]">O navegador remoto converte na nuvem mesmo com seu computador desligado. A extensão permanece como contingência.</p></div>
-              <button onClick={() => setMercadoLivreOpen(false)} aria-label="Fechar"><X className="w-5 h-5 text-[#9CA3AF]" /></button>
+      {mercadoLivreOpen && typeof document !== "undefined" && createPortal(
+        <div className="fixed inset-0 z-[100] flex items-stretch justify-center bg-white p-0 sm:items-center sm:bg-black/40 sm:p-4" onMouseDown={() => setMercadoLivreOpen(false)}>
+          <div className="h-[100dvh] w-full overflow-y-auto overscroll-contain bg-[#FFFFFF] px-4 pb-[calc(1rem+env(safe-area-inset-bottom))] pt-0 sm:h-auto sm:max-h-[92vh] sm:max-w-2xl sm:rounded-2xl sm:border sm:border-[#E8E9ED] sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
+            <div className="sticky top-0 z-30 -mx-4 flex items-start justify-between gap-4 border-b border-[#E8E9ED] bg-white/95 px-4 pb-3 pt-[calc(0.75rem+env(safe-area-inset-top))] backdrop-blur sm:static sm:mx-0 sm:border-0 sm:bg-transparent sm:p-0">
+              <div className="min-w-0"><h2 className="text-base font-medium leading-6 text-[#0F172A] sm:text-lg">Mercado Livre — Programa de Afiliados</h2><p className="mt-1 hidden text-xs text-[#9CA3AF] sm:block">O navegador remoto converte na nuvem mesmo com seu computador desligado. A extensão permanece como contingência.</p></div>
+              <button type="button" onClick={() => setMercadoLivreOpen(false)} aria-label="Fechar integração do Mercado Livre" className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#F4F4F6] text-[#4B5563] transition-colors hover:bg-[#E8E9ED]"><X className="h-5 w-5" /></button>
             </div>
 
             <div className="mt-5 rounded-xl border border-[#E8E9ED] bg-[#F8FAFC] p-4">
@@ -926,25 +934,13 @@ export const IntegrationsView: React.FC = () => {
 
             {!mercadoLivreStatus?.remote.configured && <div className="mt-5 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Motor remoto ainda não configurado no servidor. Adicione <code className="rounded bg-amber-950/50 px-1">HYPERBROWSER_API_KEY</code> (recomendado) ou <code className="rounded bg-amber-950/50 px-1">BROWSERBASE_API_KEY</code>; até lá, a extensão continua funcionando como fallback.</div>}
 
-            {isMobileExperience && <div className="mt-5 rounded-xl border border-sky-500/30 bg-sky-500/10 p-4">
+            {isMobileExperience && <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50 p-4">
               <div className="flex items-start gap-3">
-                <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-sky-300" />
+                <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-sky-600" />
                 <div className="min-w-0">
-                  <p className="text-sm font-medium text-sky-100">Fluxo para iPhone e Android</p>
-                  <p className="mt-1 text-xs leading-5 text-sky-200/80">No celular, envie o link normalmente pelo AfiliHub. O motor remoto converte na nuvem sem abrir abas no telefone e sem exigir que o computador esteja ligado.</p>
-                  <p className="mt-2 text-[11px] leading-5 text-sky-200/70">Para acessar pelo telefone, use o endereço HTTPS publicado do AfiliHub; <code className="rounded bg-sky-950/60 px-1">127.0.0.1</code> só funciona no computador onde o servidor está rodando.</p>
-                  <ol className="mt-3 space-y-1.5 text-xs leading-5 text-sky-100/90">
-                    <li>1. Informe o link original do produto em <strong>Meus Produtos</strong>.</li>
-                    <li>2. O AfiliHub cria o job seguro no Supabase.</li>
-                    <li>3. O navegador remoto processa o link em segundo plano.</li>
-                    <li>4. O produto é atualizado automaticamente no celular.</li>
-                  </ol>
-                  <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                    <button type="button" disabled={!mercadoLivreTestUrl.trim()} onClick={() => { void navigator.clipboard.writeText(mercadoLivreTestUrl.trim()); setMobileUrlCopied(true); window.setTimeout(() => setMobileUrlCopied(false), 1600); }} className="inline-flex items-center justify-center gap-2 rounded-lg border border-sky-300/30 px-3 py-2 text-xs text-sky-100 disabled:opacity-40">
-                      <Copy className="h-3.5 w-3.5" /> {mobileUrlCopied ? "Link copiado" : "Copiar URL do teste"}
-                    </button>
-                    <span className="inline-flex items-center justify-center rounded-lg bg-sky-100 px-3 py-2 text-xs font-medium text-sky-950">Sem abas extras no telefone</span>
-                  </div>
+                  <p className="text-sm font-medium text-sky-950">Login pelo iPhone ou Android</p>
+                  <p className="mt-1 text-xs leading-5 text-sky-800">Toque em <strong>Conectar na nuvem</strong>. O login seguro abrirá nesta mesma tela com aparência de Android. Depois de entrar no Mercado Livre, use o botão de voltar do celular e toque em <strong>Já entrei — validar</strong>.</p>
+                  <p className="mt-2 text-[11px] leading-5 text-sky-700">Senha, código de confirmação e CAPTCHA são informados diretamente no navegador remoto e não passam pelo AfiliHub.</p>
                 </div>
               </div>
             </div>}
@@ -965,7 +961,8 @@ export const IntegrationsView: React.FC = () => {
 
             <div className="mt-6 flex flex-wrap gap-2"><a href="https://www.mercadolivre.com.br/afiliados" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-[#D4D4D8] px-4 py-2 text-sm text-[#0F172A]"><ExternalLink className="h-4 w-4" /> Abrir Mercado Livre</a>{mercadoLivreStatus?.companion?.status === "OUTDATED" ? <a href="/browser-companion/install.html" target="_blank" rel="noreferrer" className="rounded-lg bg-[#EDEDED] px-4 py-2 text-sm font-medium text-[#111]">Atualizar extensão</a> : mercadoLivreStatus?.companion && <button onClick={createCompanionPairing} disabled={busy !== null} className="rounded-lg border border-[#D4D4D8] px-4 py-2 text-sm text-[#0F172A]">Reconectar extensão</button>}{mercadoLivreStatus?.companion && <button onClick={()=>void run('ml:revoke',async()=>{await mercadoLivreAffiliateApi.revoke(mercadoLivreStatus.companion!.id);setCompanionPairing(null);await reloadMercadoLivre();})} disabled={busy !== null} className="rounded-lg px-4 py-2 text-sm text-[#EF4444]">Desconectar</button>}</div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
 
       {configuring && (

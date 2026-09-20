@@ -49,6 +49,20 @@ async function configureAndroidSession(browser: Browser, context: BrowserContext
   });
 }
 
+async function tryConfigureAndroidSession(browser: Browser, context: BrowserContext, page: Page): Promise<void> {
+  try {
+    await configureAndroidSession(browser, context, page);
+  } catch (error) {
+    // Device emulation improves the mobile layout, but must never prevent the
+    // user from reaching the Mercado Livre login when a provider omits a CDP
+    // capability.
+    console.warn('[AfiliHub] Emulação Android parcial; continuando com a sessão remota.', {
+      error: error instanceof Error ? error.message : 'UNKNOWN_ERROR',
+    });
+    await page.setViewportSize(ANDROID_VIEWPORT).catch(() => undefined);
+  }
+}
+
 interface ActiveLogin { browser: Browser; page: Page; sessionId: string; provider: RemoteBrowserProvider; }
 interface OpenedRemoteSession { id: string; connectUrl: string; liveUrl: string | null; provider: RemoteBrowserProvider; }
 interface RecoveredSession extends ActiveLogin { expiresAt: number; timer: ReturnType<typeof setTimeout>; }
@@ -241,16 +255,27 @@ export class MercadoLivreRemoteBrowserService {
     });
     if (!current || current.contextId !== contextId) await this.repository.create(userId, contextId);
     await this.closeLogin(userId);
-    const session = await provider.createSession(profileId, { interactive: true, persistChanges: true, mobile: options.mobile });
-    const browser = await chromium.connectOverCDP(session.connectUrl);
-    const context = browser.contexts()[0];
-    const page = context.pages()[0] ?? await context.newPage();
-    if (options.mobile) await configureAndroidSession(browser, context, page);
-    await page.goto('https://www.mercadolivre.com.br/afiliados/hub', { waitUntil: 'domcontentloaded', timeout: 60_000 });
-    this.logins.set(userId, { browser, page, sessionId: session.id, provider });
-    await this.repository.update(userId, { status: 'CONNECTING', activeSessionId: session.id, errorCode:null });
-    if (!session.liveUrl) throw new Error('REMOTE_LIVE_URL_UNAVAILABLE');
-    return { liveUrl: session.liveUrl, expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() };
+    let session: OpenedRemoteSession | null = null;
+    let browser: Browser | null = null;
+    try {
+      session = { ...(await provider.createSession(profileId, { interactive: true, persistChanges: true, mobile: options.mobile })), provider };
+      browser = await chromium.connectOverCDP(session.connectUrl);
+      const context = browser.contexts()[0];
+      const page = context.pages()[0] ?? await context.newPage();
+      if (options.mobile) await tryConfigureAndroidSession(browser, context, page);
+      await page.goto('https://www.mercadolivre.com.br/afiliados/hub', { waitUntil: 'domcontentloaded', timeout: 60_000 });
+      if (!session.liveUrl) throw new Error('REMOTE_LIVE_URL_UNAVAILABLE');
+      this.logins.set(userId, { browser, page, sessionId: session.id, provider });
+      await this.repository.update(userId, { status: 'CONNECTING', activeSessionId: session.id, errorCode:null });
+      return { liveUrl: session.liveUrl, expiresAt: new Date(Date.now() + 15 * 60_000).toISOString() };
+    } catch (error) {
+      const failure = remoteError(error);
+      if (browser) await browser.close().catch(() => undefined);
+      if (session) await this.release(provider, session.id).catch(() => undefined);
+      this.logins.delete(userId);
+      await this.repository.update(userId, { status: 'ERROR', activeSessionId: null, errorCode: failure.code }).catch(() => undefined);
+      throw failure;
+    }
   }
 
   async verifyLogin(userId: string) {
