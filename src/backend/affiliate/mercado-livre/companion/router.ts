@@ -98,6 +98,10 @@ export function createMercadoLivreCompanionRouter(service: MercadoLivreCompanion
     try { const id = await owner(req, res); if (id) res.json({ success: true, data: await service.status(id) }); }
     catch (error) { failure(res, error); }
   });
+  router.post('/user/session/refresh', async (req, res) => {
+    try { const id = await owner(req, res); if (id) res.json({ success: true, data: await service.refreshSession(id) }); }
+    catch (error) { failure(res, error); }
+  });
   router.post('/user/pairings', async (req, res) => {
     try { const id = await owner(req, res); if (id) res.status(201).json({ success: true, data: await service.createPairing(id, req.body?.name) }); }
     catch (error) { failure(res, error); }

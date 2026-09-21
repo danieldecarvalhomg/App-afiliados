@@ -36,4 +36,10 @@ describe('MercadoLivreDirectClient', () => {
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ message: 'Unauthorized' }), { status: 401 }));
     await expect(new MercadoLivreDirectClient(fetcher as typeof fetch).validate(credentials)).rejects.toMatchObject({ code: 'AUTH_REQUIRED', transient: false });
   });
+
+  it('não apaga uma sessão válida por um bloqueio 403 transitório do servidor', async () => {
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ message: 'Forbidden' }), { status: 403 }));
+    await expect(new MercadoLivreDirectClient(fetcher as typeof fetch).validate(credentials))
+      .rejects.toMatchObject({ code: 'TEMPORARY_ERROR', transient: true });
+  });
 });

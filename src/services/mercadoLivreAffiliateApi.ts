@@ -24,6 +24,7 @@ export interface MercadoLivreAffiliateStatus {
 async function request<T>(path:string,init:RequestInit={}){const {data}=await supabase.auth.getSession();if(!data.session?.access_token)throw new Error('Faça login para configurar o Mercado Livre.');const response=await fetch(`/api/browser-companion/user${path}`,{cache:'no-store',...init,headers:{'content-type':'application/json',authorization:`Bearer ${data.session.access_token}`,...init.headers}});const payload=await readJsonResponse<Payload<T>>(response);if(!response.ok||!payload.success)throw new Error(payload.error?.message??'Falha na integração Mercado Livre.');return payload.data as T;}
 export const mercadoLivreAffiliateApi={
   status:()=>request<MercadoLivreAffiliateStatus>('/status'),
+  refreshSession:()=>request<{sessionReady:boolean;checkedAt:string}>('/session/refresh',{method:'POST',body:'{}'}),
   createPairing:(name='Chrome')=>request<{code:string;expiresAt:string}>('/pairings',{method:'POST',body:JSON.stringify({name})}),
   revoke:(instanceId:string)=>request<void>(`/instances/${encodeURIComponent(instanceId)}`,{method:'DELETE'}),
   test:(sourceUrl:string,trackingLabel?:string)=>request<BrowserCompanionJobSummary>('/test',{method:'POST',body:JSON.stringify({sourceUrl,trackingLabel})}),

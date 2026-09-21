@@ -7,7 +7,7 @@ type Fetcher = typeof fetch;
 function apiError(status: number, payload: unknown): MercadoLivreCompanionError {
   const value = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
   const raw = `${value.code ?? ''} ${value.error ?? ''} ${value.message ?? ''}`.toUpperCase();
-  if (status === 401 || status === 403 || /UNAUTHORIZED|FORBIDDEN|AUTH|LOGIN|SESSION/u.test(raw)) {
+  if (status === 401 || /UNAUTHORIZED|AUTH|LOGIN|SESSION/u.test(raw)) {
     return new MercadoLivreCompanionError('AUTH_REQUIRED', 'A sessão do Mercado Livre expirou.');
   }
   if (status === 429 || /RATE.?LIMIT|TOO MANY/u.test(raw)) {
@@ -15,8 +15,9 @@ function apiError(status: number, payload: unknown): MercadoLivreCompanionError 
   }
   if (/CAPTCHA|ROBOT|HUMAN/u.test(raw)) return new MercadoLivreCompanionError('CAPTCHA_REQUIRED', 'O Mercado Livre solicitou confirmação humana.');
   if (/TWO.?FACTOR|2FA|VERIFICATION.?CODE/u.test(raw)) return new MercadoLivreCompanionError('TWO_FACTOR_REQUIRED', 'O Mercado Livre solicitou confirmação em duas etapas.');
-  return new MercadoLivreCompanionError(status >= 500 ? 'TEMPORARY_ERROR' : 'GENERATION_FAILED',
-    'O Mercado Livre não concluiu a geração.', status >= 500);
+  const transient = status === 403 || status >= 500;
+  return new MercadoLivreCompanionError(transient ? 'TEMPORARY_ERROR' : 'GENERATION_FAILED',
+    'O Mercado Livre não concluiu a geração.', transient);
 }
 
 export class MercadoLivreDirectClient {

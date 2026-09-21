@@ -73,6 +73,8 @@ export const IntegrationsView: React.FC = () => {
   const [mercadoLivreOpen, setMercadoLivreOpen] = useState(false);
   const [mercadoLivreStatus, setMercadoLivreStatus] = useState<MercadoLivreAffiliateStatus | null>(null);
   const [companionPairing, setCompanionPairing] = useState<{ code: string; expiresAt: string } | null>(null);
+  const [pairingSecondsRemaining, setPairingSecondsRemaining] = useState(0);
+  const [mercadoLivreStatusCheckedAt, setMercadoLivreStatusCheckedAt] = useState<Date | null>(null);
   const [mercadoLivreTestUrl, setMercadoLivreTestUrl] = useState("");
   const [mercadoLivreTestJob, setMercadoLivreTestJob] = useState<Awaited<ReturnType<typeof mercadoLivreAffiliateApi.test>> | null>(null);
   const [navigationIntent] = useState(() => integrationsNavigation.consume());
@@ -322,7 +324,19 @@ export const IntegrationsView: React.FC = () => {
     const status = affiliateAccounts.find((account) => account.platform === platform)?.configurationStatus ?? "not_configured";
     return ({ valid: "Validada", pending_validation: "Validando", invalid: "Credenciais inválidas", error: "Erro de validação", not_configured: "Não configurada" } as const)[status];
   };
-  const reloadMercadoLivre = useCallback(async()=>{const status=await mercadoLivreAffiliateApi.status();setMercadoLivreStatus(status);if(status.companion?.status === "ONLINE" && status.companion.adapterVersion >= status.required.adapterVersion)setCompanionPairing(null);setAffiliateAccounts(await productsApi.listAccounts());},[]);
+  const reloadMercadoLivre = useCallback(async()=>{
+    const [status, accounts] = await Promise.all([
+      mercadoLivreAffiliateApi.status(),
+      productsApi.listAccounts(),
+    ]);
+    setMercadoLivreStatus(status);
+    setAffiliateAccounts(accounts);
+    setMercadoLivreStatusCheckedAt(new Date());
+  },[]);
+  const refreshMercadoLivre = () => void run('ml:status', async()=>{
+    await mercadoLivreAffiliateApi.refreshSession();
+    await reloadMercadoLivre();
+  });
   const createCompanionPairing = () => void run('ml:pair', async()=>{
     setCompanionPairing(await mercadoLivreAffiliateApi.createPairing('Chrome'));
   });
@@ -331,6 +345,17 @@ export const IntegrationsView: React.FC = () => {
     setMercadoLivreTestJob(created);
   });
   useEffect(()=>{if(!mercadoLivreOpen)return;const timer=window.setInterval(()=>void reloadMercadoLivre().catch(()=>undefined),5000);return()=>window.clearInterval(timer);},[mercadoLivreOpen,reloadMercadoLivre]);
+  useEffect(()=>{
+    if(!companionPairing){setPairingSecondsRemaining(0);return;}
+    const update=()=>{
+      const remaining=Math.max(0,Math.ceil((Date.parse(companionPairing.expiresAt)-Date.now())/1000));
+      setPairingSecondsRemaining(remaining);
+      if(remaining===0)setCompanionPairing(null);
+    };
+    update();
+    const timer=window.setInterval(update,1000);
+    return()=>window.clearInterval(timer);
+  },[companionPairing]);
   useEffect(()=>{
     if(!mercadoLivreOpen)return;
     const previousOverflow=document.body.style.overflow;
@@ -888,7 +913,10 @@ export const IntegrationsView: React.FC = () => {
                   <p className={`mt-1 text-base font-semibold ${mercadoLivreDirectConfigured ? "text-emerald-800" : "text-amber-900"}`}>{mercadoLivreSessionLabel}</p>
                   <p className={`mt-1 text-xs leading-5 ${mercadoLivreDirectConfigured ? "text-emerald-800" : "text-amber-900"}`}>{mercadoLivreDirectConfigured ? "A sessão está cifrada no backend e o motor direto é o único caminho de conversão." : mercadoLivreCompanionOnline ? "O conector está pronto para fazer a conexão inicial, mas a sessão ainda não foi sincronizada para o backend." : "Faça a conexão inicial do Mercado Livre uma vez para liberar a conversão direta no backend."}</p>
                 </div>
-                <button type="button" onClick={() => void reloadMercadoLivre()} disabled={busy !== null} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-[#CBD5E1] bg-white/70 px-3 py-2 text-xs font-medium text-[#334155] disabled:opacity-50"><RefreshCw className="h-3.5 w-3.5" /> Atualizar status</button>
+                <div className="shrink-0 text-right">
+                  <button type="button" onClick={refreshMercadoLivre} disabled={busy !== null} className="inline-flex items-center justify-center gap-2 rounded-lg border border-[#94A3B8] bg-white px-3 py-2 text-xs font-semibold text-[#1E293B] shadow-sm disabled:opacity-50">{busy === "ml:status" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} {busy === "ml:status" ? "Verificando…" : "Atualizar status"}</button>
+                  {mercadoLivreStatusCheckedAt && <p className="mt-1 text-[10px] text-[#64748B]">Atualizado às {mercadoLivreStatusCheckedAt.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"})}</p>}
+                </div>
               </div>
               <div className="mt-4 grid gap-3 border-t border-black/10 pt-3 text-xs sm:grid-cols-3">
                 <p className="text-[#475569]">Modo de conversão: <span className="font-medium text-[#0F172A]">{mercadoLivreConversionMode}</span></p>
@@ -901,7 +929,7 @@ export const IntegrationsView: React.FC = () => {
 
             {!mercadoLivreDirectConfigured && !mercadoLivreStatus?.companion && <div className="mt-5 rounded-xl border border-[#E8E9ED] bg-[#F8FAFC] p-5"><p className="text-sm font-medium text-[#0F172A]">Configure o Conector AfiliHub</p><ol className="mt-3 space-y-2 text-sm text-[#6B6F7B]"><li>1. Instale a extensão AfiliHub no Chrome/Chromium.</li><li>2. Gere um código e digite-o no popup da extensão.</li><li>3. Entre normalmente no Mercado Livre.</li><li>4. Aguarde a sessão aparecer como sincronizada.</li></ol><div className="mt-4 flex flex-wrap gap-2"><a href="/browser-companion/install.html" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-[#D4D4D8] px-4 py-2 text-sm text-[#0F172A]"><Download className="h-4 w-4" /> Instalar extensão</a><button onClick={createCompanionPairing} disabled={busy !== null} className="rounded-lg bg-[#EDEDED] px-4 py-2 text-sm font-medium text-[#111] disabled:opacity-50">{busy === "ml:pair" ? "Gerando…" : "Conectar extensão"}</button></div></div>}
 
-            {companionPairing && <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs text-violet-800">Abra a extensão AfiliHub e informe este código de uso único:</p><div className="mt-2 flex items-center gap-3"><code className="text-xl font-semibold tracking-[0.18em] text-violet-950">{companionPairing.code}</code><button onClick={()=>void navigator.clipboard.writeText(companionPairing.code)} aria-label="Copiar código" className="rounded-md border border-violet-400/50 p-2 text-violet-800"><Copy className="h-4 w-4" /></button></div><p className="mt-2 text-[11px] text-violet-700">Expira em {new Date(companionPairing.expiresAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}. O código não contém sua senha nem seu token principal.</p></div>}
+            {companionPairing && <div className="mt-4 rounded-xl border border-violet-300 bg-violet-50 p-4"><p className="text-xs font-medium text-violet-900">Abra a extensão AfiliHub e informe este código de uso único:</p><div className="mt-2 flex flex-wrap items-center gap-3"><code className="text-xl font-semibold tracking-[0.18em] text-violet-950">{companionPairing.code}</code><button onClick={()=>void navigator.clipboard.writeText(companionPairing.code)} aria-label="Copiar código" className="rounded-md border border-violet-400 bg-white p-2 text-violet-900"><Copy className="h-4 w-4" /></button></div><p className="mt-2 text-[11px] font-medium text-violet-800">Disponível por {String(Math.floor(pairingSecondsRemaining/60)).padStart(2,"0")}:{String(pairingSecondsRemaining%60).padStart(2,"0")}. Ele continuará visível nesta tela até expirar.</p></div>}
 
             {!mercadoLivreDirectConfigured && mercadoLivreStatus?.companion?.status === "OFFLINE" && <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Conector offline antes da sincronização. Abra o Chrome com a extensão ativa.</div>}
             {mercadoLivreStatus?.companion?.status === "OUTDATED" && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">Sua extensão está pareada, mas desatualizada (v{mercadoLivreStatus.companion.extensionVersion}). Atualize para v{mercadoLivreStatus.required.extensionVersion} e recarregue-a em <code className="rounded bg-red-100 px-1 text-red-900">chrome://extensions</code>. O pareamento atual será preservado; não é necessário reconectar.</div>}

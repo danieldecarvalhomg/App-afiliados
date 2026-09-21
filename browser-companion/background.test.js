@@ -13,7 +13,7 @@ describe('AfiliHub Browser Companion security boundary', () => {
   it('usa Manifest V3 e limita cookies aos hosts do Mercado Livre', async () => {
     const manifest = JSON.parse(await readFile(new URL('./manifest.json', import.meta.url), 'utf8'));
     expect(manifest.manifest_version).toBe(3);
-    expect(manifest.version).toBe('1.2.4');
+    expect(manifest.version).toBe('1.2.5');
     expect(manifest.permissions).toEqual(['storage', 'tabs', 'scripting', 'alarms', 'cookies']);
     expect(manifest.permissions).not.toContain('webRequest');
     expect(manifest.host_permissions).not.toContain('<all_urls>');
@@ -32,7 +32,7 @@ describe('AfiliHub Browser Companion security boundary', () => {
   it('reconhece o gerador e o campo de múltiplas URLs do portal atual', async () => {
     const source = await readFile(new URL('./background.js', import.meta.url), 'utf8');
     expect(source).toContain('/afiliados/linkbuilder#hub');
-    expect(source).toContain("const EXTENSION_VERSION = '1.2.4'");
+    expect(source).toContain("const EXTENSION_VERSION = '1.2.5'");
     expect(source).toContain('textarea[placeholder*="url" i]');
     expect(source).toContain('gerador de (?:links?|produtos? recomendados?)');
     expect(source).toContain("candidates.find((item) => item.url?.includes('/afiliados/linkbuilder'))");
@@ -59,6 +59,11 @@ describe('AfiliHub Browser Companion security boundary', () => {
     expect(DEFAULT_BACKEND).toBe('https://afilihub-production.up.railway.app');
     expect(source).toContain("chrome.storage.local.remove(['backendUrl', 'companionToken', 'instance'])");
     expect(source).toMatch(/PROMOFY_DISCONNECT[\s\S]*finally \{[\s\S]*await clearLocalPairing\(\)/u);
+  });
+
+  it('ressincroniza imediatamente quando o backend informa que perdeu a sessão', async () => {
+    const source = await readFile(new URL('./background.js', import.meta.url), 'utf8');
+    expect(source).toContain("syncMercadoLivreSession(heartbeatResult?.sessionSyncRequired === true)");
   });
 
   it('gera em segundo plano pela sessão do Chrome sem criar uma aba', async () => {

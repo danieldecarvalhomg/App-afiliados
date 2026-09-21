@@ -53,6 +53,8 @@ export class MercadoLivreCompanionService {
     private readonly directTest: ((userId: string, sourceUrl: string, trackingLabel: string | null) => Promise<{
       affiliateUrl: string; itemId: string | null; trackingLabel: string | null;
     } | null>) | null = null,
+    private readonly directSessionReady: ((userId: string) => Promise<boolean>) | null = null,
+    private readonly directSessionRefresh: ((userId: string) => Promise<boolean>) | null = null,
   ) {}
 
   async createPairing(userId: string, requestedName: unknown) {
@@ -68,7 +70,7 @@ export class MercadoLivreCompanionService {
     const adapterVersion = integer(input.adapterVersion, 0);
     if (!/^[A-Z2-9]{4}(?:-[A-Z2-9]{4}){2}$/u.test(code)) throw new Error('PAIRING_CODE_INVALID');
     const token = companionToken();
-    const tokenExpiresAt = new Date(Date.now() + 90 * 86_400_000).toISOString();
+    const tokenExpiresAt = new Date(Date.now() + 365 * 86_400_000).toISOString();
     const instance = await this.repository.consumePairing({
       codeHash: hash(code), tokenHash: hash(token), tokenExpiresAt,
       name: clean(input.name, 80) || 'Chrome', extensionVersion, adapterVersion,
@@ -110,10 +112,20 @@ export class MercadoLivreCompanionService {
       adapterVersion, mercadoLivreStatus, errorCode,
     });
     if (mercadoLivreStatus === 'READY') await this.repository.resumeUserActionJobs(instance.userId);
+    const sessionSyncRequired = mercadoLivreStatus === 'READY'
+      && this.directSessionReady ? !await this.directSessionReady(instance.userId).catch(() => false) : false;
     return {
       instance: this.publicInstance(updated), serverTime: new Date().toISOString(),
       pollAfterMs: 3_000, minimumAdapterVersion: MINIMUM_MERCADO_LIVRE_COMPANION_ADAPTER_VERSION,
+      sessionSyncRequired,
     };
+  }
+
+  async refreshSession(userId: string) {
+    const sessionReady = this.directSessionRefresh
+      ? await this.directSessionRefresh(userId).catch(() => false)
+      : this.directSessionReady ? await this.directSessionReady(userId).catch(() => false) : false;
+    return { sessionReady, checkedAt: new Date().toISOString() };
   }
 
   async status(userId: string) {

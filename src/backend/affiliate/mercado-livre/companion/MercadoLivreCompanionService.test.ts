@@ -52,6 +52,22 @@ describe('MercadoLivreCompanionService', () => {
     expect(repo.resumeUserActionJobs).toHaveBeenCalledWith('user-a');
   });
 
+  it('pede nova sincronização quando o Chrome está pronto e o backend perdeu a sessão', async () => {
+    const ready = vi.fn(async () => false);
+    const result = await new MercadoLivreCompanionService(
+      repository() as any, {} as any, undefined, null, null, ready,
+    ).heartbeat(instance as any, { mercadoLivreStatus: 'READY', extensionVersion: '1.2.5', adapterVersion: 5 });
+    expect(result.sessionSyncRequired).toBe(true);
+    expect(ready).toHaveBeenCalledWith('user-a');
+  });
+
+  it('não pede sincronização repetida quando a sessão persistida está válida', async () => {
+    const result = await new MercadoLivreCompanionService(
+      repository() as any, {} as any, undefined, null, null, async () => true,
+    ).heartbeat(instance as any, { mercadoLivreStatus: 'READY', extensionVersion: '1.2.5', adapterVersion: 5 });
+    expect(result.sessionSyncRequired).toBe(false);
+  });
+
   it('sincroniza a sessão somente por uma instância autenticada e sem alterar o conteúdo', async () => {
     const sync = vi.fn(async () => undefined);
     const service = new MercadoLivreCompanionService(repository() as any, {} as any, undefined, sync);
@@ -66,7 +82,7 @@ describe('MercadoLivreCompanionService', () => {
     const repo = repository();
     const result = await new MercadoLivreCompanionService(repo as any, {} as any).status('user-a');
     expect(result.global.adapterVersion).toBe(5);
-  expect(result.required).toMatchObject({ extensionVersion: '1.2.3', adapterVersion: 5 });
+  expect(result.required).toMatchObject({ extensionVersion: '1.2.5', adapterVersion: 5 });
   });
 
   it('impede outra instância de concluir o job', async () => {

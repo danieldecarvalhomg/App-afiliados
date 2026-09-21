@@ -1,4 +1,4 @@
-const EXTENSION_VERSION = '1.2.4';
+const EXTENSION_VERSION = '1.2.5';
 const ADAPTER_VERSION = 5;
 export const DEFAULT_BACKEND = 'https://afilihub-production.up.railway.app';
 const PORTAL_URL = 'https://www.mercadolivre.com.br/afiliados/linkbuilder#hub';
@@ -431,8 +431,10 @@ async function poll() {
     const state = await settings();
     if (!state.companionToken) return;
     const mercadoLivreStatus = await inspectMercadoLivreSession();
-    if (mercadoLivreStatus === 'READY') await syncMercadoLivreSession().catch(() => undefined);
-    await heartbeat(mercadoLivreStatus).catch(() => undefined);
+    const heartbeatResult = await heartbeat(mercadoLivreStatus).catch(() => null);
+    if (mercadoLivreStatus === 'READY') {
+      await syncMercadoLivreSession(heartbeatResult?.sessionSyncRequired === true).catch(() => undefined);
+    }
     const job = await api('/jobs/claim', { method: 'POST', body: '{}' });
     if (job) {
       const result = await executeJob(job);

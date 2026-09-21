@@ -278,6 +278,20 @@ const mercadoLivreCompanionService = mercadoLivreCompanionRepository && mercadoL
         if (!account || !mercadoLivreDirectAdapter.configured(account.credentials)) return null;
         return mercadoLivreDirectAdapter.generate(userId, account.id, sourceUrl, account.credentials, trackingLabel);
       } : null,
+      affiliateRepository && mercadoLivreDirectAdapter ? async (userId) => {
+        const account = await affiliateRepository.getConfiguredAccount(userId, 'mercado_livre');
+        return Boolean(account && mercadoLivreDirectAdapter.configured(account.credentials));
+      } : null,
+      affiliateRepository && affiliateAccountService ? async (userId) => {
+        const credentials = await affiliateRepository.getAccountCredentials(userId, 'mercado_livre');
+        if (!credentials?.sessionCookie || !credentials.trackingTag) return false;
+        const result = await affiliateAccountService.syncMercadoLivreSession(
+          userId,
+          credentials.sessionCookie,
+          credentials.trackingTag,
+        );
+        return result.success;
+      } : null,
     )
   : null;
 const affiliateLinks = new AffiliateLinkService([
