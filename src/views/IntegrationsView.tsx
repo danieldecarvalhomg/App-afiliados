@@ -31,7 +31,6 @@ import { integrationsNavigation, whatsappApi } from "../services/whatsappApi";
 import type { AffiliateAccountSummary, ConfigurableAffiliatePlatform } from "../domain/affiliate/types";
 import { productsApi } from "../services/productsApi";
 import { mercadoLivreAffiliateApi, type MercadoLivreAffiliateStatus } from "../services/mercadoLivreAffiliateApi";
-import { isMobileDevice } from "../lib/device";
 
 type IntegrationSection = "marketplaces" | "messages";
 
@@ -76,10 +75,6 @@ export const IntegrationsView: React.FC = () => {
   const [companionPairing, setCompanionPairing] = useState<{ code: string; expiresAt: string } | null>(null);
   const [mercadoLivreTestUrl, setMercadoLivreTestUrl] = useState("");
   const [mercadoLivreTestJob, setMercadoLivreTestJob] = useState<Awaited<ReturnType<typeof mercadoLivreAffiliateApi.test>> | null>(null);
-  const [remoteLoginExpiresAt, setRemoteLoginExpiresAt] = useState<string | null>(null);
-  const [remoteLoginUrl, setRemoteLoginUrl] = useState<string | null>(null);
-  const [remoteLoginLinkCopied, setRemoteLoginLinkCopied] = useState(false);
-  const isMobileExperience = useMemo(() => isMobileDevice(), []);
   const [navigationIntent] = useState(() => integrationsNavigation.consume());
 
   const selected = useMemo(
@@ -299,14 +294,35 @@ export const IntegrationsView: React.FC = () => {
   const mercadoLivreAccount = affiliateAccounts.find((account) => account.platform === "mercado_livre");
   const mercadoLivreCatalogConfigured = Boolean(mercadoLivreAccount?.catalogApiConfigured);
   const mercadoLivreDirectConfigured = Boolean(mercadoLivreAccount?.sessionConfigured);
+  const mercadoLivreCompanionOnline = mercadoLivreStatus?.companion?.status === "ONLINE";
+  const mercadoLivreSessionStatus = mercadoLivreStatus?.mercadoLivre.status ?? "UNKNOWN";
+  const mercadoLivreSessionLabel = mercadoLivreDirectConfigured
+    ? "Conectada e pronta"
+    : mercadoLivreSessionStatus === "READY"
+      ? "Conectada no Chrome; aguardando sincronização"
+      : mercadoLivreSessionStatus === "NEEDS_LOGIN"
+        ? "Não conectada ao Chrome do AfiliHub"
+        : mercadoLivreSessionStatus === "NEEDS_USER_ACTION"
+          ? "Aguardando confirmação no Mercado Livre"
+          : mercadoLivreSessionStatus === "PORTAL_CHANGED"
+            ? "Portal do Mercado Livre alterado"
+            : "Sessão não sincronizada";
+  const mercadoLivreConversionMode = mercadoLivreDirectConfigured
+    ? "Motor próprio ativo"
+    : mercadoLivreStatus?.remote.configured
+      ? `Fallback remoto disponível${mercadoLivreStatus.remote.provider ? ` · ${mercadoLivreStatus.remote.provider}` : ""}`
+      : mercadoLivreCompanionOnline
+        ? "Companion disponível; aguardando sessão"
+        : "Nenhum motor confirmado";
   const accountStatus = (platform: ConfigurableAffiliatePlatform) => {
-    if (platform === "mercado_livre") {
-      if (mercadoLivreDirectConfigured) return "Motor próprio ativo";
-      const companion = mercadoLivreStatus?.companion;
-      if (!companion || companion.status === "REVOKED") return "Não conectado";
+      if (platform === "mercado_livre") {
+        if (mercadoLivreDirectConfigured) return "Motor próprio ativo";
+        if (mercadoLivreStatus?.remote.configured) return "Conversão via fallback remoto";
+        const companion = mercadoLivreStatus?.companion;
+        if (!companion || companion.status === "REVOKED") return "Não conectado";
       if (companion.status === "OUTDATED") return "Atualização necessária";
       if (companion.status === "OFFLINE") return "Extensão offline";
-      return ({ READY: "Pronto", NEEDS_LOGIN: "Login necessário", NEEDS_USER_ACTION: "Confirmação necessária", PORTAL_UNAVAILABLE: "Portal indisponível", PORTAL_CHANGED: "Portal alterado", UNKNOWN: "Extensão conectada" } as Record<string,string>)[companion.mercadoLivreStatus] ?? "Extensão conectada";
+        return ({ READY: "Pronto", NEEDS_LOGIN: "Sessão direta não sincronizada", NEEDS_USER_ACTION: "Confirmação necessária", PORTAL_UNAVAILABLE: "Portal indisponível", PORTAL_CHANGED: "Portal alterado", UNKNOWN: "Extensão conectada" } as Record<string,string>)[companion.mercadoLivreStatus] ?? "Extensão conectada";
     }
     const status = affiliateAccounts.find((account) => account.platform === platform)?.configurationStatus ?? "not_configured";
     return ({ valid: "Validada", pending_validation: "Validando", invalid: "Credenciais inválidas", error: "Erro de validação", not_configured: "Não configurada" } as const)[status];
@@ -318,42 +334,6 @@ export const IntegrationsView: React.FC = () => {
   const testMercadoLivreGeneration = () => void run('ml:test', async()=>{
     const created = await mercadoLivreAffiliateApi.test(mercadoLivreTestUrl.trim());
     setMercadoLivreTestJob(created);
-  });
-  const beginRemoteLogin = () => {
-    // iOS suspends the original page as soon as an about:blank tab opens, so the
-    // async request never gets a chance to navigate that tab. Mobile uses the
-    // current tab; desktop can safely reserve a separate one.
-    const loginTab = isMobileExperience ? null : window.open('about:blank', '_blank');
-    if (loginTab) loginTab.opener = null;
-    void run('ml:remote-login', async()=>{
-      let login: Awaited<ReturnType<typeof mercadoLivreAffiliateApi.beginRemoteLogin>>;
-      try {
-        login = await mercadoLivreAffiliateApi.beginRemoteLogin(isMobileExperience);
-      } catch (error) {
-        if (loginTab && !loginTab.closed) loginTab.close();
-        throw error;
-      }
-      setRemoteLoginExpiresAt(login.expiresAt);
-      setRemoteLoginUrl(login.liveUrl);
-      setRemoteLoginLinkCopied(false);
-      if (isMobileExperience) {
-        window.location.assign(login.liveUrl);
-        return;
-      }
-      if (loginTab && !loginTab.closed) {
-        loginTab.location.href = login.liveUrl;
-        loginTab.focus?.();
-      }
-      await reloadMercadoLivre();
-    });
-  };
-  const verifyRemoteLogin = () => void run('ml:remote-verify', async()=>{
-    const result = await mercadoLivreAffiliateApi.verifyRemoteLogin();
-    if (!result.ready) throw new Error('O login ainda não foi concluído na janela segura.');
-    setRemoteLoginExpiresAt(null);
-    setRemoteLoginUrl(null);
-    setRemoteLoginLinkCopied(false);
-    await reloadMercadoLivre();
   });
   useEffect(()=>{if(!mercadoLivreOpen)return;const timer=window.setInterval(()=>void reloadMercadoLivre().catch(()=>undefined),5000);return()=>window.clearInterval(timer);},[mercadoLivreOpen,reloadMercadoLivre]);
   useEffect(()=>{
@@ -906,39 +886,36 @@ export const IntegrationsView: React.FC = () => {
               </div>
             </div>
 
-            <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-              <div className="rounded-xl border border-[#E8E9ED] bg-[#F8FAFC] p-4"><p className="text-[11px] uppercase tracking-wide text-[#9CA3AF]">Motor próprio</p><p className={`mt-2 text-sm font-medium ${mercadoLivreDirectConfigured ? "text-emerald-600" : "text-[#EAB308]"}`}>{mercadoLivreDirectConfigured ? "ATIVO" : "AGUARDANDO SESSÃO"}</p><p className="mt-1 text-xs text-[#9CA3AF]">{mercadoLivreDirectConfigured ? "Conversão server-to-server" : "Sincronize pelo conector"}</p></div>
-              <div className="rounded-xl border border-[#E8E9ED] bg-[#F8FAFC] p-4"><p className="text-[11px] uppercase tracking-wide text-[#9CA3AF]">Conector AfiliHub</p><p className={`mt-2 text-sm font-medium ${mercadoLivreStatus?.companion?.status === "ONLINE" ? "text-emerald-600" : mercadoLivreStatus?.companion?.status === "OUTDATED" ? "text-[#EF4444]" : "text-[#EAB308]"}`}>{mercadoLivreStatus?.companion?.status === "OUTDATED" ? "ATUALIZAÇÃO NECESSÁRIA" : mercadoLivreStatus?.companion?.status ?? "NÃO CONECTADO"}</p><p className="mt-1 text-xs text-[#9CA3AF]">{mercadoLivreStatus?.companion ? `${mercadoLivreStatus.companion.name} · v${mercadoLivreStatus.companion.extensionVersion}${mercadoLivreStatus.companion.status === "OUTDATED" ? ` · requerida v${mercadoLivreStatus.required.extensionVersion}` : ""}` : "Usado para sincronizar a sessão"}</p></div>
-              <div className="rounded-xl border border-[#E8E9ED] bg-[#F8FAFC] p-4"><p className="text-[11px] uppercase tracking-wide text-[#9CA3AF]">Sessão Mercado Livre</p><p className={`mt-2 text-sm font-medium ${mercadoLivreDirectConfigured ? "text-emerald-600" : mercadoLivreStatus?.mercadoLivre.status === "PORTAL_CHANGED" ? "text-[#EF4444]" : "text-[#EAB308]"}`}>{mercadoLivreDirectConfigured ? "SINCRONIZADA" : mercadoLivreStatus?.mercadoLivre.status ?? "UNKNOWN"}</p><p className="mt-1 text-xs text-[#9CA3AF]">Cifrada e exclusiva da sua conta</p></div>
-              <div className="rounded-xl border border-[#E8E9ED] bg-[#F8FAFC] p-4"><p className="text-[11px] uppercase tracking-wide text-[#9CA3AF]">Status global</p><p className={`mt-2 text-sm font-medium ${mercadoLivreStatus?.global.status === "HEALTHY" ? "text-emerald-600" : mercadoLivreStatus?.global.status === "DOWN" ? "text-[#EF4444]" : "text-[#EAB308]"}`}>{mercadoLivreStatus?.global.status ?? "UNKNOWN"}</p><p className="mt-1 text-xs text-[#9CA3AF]">Adapter v{mercadoLivreStatus?.global.adapterVersion ?? 1} · {mercadoLivreStatus?.global.circuitState ?? "CLOSED"}</p></div>
+            <div className={`mt-6 rounded-xl border p-4 ${mercadoLivreDirectConfigured ? "border-emerald-200 bg-emerald-50" : "border-amber-200 bg-amber-50"}`}>
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-[#64748B]">Conexão real do Mercado Livre</p>
+                  <p className={`mt-1 text-base font-semibold ${mercadoLivreDirectConfigured ? "text-emerald-800" : "text-amber-900"}`}>{mercadoLivreSessionLabel}</p>
+                  <p className={`mt-1 text-xs leading-5 ${mercadoLivreDirectConfigured ? "text-emerald-800" : "text-amber-900"}`}>{mercadoLivreDirectConfigured ? "O motor próprio está autorizado a converter links no backend." : mercadoLivreStatus?.remote.configured ? "A conversão continua disponível pelo fallback remoto, mesmo enquanto a sessão direta do Chrome não está sincronizada." : mercadoLivreCompanionOnline ? "O conector está online, mas o Mercado Livre ainda não confirmou uma sessão sincronizada neste Chrome." : "O AfiliHub ainda não recebeu uma sessão válida do Chrome conectado."}</p>
+                </div>
+                <button type="button" onClick={() => void reloadMercadoLivre()} disabled={busy !== null} className="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg border border-[#CBD5E1] bg-white/70 px-3 py-2 text-xs font-medium text-[#334155] disabled:opacity-50"><RefreshCw className="h-3.5 w-3.5" /> Atualizar status</button>
+              </div>
+              <div className="mt-4 grid gap-3 border-t border-black/10 pt-3 text-xs sm:grid-cols-3">
+                <p className="text-[#475569]">Modo de conversão: <span className="font-medium text-[#0F172A]">{mercadoLivreConversionMode}</span></p>
+                <p className="text-[#475569]">Conector: <span className="font-medium text-[#0F172A]">{mercadoLivreStatus?.companion?.status ?? "não encontrado"}</span></p>
+                <p className="text-[#475569]">Backend: <span className="font-medium text-[#0F172A]">{mercadoLivreStatus?.global.status ?? "sem retorno"}</span></p>
+              </div>
             </div>
 
-            {mercadoLivreDirectConfigured ? <div className="mt-5 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-900">Motor próprio ativo. As próximas conversões serão feitas diretamente pelo backend; o Chrome pode ficar fechado e o recurso funciona no iPhone e no Android.</div> : <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">Para ativar o motor próprio, instale ou atualize o Conector AfiliHub no computador, entre no Mercado Livre e mantenha o Chrome aberto por alguns segundos. A sessão será sincronizada automaticamente e ficará cifrada.</div>}
-
-            {isMobileExperience && <div className="mt-5 rounded-xl border border-sky-200 bg-sky-50 p-4">
-              <div className="flex items-start gap-3">
-                <Smartphone className="mt-0.5 h-5 w-5 shrink-0 text-sky-600" />
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-sky-950">Geração pelo iPhone ou Android</p>
-                  <p className="mt-1 text-xs leading-5 text-sky-800">Depois da sincronização inicial no computador, basta colar o produto no AfiliHub pelo celular. A conversão acontece no backend e não abre uma versão desktop do Mercado Livre.</p>
-                  <p className="mt-2 text-[11px] leading-5 text-sky-700">Se a sessão expirar, entre novamente no Mercado Livre pelo Chrome conectado para renová-la.</p>
-                </div>
-              </div>
-            </div>}
+            {!mercadoLivreDirectConfigured && <div className="mt-5 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">{mercadoLivreStatus?.remote.configured ? "A conversão está funcionando pelo fallback remoto. Para ativar o motor próprio e deixar de depender desse fallback, abra o Mercado Livre no mesmo Chrome conectado ao Companion, faça login e atualize o status." : mercadoLivreCompanionOnline ? "Abra o Mercado Livre no mesmo Chrome conectado ao Companion e faça login. Depois de alguns segundos, clique em Atualizar status para confirmar a sincronização." : "Instale ou atualize o Conector AfiliHub no computador, pareie-o e entre no Mercado Livre pelo mesmo Chrome. A sessão será sincronizada automaticamente e ficará cifrada."}</div>}
 
             {!mercadoLivreDirectConfigured && !mercadoLivreStatus?.companion && <div className="mt-5 rounded-xl border border-[#E8E9ED] bg-[#F8FAFC] p-5"><p className="text-sm font-medium text-[#0F172A]">Configure o Conector AfiliHub</p><ol className="mt-3 space-y-2 text-sm text-[#6B6F7B]"><li>1. Instale a extensão AfiliHub no Chrome/Chromium.</li><li>2. Gere um código e digite-o no popup da extensão.</li><li>3. Entre normalmente no Mercado Livre.</li><li>4. Aguarde a sessão aparecer como sincronizada.</li></ol><div className="mt-4 flex flex-wrap gap-2"><a href="/browser-companion/install.html" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-[#D4D4D8] px-4 py-2 text-sm text-[#0F172A]"><Download className="h-4 w-4" /> Instalar extensão</a><button onClick={createCompanionPairing} disabled={busy !== null} className="rounded-lg bg-[#EDEDED] px-4 py-2 text-sm font-medium text-[#111] disabled:opacity-50">{busy === "ml:pair" ? "Gerando…" : "Conectar extensão"}</button></div></div>}
 
-            {companionPairing && <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs text-violet-700">Abra a extensão AfiliHub e informe este código de uso único:</p><div className="mt-2 flex items-center gap-3"><code className="text-xl font-semibold tracking-[0.18em] text-white">{companionPairing.code}</code><button onClick={()=>void navigator.clipboard.writeText(companionPairing.code)} aria-label="Copiar código" className="rounded-md border border-violet-400/30 p-2 text-violet-100"><Copy className="h-4 w-4" /></button></div><p className="mt-2 text-[11px] text-violet-300">Expira em {new Date(companionPairing.expiresAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}. O código não contém sua senha nem seu token principal.</p></div>}
+            {companionPairing && <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs text-violet-800">Abra a extensão AfiliHub e informe este código de uso único:</p><div className="mt-2 flex items-center gap-3"><code className="text-xl font-semibold tracking-[0.18em] text-violet-950">{companionPairing.code}</code><button onClick={()=>void navigator.clipboard.writeText(companionPairing.code)} aria-label="Copiar código" className="rounded-md border border-violet-400/50 p-2 text-violet-800"><Copy className="h-4 w-4" /></button></div><p className="mt-2 text-[11px] text-violet-700">Expira em {new Date(companionPairing.expiresAt).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}. O código não contém sua senha nem seu token principal.</p></div>}
 
-            {!mercadoLivreDirectConfigured && mercadoLivreStatus?.companion?.status === "OFFLINE" && <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Conector offline antes da sincronização. Abra o Chrome com a extensão ativa.</div>}
-            {mercadoLivreStatus?.companion?.status === "OUTDATED" && <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">Sua extensão está pareada, mas desatualizada (v{mercadoLivreStatus.companion.extensionVersion}). Atualize para v{mercadoLivreStatus.required.extensionVersion} e recarregue-a em <code className="rounded bg-red-950/50 px-1">chrome://extensions</code>. O pareamento atual será preservado; não é necessário reconectar.</div>}
-            {!mercadoLivreDirectConfigured && mercadoLivreStatus?.mercadoLivre.status === "NEEDS_LOGIN" && <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-200">Login necessário. Entre normalmente no Mercado Livre pelo Chrome conectado para sincronizar a sessão.</div>}
-            {mercadoLivreStatus?.mercadoLivre.status === "NEEDS_USER_ACTION" && <div className="mt-4 rounded-lg border border-blue-500/30 bg-blue-500/10 p-3 text-sm text-blue-200">O Mercado Livre precisa confirmar seu acesso. Conclua CAPTCHA ou 2FA no navegador. O AfiliHub não tenta contornar a verificação.</div>}
-            {mercadoLivreStatus?.mercadoLivre.status === "PORTAL_CHANGED" && <div className="mt-4 rounded-lg border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-200">Detectamos uma mudança no Gerador de Links. A integração foi protegida e nenhum link sem afiliação será usado.</div>}
+            {!mercadoLivreDirectConfigured && mercadoLivreStatus?.companion?.status === "OFFLINE" && <div className="mt-4 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">Conector offline antes da sincronização. Abra o Chrome com a extensão ativa.</div>}
+            {mercadoLivreStatus?.companion?.status === "OUTDATED" && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">Sua extensão está pareada, mas desatualizada (v{mercadoLivreStatus.companion.extensionVersion}). Atualize para v{mercadoLivreStatus.required.extensionVersion} e recarregue-a em <code className="rounded bg-red-100 px-1 text-red-900">chrome://extensions</code>. O pareamento atual será preservado; não é necessário reconectar.</div>}
+            {mercadoLivreStatus?.mercadoLivre.status === "NEEDS_USER_ACTION" && <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-800">O Mercado Livre precisa confirmar seu acesso. Conclua CAPTCHA ou 2FA no navegador. O AfiliHub não tenta contornar a verificação.</div>}
+            {mercadoLivreStatus?.mercadoLivre.status === "PORTAL_CHANGED" && <div className="mt-4 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-800">Detectamos uma mudança no Gerador de Links. A integração foi protegida e nenhum link sem afiliação será usado.</div>}
 
             <dl className="mt-5 grid grid-cols-2 gap-3 text-xs sm:grid-cols-4"><div><dt className="text-[#9CA3AF]">Último heartbeat</dt><dd className="mt-1 text-[#0F172A]">{mercadoLivreStatus?.companion?.lastSeenAt ? new Date(mercadoLivreStatus.companion.lastSeenAt).toLocaleString("pt-BR") : "—"}</dd></div><div><dt className="text-[#9CA3AF]">Gerações 24h</dt><dd className="mt-1 text-[#0F172A]">{mercadoLivreStatus?.metrics.generationCount ?? 0}</dd></div><div><dt className="text-[#9CA3AF]">Taxa de sucesso</dt><dd className="mt-1 text-[#0F172A]">{mercadoLivreStatus?.metrics.successRate ?? 0}%</dd></div><div><dt className="text-[#9CA3AF]">P95</dt><dd className="mt-1 text-[#0F172A]">{mercadoLivreStatus?.metrics.p95Latency ?? 0} ms</dd></div></dl>
 
-            {(mercadoLivreDirectConfigured || mercadoLivreStatus?.companion) && <div className="mt-6 rounded-xl border border-[#E8E9ED] bg-[#F8FAFC] p-4"><p className="text-sm font-medium text-[#0F172A]">Testar geração</p><p className="mt-1 text-xs text-[#9CA3AF]">Informe a URL direta de um produto MLB. Quando a sessão estiver sincronizada, o teste usa o motor próprio do AfiliHub.</p><div className="mt-3 flex flex-col gap-2 sm:flex-row"><input value={mercadoLivreTestUrl} onChange={(event)=>setMercadoLivreTestUrl(event.target.value)} placeholder="https://produto.mercadolivre.com.br/MLB-..." className="min-w-0 flex-1 rounded-lg border border-[#E8E9ED] bg-[#FFFFFF] px-3 py-2 text-sm text-[#0F172A]"/><button onClick={testMercadoLivreGeneration} disabled={busy !== null || !mercadoLivreTestUrl.trim()} className="rounded-lg bg-[#EDEDED] px-4 py-2 text-sm font-medium text-[#111] disabled:opacity-50">{busy === "ml:test" ? "Gerando…" : "Testar geração"}</button></div>{mercadoLivreTestJob && <div className={`mt-3 rounded-lg border p-3 text-xs ${mercadoLivreTestJob.status === "SUCCESS" ? "border-green-500/30 bg-green-500/10 text-green-200" : ["FAILED","EXPIRED"].includes(mercadoLivreTestJob.status) ? "border-red-500/30 bg-red-500/10 text-red-200" : "border-blue-500/30 bg-blue-500/10 text-blue-200"}`}><p>Status: {mercadoLivreTestJob.status}{mercadoLivreTestJob.errorCode ? ` · ${mercadoLivreTestJob.errorCode}` : ""}</p>{mercadoLivreTestJob.resultUrl && <a href={mercadoLivreTestJob.resultUrl} target="_blank" rel="noreferrer" className="mt-1 block break-all underline">{mercadoLivreTestJob.resultUrl}</a>}</div>}</div>}
+            {(mercadoLivreDirectConfigured || mercadoLivreStatus?.companion) && <div className="mt-6 rounded-xl border border-[#E8E9ED] bg-[#F8FAFC] p-4"><p className="text-sm font-medium text-[#0F172A]">Testar geração</p><p className="mt-1 text-xs text-[#475569]">Informe uma URL direta de produto MLB ou universal MLBU. O resultado exibirá o retorno real do motor.</p><div className="mt-3 flex flex-col gap-2 sm:flex-row"><input value={mercadoLivreTestUrl} onChange={(event)=>setMercadoLivreTestUrl(event.target.value)} placeholder="https://www.mercadolivre.com.br/.../MLB... ou /up/MLBU..." className="min-w-0 flex-1 rounded-lg border border-[#CBD5E1] bg-[#FFFFFF] px-3 py-2 text-sm text-[#0F172A] placeholder:text-[#64748B]"/><button onClick={testMercadoLivreGeneration} disabled={busy !== null || !mercadoLivreTestUrl.trim()} className="rounded-lg bg-[#E2E8F0] px-4 py-2 text-sm font-medium text-[#0F172A] disabled:opacity-50">{busy === "ml:test" ? "Gerando…" : "Testar geração"}</button></div>{mercadoLivreTestJob && <div className={`mt-3 rounded-lg border p-3 text-xs ${mercadoLivreTestJob.status === "SUCCESS" ? "border-green-200 bg-green-50 text-green-800" : ["FAILED","EXPIRED"].includes(mercadoLivreTestJob.status) ? "border-red-200 bg-red-50 text-red-800" : "border-blue-200 bg-blue-50 text-blue-800"}`}><p>Status: {mercadoLivreTestJob.status}{mercadoLivreTestJob.errorCode ? ` · ${mercadoLivreTestJob.errorCode}` : ""}</p>{mercadoLivreTestJob.resultUrl && <a href={mercadoLivreTestJob.resultUrl} target="_blank" rel="noreferrer" className="mt-1 block break-all underline">{mercadoLivreTestJob.resultUrl}</a>}</div>}</div>}
 
             <div className="mt-6 flex flex-wrap gap-2"><a href="https://www.mercadolivre.com.br/afiliados" target="_blank" rel="noreferrer" className="inline-flex items-center gap-2 rounded-lg border border-[#D4D4D8] px-4 py-2 text-sm text-[#0F172A]"><ExternalLink className="h-4 w-4" /> Abrir Mercado Livre</a>{mercadoLivreStatus?.companion?.status === "OUTDATED" ? <a href="/browser-companion/install.html" target="_blank" rel="noreferrer" className="rounded-lg bg-[#EDEDED] px-4 py-2 text-sm font-medium text-[#111]">Atualizar extensão</a> : mercadoLivreStatus?.companion && <button onClick={createCompanionPairing} disabled={busy !== null} className="rounded-lg border border-[#D4D4D8] px-4 py-2 text-sm text-[#0F172A]">Reconectar extensão</button>}{mercadoLivreStatus?.companion && <button onClick={()=>void run('ml:revoke',async()=>{await mercadoLivreAffiliateApi.revoke(mercadoLivreStatus.companion!.id);setCompanionPairing(null);await reloadMercadoLivre();})} disabled={busy !== null} className="rounded-lg px-4 py-2 text-sm text-[#EF4444]">Desconectar</button>}</div>
           </div>

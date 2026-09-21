@@ -46,6 +46,23 @@
   }
 }
 
+/* Keep auxiliary text readable on the light surfaces used throughout the app. */
+@layer utilities {
+  [class~="text-[#9CA3AF]"] { color: #64748B !important; }
+  [class~="text-[#6B6F7B]"] { color: #475569 !important; }
+  [class~="text-[#A1A1A1]"] { color: #64748B !important; }
+  [class~="text-[#D4D4D8]"] { color: #64748B !important; }
+  [class~="text-amber-200"] { color: #92400E !important; }
+  [class~="text-blue-200"] { color: #1E40AF !important; }
+  [class~="text-red-200"] { color: #991B1B !important; }
+  [class~="text-red-300"] { color: #B91C1C !important; }
+  [class~="text-green-200"] { color: #166534 !important; }
+  [class~="text-emerald-200"] { color: #047857 !important; }
+  [class~="text-violet-100"] { color: #5B21B6 !important; }
+  [class~="text-violet-200"] { color: #6D28D9 !important; }
+  [class~="text-violet-300"] { color: #6D28D9 !important; }
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 5px;
