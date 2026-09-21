@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "AfiliHub Browser Companion",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "Gera links afiliados do Mercado Livre usando apenas a sessão já autenticada no seu navegador.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAlU+jfIPOlaDWIgFnN0qUoaENIPG6r2lP7wDIlcL0PFpKIl4dEQ7r8YQAEUUqOSDBSpslallVmHTxaln+cYzw7ElCBqOTdDAlUmuPazSQZ+XwZ4RmnecoZU39e5LBihdEoPzZ2Mydra9hyHVrnUOZpFDIqEOnOjHnEMauhOFbdDIvIK8+xUKjloXcQe/M8sAIuhDClCwFN6dgqWEpxfHTXoo5WrdhUgqXMB7/ExToHj1gY8Lcrl90TINs3xU7W741OMVge7OL95YKYFEiwLNtrHQtmSbfa2hLEFFwlEu3WxGcXwEwj2ihDJxzrL096rICbzVqMMlTLfLq0TynS/n+mwIDAQAB",
   "permissions": ["storage", "tabs", "scripting", "alarms", "cookies"],

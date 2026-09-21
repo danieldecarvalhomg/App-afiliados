@@ -1,4 +1,4 @@
-const EXTENSION_VERSION = '1.2.3';
+const EXTENSION_VERSION = '1.2.4';
 const ADAPTER_VERSION = 5;
 export const DEFAULT_BACKEND = 'https://afilihub-production.up.railway.app';
 const PORTAL_URL = 'https://www.mercadolivre.com.br/afiliados/linkbuilder#hub';
@@ -141,7 +141,7 @@ export async function runMercadoLivreBackgroundGeneration(job, fetcher = fetch) 
     try {
       const parsed = new URL(job?.sourceUrl);
       if (parsed.protocol !== 'https:' || !/(^|\.)mercadolivre\.com\.br$/iu.test(parsed.hostname)
-        || !/MLB[-_]?\d{6,}/iu.test(`${parsed.pathname}${parsed.search}`)) return null;
+        || !/MLBU?[-_]?\d{6,}/iu.test(`${parsed.pathname}${parsed.search}`)) return null;
       parsed.hash = '';
       return parsed.toString();
     } catch { return null; }
@@ -260,7 +260,7 @@ export async function runMercadoLivreGeneration(job) {
   const productUrl = (() => {
     try {
       const parsed = new URL(job?.sourceUrl);
-      if (parsed.protocol !== 'https:' || !/(^|\.)mercadolivre\.com\.br$/iu.test(parsed.hostname) || !/MLB[-_]?\d{6,}/iu.test(`${parsed.pathname}${parsed.search}`)) return null;
+      if (parsed.protocol !== 'https:' || !/(^|\.)mercadolivre\.com\.br$/iu.test(parsed.hostname) || !/MLBU?[-_]?\d{6,}/iu.test(`${parsed.pathname}${parsed.search}`)) return null;
       parsed.hash = '';
       return parsed.toString();
     } catch { return null; }
@@ -358,7 +358,7 @@ export async function runMercadoLivreGeneration(job) {
         if (candidate.toString() === productUrl || !/(^|\.)(meli\.la|mercadolivre\.com\.br)$/iu.test(candidate.hostname)) continue;
         if (/login|captcha|auth|verification/iu.test(candidate.pathname)) continue;
         const validShort = candidate.hostname === 'meli.la' && /^\/[A-Za-z0-9]/u.test(candidate.pathname);
-        const validLong = /MLB[-_]?\d{6,}/iu.test(`${candidate.pathname}${candidate.search}`)
+        const validLong = /MLBU?[-_]?\d{6,}/iu.test(`${candidate.pathname}${candidate.search}`)
           && ['matt_word','matt_tool','matt_source','utm_source','utm_medium','utm_campaign'].some((key) => candidate.searchParams.has(key));
         if (validShort || validLong) return { status: 'SUCCESS', affiliateUrl: candidate.toString(), step: 'result', pageType: 'GENERATOR', durationMs: Date.now() - started };
       } catch { /* ignora candidato inválido */ }

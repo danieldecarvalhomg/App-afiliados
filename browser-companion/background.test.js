@@ -13,7 +13,7 @@ describe('AfiliHub Browser Companion security boundary', () => {
   it('usa Manifest V3 e limita cookies aos hosts do Mercado Livre', async () => {
     const manifest = JSON.parse(await readFile(new URL('./manifest.json', import.meta.url), 'utf8'));
     expect(manifest.manifest_version).toBe(3);
-    expect(manifest.version).toBe('1.2.3');
+    expect(manifest.version).toBe('1.2.4');
     expect(manifest.permissions).toEqual(['storage', 'tabs', 'scripting', 'alarms', 'cookies']);
     expect(manifest.permissions).not.toContain('webRequest');
     expect(manifest.host_permissions).not.toContain('<all_urls>');
@@ -32,7 +32,7 @@ describe('AfiliHub Browser Companion security boundary', () => {
   it('reconhece o gerador e o campo de múltiplas URLs do portal atual', async () => {
     const source = await readFile(new URL('./background.js', import.meta.url), 'utf8');
     expect(source).toContain('/afiliados/linkbuilder#hub');
-    expect(source).toContain("const EXTENSION_VERSION = '1.2.3'");
+    expect(source).toContain("const EXTENSION_VERSION = '1.2.4'");
     expect(source).toContain('textarea[placeholder*="url" i]');
     expect(source).toContain('gerador de (?:links?|produtos? recomendados?)');
     expect(source).toContain("candidates.find((item) => item.url?.includes('/afiliados/linkbuilder'))");
@@ -72,6 +72,16 @@ describe('AfiliHub Browser Companion security boundary', () => {
     expect(fetcher).toHaveBeenLastCalledWith(expect.stringContaining('/createLink'), expect.objectContaining({
       method: 'POST', body: expect.stringContaining('principal'), credentials: 'include',
     }));
+  });
+
+  it('aceita URLs universais MLBU recebidas do Radar', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ tags: [{ tag: 'principal', in_use: true }] }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ urls: [{ short_url: 'https://meli.la/mlbu123' }] }), { status: 200 }));
+    const result = await runMercadoLivreBackgroundGeneration({
+      sourceUrl: 'https://www.mercadolivre.com.br/lavadora/up/MLBU605239077',
+    }, fetcher);
+    expect(result).toMatchObject({ status: 'SUCCESS', affiliateUrl: 'https://meli.la/mlbu123' });
   });
 
   it('repete a geração no contexto autenticado da página oficial quando o service worker é recusado', async () => {
