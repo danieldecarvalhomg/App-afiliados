@@ -4,7 +4,7 @@ import { MercadoLivreBrowserCompanionAdapter } from './MercadoLivreBrowserCompan
 const source = 'https://produto.mercadolivre.com.br/MLB-1234567890-produto-_JM';
 const instance = {
   id: 'instance-a', userId: 'user-a', name: 'Chrome', status: 'ONLINE',
-  extensionVersion: '1.2.1', adapterVersion: 5, mercadoLivreStatus: 'READY',
+  extensionVersion: '1.2.2', adapterVersion: 5, mercadoLivreStatus: 'READY',
   lastSeenAt: new Date().toISOString(), lastSuccessAt: null, lastErrorCode: null,
   tokenExpiresAt: new Date(Date.now() + 60_000).toISOString(), createdAt: new Date().toISOString(), revokedAt: null,
 };

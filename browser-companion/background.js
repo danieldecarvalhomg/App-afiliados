@@ -1,5 +1,6 @@
-const EXTENSION_VERSION = '1.2.1';
+const EXTENSION_VERSION = '1.2.2';
 const ADAPTER_VERSION = 5;
+export const DEFAULT_BACKEND = 'https://afilihub-production.up.railway.app';
 const PORTAL_URL = 'https://www.mercadolivre.com.br/afiliados/linkbuilder#hub';
 const AFFILIATE_API_URL = 'https://www.mercadolivre.com.br/affiliate-program/api/v2/affiliates';
 const ALLOWED_BACKENDS = new Set([
@@ -18,12 +19,12 @@ export function allowedBackend(raw) {
 
 async function settings() {
   const value = await chrome.storage.local.get(['backendUrl', 'companionToken', 'instance', 'mlTabId']);
-  const backendUrl = allowedBackend(value.backendUrl) ? new URL(value.backendUrl).origin : 'http://127.0.0.1:3001';
+  const backendUrl = allowedBackend(value.backendUrl) ? new URL(value.backendUrl).origin : DEFAULT_BACKEND;
   return { ...value, backendUrl };
 }
 
 async function clearLocalPairing() {
-  await chrome.storage.local.remove(['companionToken', 'instance']);
+  await chrome.storage.local.remove(['backendUrl', 'companionToken', 'instance']);
   lastSessionSyncAt = 0;
 }
 
@@ -470,15 +471,17 @@ if (globalThis.chrome?.runtime) {
     }
     if (message?.type === 'PROMOFY_DISCONNECT') {
       (async () => {
+        let remoteRevoked = false;
         try {
           await api('/disconnect', { method: 'POST', body: '{}' });
+          remoteRevoked = true;
+        } catch {
+          // A revogacao remota e uma limpeza adicional. O usuario sempre deve
+          // conseguir remover deste navegador uma credencial antiga ou inacessivel.
+        } finally {
           await clearLocalPairing();
-          return { stale: false };
-        } catch (error) {
-          if (error?.message !== 'COMPANION_UNAUTHORIZED') throw error;
-          await clearLocalPairing();
-          return { stale: true };
         }
+        return { stale: !remoteRevoked };
       })().then((data) => sendResponse({ success: true, ...data }), (error) => sendResponse({ success: false, error: error.message }));
       return true;
     }

@@ -10,13 +10,13 @@
         <button id="disconnect" class="ghost">Desconectar deste navegador</button>
       </section>
       <form id="pair-form">
-        <label>Ambiente<select id="backend"><option value="http://127.0.0.1:3001">AfiliHub local</option><option value="https://afilihub-production.up.railway.app">AfiliHub online</option></select></label>
+        <label>Ambiente<select id="backend"><option value="https://afilihub-production.up.railway.app">AfiliHub online</option><option value="http://127.0.0.1:3001">AfiliHub local</option></select></label>
         <label>Nome deste navegador<input id="name" maxlength="80" value="Meu Chrome"></label>
         <label>Código de pareamento<input id="code" maxlength="14" placeholder="ABCD-EFGH-JKLM" autocomplete="one-time-code" required></label>
         <button class="primary" type="submit">Conectar ao AfiliHub</button>
       </form>
       <p id="message" role="status"></p>
-      <footer>v1.2.1 · a sessão é enviada cifrada; sua senha nunca é coletada</footer>
+      <footer>v1.2.2 · a sessão é enviada cifrada; sua senha nunca é coletada</footer>
     </main>
     <script type="module" src="popup.js"></script>
   </body>
