@@ -28,14 +28,14 @@ function AnalysisPanel({ capture, reprocessing, reviewing, onReprocess, onApprov
   capture: CapturedMessage; reprocessing: boolean; reviewing: boolean;
   onReprocess: () => void; onApprove: () => void; onReject: () => void;
 }): React.ReactNode {
-  if (capture.processingStatus === 'raw') return <div className="mt-3 text-xs text-amber-300">Análise pendente</div>;
-  if (capture.processingStatus === 'processing') return <div className="mt-3 flex items-center gap-2 text-xs text-sky-300"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Analisando...</div>;
+  if (capture.processingStatus === 'raw') return <div className="mt-3 text-xs font-medium text-amber-700">Análise pendente</div>;
+  if (capture.processingStatus === 'processing') return <div className="mt-3 flex items-center gap-2 text-xs font-medium text-sky-700"><LoaderCircle className="h-3.5 w-3.5 animate-spin" />Analisando...</div>;
   if (capture.processingStatus === 'ignored') return <div className="mt-3 text-xs text-[#6B6F7B]">Não é promoção</div>;
   if (capture.processingStatus === 'failed' || capture.processingStatus === 'needs_review') {
     const failed = capture.processingStatus === 'failed';
-    return <div className={`mt-3 rounded-lg border p-3 ${failed ? 'border-red-900/60 bg-red-950/15' : 'border-amber-900/60 bg-amber-950/15'}`}>
-      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2 text-xs"><AlertCircle className="h-3.5 w-3.5" /><span>{failed ? 'Não foi possível analisar' : 'Análise inconclusiva'}</span>{capture.analysis?.reason === 'insufficient_text_content' && <span className="text-[#9CA3AF]">Conteúdo textual insuficiente</span>}</div>
-      <button disabled={reprocessing} onClick={onReprocess} className="flex items-center gap-1.5 rounded-md border border-[#D4D4D8] px-2.5 py-1.5 text-xs text-[#D4D4D8] disabled:opacity-50"><RotateCcw className={`h-3.5 w-3.5 ${reprocessing ? 'animate-spin' : ''}`} />{reprocessing ? 'Reprocessando...' : 'Reprocessar'}</button></div>
+    return <div className={`mt-3 rounded-lg border p-3 ${failed ? 'border-red-600 bg-red-50 text-red-800' : 'border-amber-600 bg-amber-50 text-amber-900'}`}>
+      <div className="flex flex-wrap items-center justify-between gap-3"><div className="flex items-center gap-2 text-xs"><AlertCircle className="h-3.5 w-3.5" /><span>{failed ? 'Não foi possível analisar' : 'Análise inconclusiva'}</span>{capture.analysis?.reason === 'insufficient_text_content' && <span className="text-slate-700">Conteúdo textual insuficiente</span>}</div>
+      <button disabled={reprocessing} onClick={onReprocess} className="flex items-center gap-1.5 rounded-md border border-slate-400 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-800 disabled:opacity-50"><RotateCcw className={`h-3.5 w-3.5 ${reprocessing ? 'animate-spin' : ''}`} />{reprocessing ? 'Reprocessando...' : 'Reprocessar'}</button></div>
     </div>;
   }
   const analysis = capture.analysis;
@@ -52,8 +52,8 @@ function AnalysisPanel({ capture, reprocessing, reviewing, onReprocess, onApprov
       {analysis.freeShipping && <span className="flex items-center gap-1"><Truck className="h-3 w-3" />Frete grátis</span>}
     </div>
     {capture.reviewStatus === 'pending' ? <div className="mt-3 flex flex-wrap gap-2">
-      <button disabled={reviewing} onClick={onApprove} className="flex items-center gap-1.5 rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-emerald-950 disabled:opacity-50"><Check className="h-3.5 w-3.5" />Aprovar e cadastrar</button>
-      <button disabled={reviewing} onClick={onReject} className="flex items-center gap-1.5 rounded-md border border-[#D4D4D8] px-3 py-1.5 text-xs text-[#D4D4D8] disabled:opacity-50"><X className="h-3.5 w-3.5" />Rejeitar</button>
+      <button disabled={reviewing} onClick={onApprove} className="flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"><Check className="h-3.5 w-3.5" />Aprovar e cadastrar</button>
+      <button disabled={reviewing} onClick={onReject} className="flex items-center gap-1.5 rounded-md border border-slate-400 bg-white px-3 py-1.5 text-xs font-medium text-slate-800 disabled:opacity-50"><X className="h-3.5 w-3.5" />Rejeitar</button>
     </div> : <div className={`mt-3 text-xs font-medium ${capture.reviewStatus === 'approved' ? 'text-emerald-800' : 'text-slate-700'}`}>
       {capture.reviewStatus === 'approved' ? 'Oferta aprovada e cadastrada em Produtos' : 'Oferta rejeitada'}
     </div>}
