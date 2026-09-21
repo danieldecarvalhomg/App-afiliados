@@ -4,6 +4,7 @@ import type {
   WhatsAppGroup,
   WhatsAppRealtimeEvent,
 } from "../domain/whatsapp/types";
+import type { ConfigurableAffiliatePlatform } from "../domain/affiliate/types";
 import { readJsonResponse } from "./apiResponse";
 
 interface ApiResponse<T> {
@@ -135,6 +136,7 @@ export type IntegrationsNavigationIntent =
   | { type: "create-whatsapp" }
   | { type: "whatsapp"; connectionId: string }
   | { type: "shopee" }
+  | { type: "marketplace"; platform: ConfigurableAffiliatePlatform }
   | { type: "generic"; integrationId: string };
 
 export const integrationsNavigation = {
@@ -157,6 +159,13 @@ export const integrationsNavigation = {
     window.sessionStorage.setItem(
       INTEGRATIONS_NAVIGATION_KEY,
       JSON.stringify({ type: "shopee" }),
+    );
+  },
+  openMarketplace(platform: ConfigurableAffiliatePlatform): void {
+    if (typeof window === "undefined") return;
+    window.sessionStorage.setItem(
+      INTEGRATIONS_NAVIGATION_KEY,
+      JSON.stringify({ type: "marketplace", platform }),
     );
   },
   openGeneric(integrationId: string): void {

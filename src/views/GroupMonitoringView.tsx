@@ -39,12 +39,12 @@ function AnalysisPanel({ capture, reprocessing, reviewing, onReprocess, onApprov
     </div>;
   }
   const analysis = capture.analysis;
-  if (!analysis) return <div className="mt-3 text-xs text-amber-300">Análise pendente</div>;
-  return <div className="mt-3 rounded-lg border border-emerald-900/60 bg-emerald-950/15 p-3">
-    <div className="mb-2 flex flex-wrap items-center gap-2"><span className="text-xs font-medium text-emerald-600">Promoção detectada</span><span className="text-[11px] text-[#9CA3AF]">{Math.round(analysis.confidence * 100)}% confiança</span></div>
+  if (!analysis) return <div className="mt-3 text-xs font-medium text-amber-700">Análise pendente</div>;
+  return <div className="mt-3 rounded-lg border border-emerald-600 bg-emerald-50 p-3">
+    <div className="mb-2 flex flex-wrap items-center gap-2"><span className="text-xs font-semibold text-emerald-800">Promoção detectada</span><span className="text-[11px] text-slate-700">{Math.round(analysis.confidence * 100)}% confiança</span></div>
     {analysis.productName && <p className="text-sm font-medium text-[#0F172A]">{analysis.productName}</p>}
-    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-[#6B6F7B]">
-      {analysis.price != null && <span className="font-medium text-emerald-600">{money(analysis.price)}</span>}
+    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-700">
+      {analysis.price != null && <span className="font-semibold text-emerald-800">{money(analysis.price)}</span>}
       {analysis.originalPrice != null && <span className="line-through">{money(analysis.originalPrice)}</span>}
       {analysis.discountPercent != null && <span>{analysis.discountPercent}% OFF</span>}
       <span>{marketplaceLabels[analysis.marketplace] ?? analysis.marketplace}</span>
@@ -54,7 +54,7 @@ function AnalysisPanel({ capture, reprocessing, reviewing, onReprocess, onApprov
     {capture.reviewStatus === 'pending' ? <div className="mt-3 flex flex-wrap gap-2">
       <button disabled={reviewing} onClick={onApprove} className="flex items-center gap-1.5 rounded-md bg-emerald-500 px-3 py-1.5 text-xs font-medium text-emerald-950 disabled:opacity-50"><Check className="h-3.5 w-3.5" />Aprovar e cadastrar</button>
       <button disabled={reviewing} onClick={onReject} className="flex items-center gap-1.5 rounded-md border border-[#D4D4D8] px-3 py-1.5 text-xs text-[#D4D4D8] disabled:opacity-50"><X className="h-3.5 w-3.5" />Rejeitar</button>
-    </div> : <div className={`mt-3 text-xs font-medium ${capture.reviewStatus === 'approved' ? 'text-emerald-600' : 'text-[#6B6F7B]'}`}>
+    </div> : <div className={`mt-3 text-xs font-medium ${capture.reviewStatus === 'approved' ? 'text-emerald-800' : 'text-slate-700'}`}>
       {capture.reviewStatus === 'approved' ? 'Oferta aprovada e cadastrada em Produtos' : 'Oferta rejeitada'}
     </div>}
   </div>;
@@ -237,15 +237,15 @@ export const GroupMonitoringView: React.FC = () => {
             aria-label="Revisão global antes de cadastrar"
             disabled={savingReview}
             onClick={() => void toggleReviewRequired()}
-            className={`flex min-w-36 items-center justify-between gap-3 rounded-full border px-3 py-2 text-xs font-medium transition ${reviewRequired ? 'border-emerald-700/70 bg-emerald-950/30 text-emerald-200' : 'border-amber-700/70 bg-amber-950/20 text-amber-200'} disabled:cursor-wait disabled:opacity-60`}
+            className={`flex min-w-36 items-center justify-between gap-3 rounded-full border px-3 py-2 text-xs font-semibold transition ${reviewRequired ? 'border-emerald-700 bg-emerald-50 text-emerald-800' : 'border-amber-700 bg-amber-50 text-amber-800'} disabled:cursor-wait disabled:opacity-60`}
           >
             <span>{reviewRequired ? 'ON · revisar' : 'OFF · automático'}</span>
-            <span className={`relative h-5 w-9 rounded-full transition ${reviewRequired ? 'bg-emerald-500' : 'bg-[#D4D4D8]'}`}>
+            <span className={`relative h-5 w-9 rounded-full transition ${reviewRequired ? 'bg-emerald-600' : 'bg-slate-500'}`}>
               <span className={`absolute top-0.5 h-4 w-4 rounded-full bg-white transition ${reviewRequired ? 'left-[18px]' : 'left-0.5'}`} />
             </span>
           </button>
         </div>
-        <p className={`mt-3 text-xs ${reviewRequired ? 'text-emerald-600' : 'text-amber-300'}`}>
+        <p className={`mt-3 text-xs font-medium ${reviewRequired ? 'text-emerald-800' : 'text-amber-800'}`}>
           {reviewRequired ? 'Ligado: o revisor decide primeiro; somente aprovações manuais ou regras correspondentes liberam o produto.' : 'Desligado: automações ativas podem cadastrar promoções automaticamente.'}
         </p>
         <ProductReviewRulesEditor
@@ -262,13 +262,13 @@ export const GroupMonitoringView: React.FC = () => {
         <div className="mb-5 flex items-center gap-2"><Plus className="h-4 w-4" /><h2 className="text-sm font-medium">Ativar novo monitor</h2></div>
         <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr_auto] lg:items-end">
           <label className="space-y-2 text-xs text-[#6B6F7B]">WhatsApp
-            <select value={connectionId} onChange={(event) => setConnectionId(event.target.value)} className="block w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2.5 text-sm text-white">
+            <select value={connectionId} onChange={(event) => setConnectionId(event.target.value)} className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900">
               <option value="">Selecione uma conexão</option>
               {connections.map((item) => <option key={item.id} value={item.id}>{item.label} — {item.status === 'connected' ? 'conectado' : item.status}</option>)}
             </select>
           </label>
           <label className="space-y-2 text-xs text-[#6B6F7B]">Grupo real
-            <select value={groupId} onChange={(event) => setGroupId(event.target.value)} disabled={!connectionId} className="block w-full rounded-lg border border-[#E8E9ED] bg-[#F8FAFC] px-3 py-2.5 text-sm text-white disabled:opacity-50">
+            <select value={groupId} onChange={(event) => setGroupId(event.target.value)} disabled={!connectionId} className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 disabled:opacity-50">
               <option value="">{availableGroups.length ? 'Selecione um grupo' : 'Nenhum grupo disponível'}</option>
               {availableGroups.map((item) => <option key={item.id} value={item.id}>{item.name} ({item.participantsCount})</option>)}
             </select>

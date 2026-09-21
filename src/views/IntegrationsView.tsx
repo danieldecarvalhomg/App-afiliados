@@ -388,6 +388,11 @@ export const IntegrationsView: React.FC = () => {
       setMarketplaceConfigOpen("shopee");
       return;
     }
+    if (navigationIntent.type === "marketplace") {
+      setActiveSection("marketplaces");
+      setMarketplaceConfigOpen(navigationIntent.platform);
+      return;
+    }
     const integration = integrations.find(
       (item) => item.id === navigationIntent.integrationId,
     );

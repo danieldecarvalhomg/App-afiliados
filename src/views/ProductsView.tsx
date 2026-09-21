@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import type {
   AffiliatePlatform,
+  AffiliateAccountSummary,
+  ConfigurableAffiliatePlatform,
   ProductSourceType,
 } from "../domain/affiliate/types";
 import type { CtaGeneration } from "../domain/cta/types";
@@ -56,6 +58,20 @@ const retryable = new Set(["resolution_failed", "conversion_failed", "awaiting_c
 function canRetryAffiliate(product: Pick<ProductRecord, "affiliateStatus" | "marketplace">): boolean {
   return retryable.has(product.affiliateStatus)
     || (product.affiliateStatus === "invalid_url" && product.marketplace === "mercado_livre");
+}
+function configurableMarketplace(value: AffiliatePlatform | "unknown"): ConfigurableAffiliatePlatform | null {
+  return value === "shopee" || value === "amazon" || value === "mercado_livre" ? value : null;
+}
+function isAffiliateMarketplaceConfigured(
+  accounts: AffiliateAccountSummary[],
+  platform: ConfigurableAffiliatePlatform,
+): boolean {
+  const account = accounts.find((item) => item.platform === platform);
+  return Boolean(
+    account?.configured
+      || account?.configurationStatus === "valid"
+      || (platform === "mercado_livre" && account?.sessionConfigured),
+  );
 }
 const emptyForm: ManualProductInput = {
   title: "",
@@ -139,6 +155,7 @@ export const ProductsView: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [retrying, setRetrying] = useState<string | null>(null);
+  const [affiliateAccounts, setAffiliateAccounts] = useState<AffiliateAccountSummary[]>([]);
   const [preparingOriginal, setPreparingOriginal] = useState<string | null>(
     null,
   );
@@ -166,6 +183,7 @@ export const ProductsView: React.FC = () => {
       ]);
       setProducts(listedProducts);
       setReusableCtas(reusableSentCtas(generations, completedItems));
+      setAffiliateAccounts(await productsApi.listAccounts().catch(() => []));
     } catch (cause) {
       setError(
         cause instanceof Error ? cause.message : "Falha ao carregar produtos.",
@@ -324,8 +342,8 @@ export const ProductsView: React.FC = () => {
       setPreparingOriginal(null);
     }
   }
-  function openShopeeIntegration() {
-    integrationsNavigation.openShopee();
+  function openMarketplaceIntegration(platform: ConfigurableAffiliatePlatform) {
+    integrationsNavigation.openMarketplace(platform);
     setActiveTab("integracoes");
   }
 
@@ -544,7 +562,7 @@ export const ProductsView: React.FC = () => {
           </button>
         </div>
         <MarketplaceRadarView
-          onConfigureShopee={openShopeeIntegration}
+          onConfigureMarketplace={openMarketplaceIntegration}
           onCreateManual={() => setPage("create")}
           onPrepared={(product) => {
             setProducts((current) => [
@@ -670,7 +688,7 @@ export const ProductsView: React.FC = () => {
               </div>
               <div className="mt-5 space-y-3 border-t border-[#E8E9ED] pt-4">
                 <div
-                      className={`text-xs ${product.affiliateStatus === "converted" ? "text-emerald-600" : canRetryAffiliate(product) || product.affiliateStatus === "invalid_url" ? "text-red-300" : "text-amber-300"}`}
+                      className={`text-xs ${product.affiliateStatus === "converted" ? "text-emerald-700" : canRetryAffiliate(product) || product.affiliateStatus === "invalid_url" ? "text-red-700" : "text-amber-700"}`}
                 >
                   {statusText(product.affiliateStatus, product.marketplace)}
                 </div>
@@ -738,23 +756,40 @@ export const ProductsView: React.FC = () => {
                     {product.affiliateStatus === "invalid_url" ? "Validar e converter" : "Tentar novamente"}
                   </button>
                 )}
-                {product.affiliateStatus ===
-                  "affiliate_account_not_configured" && (
-                  <button
-                    onClick={openShopeeIntegration}
-                    className="flex w-full items-center justify-center gap-2 rounded-lg border border-[#D4D4D8] py-2 text-sm"
-                  >
-                    <Settings className="h-4 w-4" />
-                    Configurar Shopee
-                  </button>
-                )}
+                {product.affiliateStatus === "affiliate_account_not_configured" && (() => {
+                  const platform = configurableMarketplace(product.marketplace);
+                  const configured = platform
+                    ? isAffiliateMarketplaceConfigured(affiliateAccounts, platform)
+                    : false;
+                  if (configured) {
+                    return (
+                      <button
+                        disabled={retrying === product.id}
+                        onClick={() => void retry(product)}
+                        className="flex w-full items-center justify-center gap-2 rounded-lg border border-blue-600 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50"
+                      >
+                        <RotateCcw className={`h-4 w-4 ${retrying === product.id ? "animate-spin" : ""}`} />
+                        Tentar novamente
+                      </button>
+                    );
+                  }
+                  return platform ? (
+                    <button
+                      onClick={() => openMarketplaceIntegration(platform)}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border border-blue-600 px-3 py-2 text-sm font-medium text-blue-700 hover:bg-blue-50"
+                    >
+                      <Settings className="h-4 w-4" />
+                      Configurar {marketplaceLabels[platform]}
+                    </button>
+                  ) : null;
+                })()}
                 {(product.affiliateStatus === "converted" ? product.affiliateUrl : product.sourceUrl) && (
                   <a
                     href={(product.affiliateStatus === "converted" ? product.affiliateUrl : product.sourceUrl)!}
                     target="_blank"
                     rel="noreferrer"
                     title={product.affiliateStatus === "converted" ? "Link de afiliado AfiliHub" : "Link de origem aguardando conversão"}
-                    className={`flex min-w-0 items-center gap-1.5 text-xs hover:underline ${product.affiliateStatus === "converted" ? "text-emerald-600" : "text-[#9CA3AF]"}`}
+                    className={`flex min-w-0 items-center gap-1.5 text-xs hover:underline ${product.affiliateStatus === "converted" ? "text-emerald-700" : "text-slate-600"}`}
                   >
                     <Link2 className="h-3.5 w-3.5 shrink-0" />
                     <span className="shrink-0 font-medium">{product.affiliateStatus === "converted" ? "Link AfiliHub:" : "Origem:"}</span>
