@@ -325,17 +325,18 @@ export const IntegrationsView: React.FC = () => {
     return ({ valid: "Validada", pending_validation: "Validando", invalid: "Credenciais inválidas", error: "Erro de validação", not_configured: "Não configurada" } as const)[status];
   };
   const reloadMercadoLivre = useCallback(async()=>{
-    const [status, accounts] = await Promise.all([
+    const [statusResult, accountsResult] = await Promise.allSettled([
       mercadoLivreAffiliateApi.status(),
       productsApi.listAccounts(),
     ]);
-    setMercadoLivreStatus(status);
-    setAffiliateAccounts(accounts);
+    if (statusResult.status === "rejected") throw statusResult.reason;
+    setMercadoLivreStatus(statusResult.value);
+    if (accountsResult.status === "fulfilled") setAffiliateAccounts(accountsResult.value);
     setMercadoLivreStatusCheckedAt(new Date());
   },[]);
   const refreshMercadoLivre = () => void run('ml:status', async()=>{
-    await mercadoLivreAffiliateApi.refreshSession();
-    await reloadMercadoLivre();
+    try { await mercadoLivreAffiliateApi.refreshSession(); }
+    finally { await reloadMercadoLivre(); }
   });
   const createCompanionPairing = () => void run('ml:pair', async()=>{
     setCompanionPairing(await mercadoLivreAffiliateApi.createPairing('Chrome'));
