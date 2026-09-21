@@ -194,6 +194,24 @@ describe('AffiliateConversionService', () => {
     expect(repository.rows[0]).toMatchObject({ status: 'converted', resolvedUrl: productUrl });
   });
 
+  it('converte meli.la do monitor sem passar pelo resolvedor público', async () => {
+    const shortUrl = 'https://meli.la/2FdaeDB';
+    const repository = new MemoryRepository(conversion({ originalUrl: shortUrl, sourceType: 'whatsapp' }));
+    repository.getDeclaredMarketplace.mockResolvedValue('mercado_livre');
+    repository.accounts.set('user-a:mercado_livre', { id: 'account-ml', credentials: { appId: 'app', secret: 'secret' } });
+    const mlProvider: AffiliateLinkProvider = {
+      platform: 'mercado_livre', providerName: 'mercado-livre-test',
+      convert: vi.fn(async () => ({ success: true, convertedUrl: 'https://meli.la/converted123', provider: 'mercado-livre-test' })),
+    };
+    const runtime = service(repository, mlProvider);
+
+    await runtime.service.drain();
+
+    expect(runtime.resolver.resolve).not.toHaveBeenCalled();
+    expect(mlProvider.convert).toHaveBeenCalledWith(expect.objectContaining({ url: shortUrl }));
+    expect(repository.rows[0]).toMatchObject({ status: 'converted', resolvedUrl: shortUrl });
+  });
+
   it('permite tentar novamente quando a conversão ficou aguardando a extensão', async () => {
     const repository = new MemoryRepository(conversion({ status: 'awaiting_companion' }));
     (repository as any).getProduct = vi.fn(async () => ({
@@ -211,7 +229,7 @@ describe('AffiliateConversionService', () => {
   it('recupera a página social do Mercado Livre e converte o primeiro produto', async () => {
     const profileUrl = 'https://www.mercadolivre.com.br/social/danielguimaraes';
     const productUrl = 'https://www.mercadolivre.com.br/camisa-casual/up/MLBU3776074237?pdp_filters=item_id%3AMLB3776074237';
-    const repository = new MemoryRepository(conversion({ originalUrl: 'https://meli.la/13eXLrm' }));
+    const repository = new MemoryRepository(conversion({ originalUrl: profileUrl }));
     repository.getDeclaredMarketplace.mockResolvedValue('mercado_livre');
     repository.accounts.set('user-a:mercado_livre', { id: 'account-ml', credentials: { appId: 'app', secret: 'secret' } });
     const mlProvider: AffiliateLinkProvider = {

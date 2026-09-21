@@ -4,6 +4,14 @@ import { MercadoLivreAffiliateDestinationVerifier } from './MercadoLivreAffiliat
 const source = 'https://produto.mercadolivre.com.br/MLB-1234567890-produto-_JM';
 
 describe('MercadoLivreAffiliateDestinationVerifier', () => {
+  it('aceita saída meli.la para uma origem meli.la sem consultar o CDN', async () => {
+    const fetcher = vi.fn();
+    await expect(new MercadoLivreAffiliateDestinationVerifier(fetcher as typeof fetch)
+      .verify('https://meli.la/origem123', 'https://meli.la/novo123'))
+      .resolves.toBe('https://meli.la/novo123');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it('resolve meli.la e confirma que o produto final é o mesmo', async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(new Response(null, {

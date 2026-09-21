@@ -38,4 +38,21 @@ describe('MercadoLivreDirectAdapter', () => {
     expect(result).toMatchObject({ affiliateUrl: 'https://meli.la/cache123', cached: true });
     expect(client.createAffiliateLinks).not.toHaveBeenCalled();
   });
+
+  it('envia links meli.la do monitor diretamente ao backend', async () => {
+    const shortUrl = 'https://meli.la/2FdaeDB';
+    const client = {
+      configured: () => true,
+      createAffiliateLinks: vi.fn(async (_credentials, urls: string[]) => ({
+        trackingTag: 'principal', urls: urls.map(() => 'https://meli.la/novo123'),
+      })),
+    };
+    const verifier = { verify: vi.fn(async (_source: string, candidate: string) => candidate) };
+    const adapter = new MercadoLivreDirectAdapter(client as any, null, verifier as any);
+
+    await expect(adapter.generate('user-a', 'account-a', shortUrl, credentials)).resolves.toMatchObject({
+      affiliateUrl: 'https://meli.la/novo123', itemId: null,
+    });
+    expect(client.createAffiliateLinks).toHaveBeenCalledWith(credentials, [shortUrl], 'principal');
+  });
 });

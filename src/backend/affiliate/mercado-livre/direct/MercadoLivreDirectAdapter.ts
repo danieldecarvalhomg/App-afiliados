@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import type { AffiliateProviderCredentials } from '../../../../domain/affiliate/types';
-import { extractMercadoLivreItemId, normalizeMercadoLivreProductUrl } from '../AffiliateLinkValidator';
+import { extractMercadoLivreItemId, normalizeMercadoLivreConversionUrl } from '../AffiliateLinkValidator';
 import { MercadoLivreCompanionError } from '../companion/types';
 import type { MercadoLivreGenerationResult } from '../generationTypes';
 import { MercadoLivreAffiliateDestinationVerifier } from './MercadoLivreAffiliateDestinationVerifier';
@@ -56,7 +56,7 @@ export class MercadoLivreDirectAdapter {
     _trackingLabel?: string | null,
   ): Promise<MercadoLivreGenerationResult> {
     if (!this.configured(credentials)) throw new MercadoLivreCompanionError('DIRECT_SESSION_REQUIRED', 'Conecte sua sessão do Mercado Livre.');
-    const normalizedUrl = normalizeMercadoLivreProductUrl(sourceUrl);
+    const normalizedUrl = normalizeMercadoLivreConversionUrl(sourceUrl);
     const itemId = extractMercadoLivreItemId(normalizedUrl);
     const sourceHash = createHash('sha256').update(normalizedUrl).digest('hex').slice(0, 16);
     const itemKey = itemId ?? `URL:${sourceHash}`;

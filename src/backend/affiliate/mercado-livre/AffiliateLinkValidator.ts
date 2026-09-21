@@ -1,6 +1,8 @@
 import { resolvePlatform } from '../../../domain/affiliate/PlatformResolver';
 import { MercadoLivreCompanionError } from './companion/types';
 
+const MERCADO_LIVRE_SHORT_PATH = /^\/[A-Za-z0-9][A-Za-z0-9_-]{2,63}\/?$/u;
+
 export function extractMercadoLivreItemId(url: string): string | null {
   try {
     const parsed = new URL(url);
@@ -25,6 +27,35 @@ export function normalizeMercadoLivreProductUrl(raw: string): string {
   }
   parsed.hash = '';
   return parsed.toString();
+}
+
+/**
+ * Normaliza uma origem aceita pelo gerador de afiliados.
+ *
+ * Links meli.la são produtos válidos para o Portal de Afiliados, embora não
+ * contenham MLB/MLBU no próprio endereço. Eles precisam chegar ao endpoint
+ * direto sem passar pelo resolvedor público, que pode receber 403 do CDN.
+ */
+export function normalizeMercadoLivreConversionUrl(raw: string): string {
+  let parsed: URL;
+  try { parsed = new URL(raw); }
+  catch { throw new MercadoLivreCompanionError('LINK_VALIDATION_FAILED', 'URL Mercado Livre inválida.'); }
+  if (parsed.protocol !== 'https:' || resolvePlatform(parsed.toString()) !== 'mercado_livre') {
+    throw new MercadoLivreCompanionError('LINK_VALIDATION_FAILED', 'A URL não pertence ao Mercado Livre.');
+  }
+  if (parsed.hostname.toLowerCase() === 'meli.la') {
+    if (!MERCADO_LIVRE_SHORT_PATH.test(parsed.pathname)) {
+      throw new MercadoLivreCompanionError('LINK_VALIDATION_FAILED', 'Link meli.la inválido.');
+    }
+    parsed.hash = '';
+    return parsed.toString();
+  }
+  return normalizeMercadoLivreProductUrl(parsed.toString());
+}
+
+export function isMercadoLivreConversionUrl(raw: string): boolean {
+  try { normalizeMercadoLivreConversionUrl(raw); return true; }
+  catch { return false; }
 }
 
 export function isMercadoLivreProductUrl(raw: string): boolean {

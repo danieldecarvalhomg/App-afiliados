@@ -19,6 +19,10 @@ export class MercadoLivreAffiliateDestinationVerifier {
     const affiliateUrl = this.validator.validate(sourceUrl, candidate);
     const affiliate = new URL(affiliateUrl);
     if (affiliate.hostname !== 'meli.la') return affiliateUrl;
+    // Uma origem meli.la já é um identificador curto aceito pelo Portal. Não
+    // tente abri-la para descobrir o produto: o CDN pode bloquear requisições
+    // server-to-server mesmo quando o link funciona no celular.
+    if (new URL(sourceUrl).hostname.toLowerCase() === 'meli.la') return affiliateUrl;
     let current = affiliate;
     for (let redirect = 0; redirect < 6; redirect += 1) {
       if (current.protocol !== 'https:' || !allowedHost(current.hostname)) throw new MercadoLivreCompanionError('LINK_VALIDATION_FAILED', 'O link saiu dos domínios permitidos.');

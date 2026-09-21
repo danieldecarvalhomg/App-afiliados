@@ -6,7 +6,7 @@ import type { AffiliateConversion, AffiliateConversionStatus } from './types';
 import { resolvePlatform } from './PlatformResolver';
 import type { AffiliateLinkService } from './AffiliateLinkService';
 import { UrlResolutionError, type UrlResolverService } from '../../backend/affiliate/UrlResolverService';
-import { isMercadoLivreProductUrl } from '../../backend/affiliate/mercado-livre/AffiliateLinkValidator';
+import { isMercadoLivreConversionUrl, isMercadoLivreProductUrl } from '../../backend/affiliate/mercado-livre/AffiliateLinkValidator';
 import { MercadoLivreLinkRecoveryService } from '../../backend/affiliate/mercado-livre/MercadoLivreLinkRecoveryService';
 import { AdaptiveWorkerLoop } from '../workers/AdaptiveWorkerLoop';
 import type { UsageQuotaService } from '../usage/UsageQuotaService';
@@ -58,14 +58,21 @@ export class AffiliateConversionService {
     try {
       const originalIsMercadoLivreProduct = resolvePlatform(conversion.originalUrl) === 'mercado_livre'
         && isMercadoLivreProductUrl(conversion.originalUrl);
+      const originalIsMercadoLivreShortLink = resolvePlatform(conversion.originalUrl) === 'mercado_livre'
+        && isMercadoLivreConversionUrl(conversion.originalUrl)
+        && !originalIsMercadoLivreProduct;
       // Links diretos do catálogo já contêm a identidade do produto. Resolvê-los
       // fora da sessão autenticada pode produzir /gz/account-verification e
       // substituir uma origem válida por uma página de login.
-      let resolved = originalIsMercadoLivreProduct
+      let resolved = originalIsMercadoLivreProduct || originalIsMercadoLivreShortLink
         ? { originalUrl: conversion.originalUrl, resolvedUrl: conversion.originalUrl, resolvedAt: new Date().toISOString(), redirectCount: 0 }
         : await this.resolver.resolve(conversion.originalUrl);
       let platform = resolvePlatform(resolved.resolvedUrl);
-      if (platform === 'mercado_livre' && !isMercadoLivreProductUrl(resolved.resolvedUrl)) {
+      const unresolvedMercadoLivreShortLink = platform === 'mercado_livre'
+        && !isMercadoLivreProductUrl(resolved.resolvedUrl)
+        && originalIsMercadoLivreShortLink
+        && resolved.resolvedUrl === conversion.originalUrl;
+      if (platform === 'mercado_livre' && !isMercadoLivreProductUrl(resolved.resolvedUrl) && !unresolvedMercadoLivreShortLink) {
         const recovered = await this.recovery.recover(resolved.resolvedUrl, conversion.userId);
         if (recovered) {
           await this.safeEvent(conversion.userId, 'affiliate.link_recovered', {

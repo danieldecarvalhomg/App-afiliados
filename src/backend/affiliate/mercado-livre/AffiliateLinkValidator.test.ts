@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { extractMercadoLivreItemId, isMercadoLivreProductUrl, MercadoLivreAffiliateLinkValidator } from './AffiliateLinkValidator';
+import { extractMercadoLivreItemId, isMercadoLivreConversionUrl, isMercadoLivreProductUrl, MercadoLivreAffiliateLinkValidator, normalizeMercadoLivreConversionUrl } from './AffiliateLinkValidator';
 
 describe('MercadoLivreAffiliateLinkValidator', () => {
   const validator = new MercadoLivreAffiliateLinkValidator();
@@ -10,6 +10,13 @@ describe('MercadoLivreAffiliateLinkValidator', () => {
     expect(isMercadoLivreProductUrl('https://www.mercadolivre.com.br/lava-loucas/up/MLBU605239077')).toBe(true);
     expect(isMercadoLivreProductUrl('https://www.mercadolivre.com.br/social/comprasincriveisbr_')).toBe(false);
     expect(isMercadoLivreProductUrl('https://meli.la/2FdaeDB')).toBe(false);
+  });
+
+  it('aceita meli.la como origem convertível sem tratá-lo como página de produto', () => {
+    const shortUrl = 'https://meli.la/2FdaeDB';
+    expect(isMercadoLivreConversionUrl(shortUrl)).toBe(true);
+    expect(normalizeMercadoLivreConversionUrl(`${shortUrl}#origem`)).toBe(shortUrl);
+    expect(isMercadoLivreConversionUrl('https://meli.la/social/comprasincriveisbr_')).toBe(false);
   });
 
   it('aceita link curto afiliado e extrai o item ID canônico', () => {
