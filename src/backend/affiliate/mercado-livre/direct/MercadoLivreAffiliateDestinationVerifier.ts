@@ -38,7 +38,12 @@ export class MercadoLivreAffiliateDestinationVerifier {
       }
       const sourceItem = extractMercadoLivreItemId(sourceUrl);
       const destinationItem = extractMercadoLivreItemId(current.toString()) ?? extractMercadoLivreItemId(response.url);
-      if (!sourceItem || !destinationItem || sourceItem !== destinationItem) {
+      // URLs /up/MLBU... identificam um produto de catálogo. O link curto pode
+      // terminar em um anúncio MLB concreto escolhido pelo próprio Mercado Livre.
+      // Mantemos a comparação estrita para anúncios e entre IDs de catálogo.
+      const universalToListing = sourceItem?.startsWith('MLBU') && destinationItem?.startsWith('MLB')
+        && !destinationItem.startsWith('MLBU');
+      if (!sourceItem || !destinationItem || (sourceItem !== destinationItem && !universalToListing)) {
         throw new MercadoLivreCompanionError('LINK_VALIDATION_FAILED', 'O link gerado não aponta para o produto original.');
       }
       return affiliateUrl;

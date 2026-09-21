@@ -7,8 +7,8 @@ export function extractMercadoLivreItemId(url: string): string | null {
     const hash = new URLSearchParams(parsed.hash.replace(/^#/u, ''));
     const explicit = parsed.searchParams.get('wid') ?? parsed.searchParams.get('item_id')
       ?? hash.get('wid') ?? hash.get('item_id');
-    const value = explicit?.match(/MLB[-_]?\d{6,}/iu)?.[0]
-      ?? `${parsed.pathname}${parsed.search}`.match(/MLB[-_]?\d{6,}/iu)?.[0];
+    const value = explicit?.match(/MLBU?[-_]?\d{6,}/iu)?.[0]
+      ?? `${parsed.pathname}${parsed.search}`.match(/MLBU?[-_]?\d{6,}/iu)?.[0];
     return value ? value.replace(/[-_]/gu, '').toUpperCase() : null;
   } catch { return null; }
 }
@@ -20,7 +20,7 @@ export function normalizeMercadoLivreProductUrl(raw: string): string {
   if (parsed.protocol !== 'https:' || resolvePlatform(parsed.toString()) !== 'mercado_livre') {
     throw new MercadoLivreCompanionError('LINK_VALIDATION_FAILED', 'A URL não pertence ao Mercado Livre.');
   }
-  if (!/MLB[-_]?\d{6,}/iu.test(`${parsed.pathname}${parsed.search}`)) {
+  if (!/MLBU?[-_]?\d{6,}/iu.test(`${parsed.pathname}${parsed.search}`)) {
     throw new MercadoLivreCompanionError('LINK_VALIDATION_FAILED', 'Use o link direto da página do produto do Mercado Livre.');
   }
   parsed.hash = '';
@@ -60,7 +60,7 @@ export class MercadoLivreAffiliateLinkValidator {
         throw new MercadoLivreCompanionError('INVALID_AFFILIATE_URL', 'O link curto retornado é inválido.');
       }
     } else {
-      const productPath = /MLB[-_]?\d{6,}/iu.test(`${affiliate.pathname}${affiliate.search}`);
+      const productPath = /MLBU?[-_]?\d{6,}/iu.test(`${affiliate.pathname}${affiliate.search}`);
       const tracking = ['matt_word', 'matt_tool', 'matt_source', 'utm_source', 'utm_medium', 'utm_campaign']
         .some((key) => affiliate.searchParams.has(key));
       if (!productPath || !tracking) {

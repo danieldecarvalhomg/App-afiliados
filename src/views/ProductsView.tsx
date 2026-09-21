@@ -16,7 +16,6 @@ import {
   Settings,
   ShoppingBag,
   Sparkles,
-  Smartphone,
   Tag,
   Trash2,
 } from "lucide-react";
@@ -148,9 +147,6 @@ export const ProductsView: React.FC = () => {
   const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState<string | null>(null);
   const [imageFile, setImageFile] = useState<File | null>(null);
-  const [mobileAffiliateProductId, setMobileAffiliateProductId] = useState<string | null>(null);
-  const [mobileAffiliateUrl, setMobileAffiliateUrl] = useState("");
-  const [mobileAttaching, setMobileAttaching] = useState(false);
 
   useEffect(() => {
     if (!sharedTarget || typeof window === "undefined") return;
@@ -264,21 +260,6 @@ export const ProductsView: React.FC = () => {
       );
     } finally {
       setRetrying(null);
-    }
-  }
-  async function attachMobileAffiliate(product: ProductRecord) {
-    setMobileAttaching(true);
-    setError(null);
-    try {
-      const updated = await productsApi.completeAffiliate(product.id, mobileAffiliateUrl.trim());
-      setProducts((current) => current.map((item) => item.id === updated.id ? updated : item));
-      setMobileAffiliateProductId(null);
-      setMobileAffiliateUrl("");
-      setNotice("Link afiliado salvo. O produto já pode ser usado nas mensagens e filas.");
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Falha ao salvar o link afiliado.");
-    } finally {
-      setMobileAttaching(false);
     }
   }
   async function removeProduct(product: ProductRecord) {
@@ -756,22 +737,6 @@ export const ProductsView: React.FC = () => {
                     />
                     {product.affiliateStatus === "invalid_url" ? "Validar e converter" : "Tentar novamente"}
                   </button>
-                )}
-                {product.marketplace === "mercado_livre" && product.sourceUrl && product.affiliateStatus !== "converted" && (
-                  <div className="rounded-lg border border-violet-500/30 bg-violet-500/10 p-3">
-                    <p className="flex items-center gap-1.5 text-xs font-medium text-violet-100"><Smartphone className="h-3.5 w-3.5" /> Fluxo pelo celular</p>
-                    <p className="mt-1 text-[11px] leading-5 text-violet-200/80">Abra o gerador do Mercado Livre, copie o link <code className="rounded bg-violet-950/60 px-1">meli.la</code> e cole aqui.</p>
-                    {mobileAffiliateProductId === product.id ? <div className="mt-2 space-y-2">
-                      <input value={mobileAffiliateUrl} onChange={(event) => setMobileAffiliateUrl(event.target.value)} placeholder="https://meli.la/..." inputMode="url" autoComplete="url" className="w-full rounded-lg border border-violet-300/30 bg-[#F8FAFC] px-3 py-2 text-xs text-white" />
-                      <div className="grid grid-cols-2 gap-2">
-                        <button type="button" disabled={mobileAttaching || !mobileAffiliateUrl.trim()} onClick={() => void attachMobileAffiliate(product)} className="rounded-lg bg-violet-100 px-3 py-2 text-xs font-medium text-violet-950 disabled:opacity-40">{mobileAttaching ? "Salvando…" : "Salvar link"}</button>
-                        <button type="button" disabled={mobileAttaching} onClick={() => { setMobileAffiliateProductId(null); setMobileAffiliateUrl(""); }} className="rounded-lg border border-violet-300/30 px-3 py-2 text-xs text-violet-100 disabled:opacity-40">Cancelar</button>
-                      </div>
-                    </div> : <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      <a href="https://www.mercadolivre.com.br/afiliados/linkbuilder#hub" target="_blank" rel="noreferrer" className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-violet-300/30 px-3 py-2 text-xs text-violet-100"><ExternalLink className="h-3.5 w-3.5" /> Abrir gerador</a>
-                      <button type="button" onClick={() => { void copy(product.sourceUrl!, `${product.id}:source`); setMobileAffiliateProductId(product.id); }} className="inline-flex items-center justify-center gap-1.5 rounded-lg border border-violet-300/30 px-3 py-2 text-xs text-violet-100"><Copy className="h-3.5 w-3.5" /> Copiar original e colar</button>
-                    </div>}
-                  </div>
                 )}
                 {product.affiliateStatus ===
                   "affiliate_account_not_configured" && (

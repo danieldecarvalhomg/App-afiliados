@@ -7,6 +7,7 @@ describe('MercadoLivreAffiliateLinkValidator', () => {
 
   it('identifica somente páginas de produto como origem convertível', () => {
     expect(isMercadoLivreProductUrl('https://www.mercadolivre.com.br/lava-loucas/p/MLB27237304')).toBe(true);
+    expect(isMercadoLivreProductUrl('https://www.mercadolivre.com.br/lava-loucas/up/MLBU605239077')).toBe(true);
     expect(isMercadoLivreProductUrl('https://www.mercadolivre.com.br/social/comprasincriveisbr_')).toBe(false);
     expect(isMercadoLivreProductUrl('https://meli.la/2FdaeDB')).toBe(false);
   });
@@ -14,6 +15,11 @@ describe('MercadoLivreAffiliateLinkValidator', () => {
   it('aceita link curto afiliado e extrai o item ID canônico', () => {
     expect(validator.validate(source, 'https://meli.la/AbC123')).toBe('https://meli.la/AbC123');
     expect(extractMercadoLivreItemId(source)).toBe('MLB1234567890');
+  });
+
+  it('extrai o ID universal usado pelas ofertas novas do Radar', () => {
+    expect(extractMercadoLivreItemId('https://www.mercadolivre.com.br/lavadora/up/MLBU605239077'))
+      .toBe('MLBU605239077');
   });
 
   it('prioriza o item da oferta quando a URL do Radar contém filtro de campanha', () => {

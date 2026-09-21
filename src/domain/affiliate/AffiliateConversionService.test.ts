@@ -174,6 +174,26 @@ describe('AffiliateConversionService', () => {
     expect(repository.rows[0]).toMatchObject({ status: 'converted', resolvedUrl: productUrl });
   });
 
+  it('preserva URL universal MLBU do Radar sem cair no CAPTCHA do resolvedor', async () => {
+    const productUrl = 'https://www.mercadolivre.com.br/lavadora/up/MLBU605239077';
+    const repository = new MemoryRepository(conversion({ originalUrl: productUrl, sourceType: 'marketplace_radar' }));
+    repository.getDeclaredMarketplace.mockResolvedValue('mercado_livre');
+    repository.accounts.set('user-a:mercado_livre', { id: 'account-ml', credentials: { appId: 'app', secret: 'secret' } });
+    const mlProvider: AffiliateLinkProvider = {
+      platform: 'mercado_livre', providerName: 'mercado-livre-test',
+      convert: vi.fn(async () => ({ success: true, convertedUrl: 'https://meli.la/converted123', provider: 'mercado-livre-test' })),
+    };
+    const runtime = service(repository, mlProvider);
+    runtime.resolver.resolve.mockResolvedValue({ originalUrl: productUrl,
+      resolvedUrl: 'https://www.mercadolivre.com.br/captcha/wall', resolvedAt: new Date().toISOString(), redirectCount: 1 });
+
+    await runtime.service.drain();
+
+    expect(runtime.resolver.resolve).not.toHaveBeenCalled();
+    expect(mlProvider.convert).toHaveBeenCalledWith(expect.objectContaining({ url: productUrl }));
+    expect(repository.rows[0]).toMatchObject({ status: 'converted', resolvedUrl: productUrl });
+  });
+
   it('permite tentar novamente quando a conversão ficou aguardando a extensão', async () => {
     const repository = new MemoryRepository(conversion({ status: 'awaiting_companion' }));
     (repository as any).getProduct = vi.fn(async () => ({
