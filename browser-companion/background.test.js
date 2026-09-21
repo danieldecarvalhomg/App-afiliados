@@ -1,6 +1,6 @@
 import { readFile } from 'node:fs/promises';
 import { describe, expect, it, vi } from 'vitest';
-import { allowedBackend, runMercadoLivreBackgroundGeneration, serializeMercadoLivreCookies } from './background.js';
+import { allowedBackend, isCompanionAuthorizationError, runMercadoLivreBackgroundGeneration, serializeMercadoLivreCookies } from './background.js';
 
 describe('AfiliHub Browser Companion security boundary', () => {
   it('aceita somente backends AfiliHub explicitamente permitidos', () => {
@@ -13,7 +13,7 @@ describe('AfiliHub Browser Companion security boundary', () => {
   it('usa Manifest V3 e limita cookies aos hosts do Mercado Livre', async () => {
     const manifest = JSON.parse(await readFile(new URL('./manifest.json', import.meta.url), 'utf8'));
     expect(manifest.manifest_version).toBe(3);
-    expect(manifest.version).toBe('1.2.0');
+    expect(manifest.version).toBe('1.2.1');
     expect(manifest.permissions).toEqual(['storage', 'tabs', 'scripting', 'alarms', 'cookies']);
     expect(manifest.permissions).not.toContain('webRequest');
     expect(manifest.host_permissions).not.toContain('<all_urls>');
@@ -32,7 +32,7 @@ describe('AfiliHub Browser Companion security boundary', () => {
   it('reconhece o gerador e o campo de múltiplas URLs do portal atual', async () => {
     const source = await readFile(new URL('./background.js', import.meta.url), 'utf8');
     expect(source).toContain('/afiliados/linkbuilder#hub');
-    expect(source).toContain("const EXTENSION_VERSION = '1.2.0'");
+    expect(source).toContain("const EXTENSION_VERSION = '1.2.1'");
     expect(source).toContain('textarea[placeholder*="url" i]');
     expect(source).toContain('gerador de (?:links?|produtos? recomendados?)');
     expect(source).toContain("candidates.find((item) => item.url?.includes('/afiliados/linkbuilder'))");
@@ -46,6 +46,12 @@ describe('AfiliHub Browser Companion security boundary', () => {
       { name: 'affiliate', value: 'xyz', path: '/affiliate-program' },
       { name: '', value: 'ignored', path: '/' },
     ])).toBe('affiliate=xyz; session=abc');
+  });
+
+  it('reconhece tokens do Companion inválidos para limpar o estado local', () => {
+    expect(isCompanionAuthorizationError(401, 'COMPANION_UNAUTHORIZED')).toBe(true);
+    expect(isCompanionAuthorizationError(200, 'COMPANION_UNAUTHORIZED')).toBe(true);
+    expect(isCompanionAuthorizationError(503, 'BRIDGE_ERROR')).toBe(false);
   });
 
   it('gera em segundo plano pela sessão do Chrome sem criar uma aba', async () => {

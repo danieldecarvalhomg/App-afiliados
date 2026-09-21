@@ -15,6 +15,8 @@ Extensão Chrome/Chromium Manifest V3 para gerar links afiliados do Mercado Livr
 
 Depois de substituir os arquivos da pasta, abra `chrome://extensions` e clique no ícone de recarregar do **AfiliHub Browser Companion**. A extensão mantém o pareamento existente; não é necessário gerar outro código.
 
+Se o popup mostrar uma conexão antiga que não consegue ser revogada, atualize para a versão 1.2.1. Ao abrir o popup, a extensão valida o pareamento no servidor e limpa automaticamente o token órfão; depois selecione **AfiliHub online** e use um novo código.
+
 ## iPhone e Android
 
 O Safari e o Chrome mobile não aceitam esta extensão de desktop. A extensão é necessária somente para a sincronização inicial da sessão: depois disso, o motor próprio converte no backend e o AfiliHub pode gerar links pelo iPhone ou Android mesmo com o computador desligado. Quando a sessão expirar, abra novamente o Chrome conectado para renová-la.

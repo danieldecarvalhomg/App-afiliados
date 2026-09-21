@@ -1,4 +1,4 @@
-const EXTENSION_VERSION = '1.2.0';
+const EXTENSION_VERSION = '1.2.1';
 const ADAPTER_VERSION = 5;
 const PORTAL_URL = 'https://www.mercadolivre.com.br/afiliados/linkbuilder#hub';
 const AFFILIATE_API_URL = 'https://www.mercadolivre.com.br/affiliate-program/api/v2/affiliates';
@@ -22,6 +22,15 @@ async function settings() {
   return { ...value, backendUrl };
 }
 
+async function clearLocalPairing() {
+  await chrome.storage.local.remove(['companionToken', 'instance']);
+  lastSessionSyncAt = 0;
+}
+
+export function isCompanionAuthorizationError(status, code) {
+  return status === 401 || code === 'COMPANION_UNAUTHORIZED';
+}
+
 async function api(path, init = {}) {
   const state = await settings();
   if (!state.companionToken) throw new Error('COMPANION_NOT_PAIRED');
@@ -35,7 +44,11 @@ async function api(path, init = {}) {
     },
   });
   const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.success) throw new Error(payload?.error?.code || 'BRIDGE_ERROR');
+  const errorCode = payload?.error?.code || 'BRIDGE_ERROR';
+  if (!response.ok || !payload?.success) {
+    if (isCompanionAuthorizationError(response.status, errorCode)) await clearLocalPairing();
+    throw new Error(errorCode);
+  }
   return payload.data;
 }
 
@@ -432,14 +445,41 @@ if (globalThis.chrome?.runtime) {
       return true;
     }
     if (message?.type === 'PROMOFY_STATUS') {
-      settings().then((data) => sendResponse({ success: true, data: { paired: Boolean(data.companionToken), instance: data.instance || null, backendUrl: data.backendUrl } }));
+      (async () => {
+        const data = await settings();
+        if (!data.companionToken) return { paired: false, instance: null, backendUrl: data.backendUrl };
+        try {
+          const heartbeatResult = await api('/heartbeat', {
+            method: 'POST',
+            body: JSON.stringify({
+              status: 'ONLINE', extensionVersion: EXTENSION_VERSION,
+              adapterVersion: ADAPTER_VERSION, mercadoLivreStatus: 'UNKNOWN',
+            }),
+          });
+          const instance = heartbeatResult?.instance || data.instance || null;
+          if (instance) await chrome.storage.local.set({ instance });
+          return { paired: true, instance, backendUrl: data.backendUrl };
+        } catch (error) {
+          if (error?.message === 'COMPANION_UNAUTHORIZED') {
+            return { paired: false, stale: true, instance: null, backendUrl: data.backendUrl };
+          }
+          return { paired: Boolean(data.companionToken), instance: data.instance || null, backendUrl: data.backendUrl };
+        }
+      })().then((data) => sendResponse({ success: true, data }), (error) => sendResponse({ success: false, error: error.message }));
       return true;
     }
     if (message?.type === 'PROMOFY_DISCONNECT') {
       (async () => {
-        await api('/disconnect', { method: 'POST', body: '{}' });
-        await chrome.storage.local.remove(['companionToken', 'instance']);
-      })().then(() => sendResponse({ success: true }), (error) => sendResponse({ success: false, error: error.message }));
+        try {
+          await api('/disconnect', { method: 'POST', body: '{}' });
+          await clearLocalPairing();
+          return { stale: false };
+        } catch (error) {
+          if (error?.message !== 'COMPANION_UNAUTHORIZED') throw error;
+          await clearLocalPairing();
+          return { stale: true };
+        }
+      })().then((data) => sendResponse({ success: true, ...data }), (error) => sendResponse({ success: false, error: error.message }));
       return true;
     }
     if (message?.type === 'PROMOFY_OPEN_ML') {
