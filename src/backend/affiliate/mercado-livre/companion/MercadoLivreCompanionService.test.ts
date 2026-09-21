@@ -3,7 +3,7 @@ import { MercadoLivreCompanionService } from './MercadoLivreCompanionService';
 
 const now = new Date().toISOString();
 const instance = {
-  id: 'instance-a', userId: 'user-a', name: 'Chrome', status: 'ONLINE', extensionVersion: '1.2.2',
+  id: 'instance-a', userId: 'user-a', name: 'Chrome', status: 'ONLINE', extensionVersion: '1.2.3',
   adapterVersion: 5, mercadoLivreStatus: 'READY', lastSeenAt: now, lastSuccessAt: null,
   lastErrorCode: null, tokenExpiresAt: new Date(Date.now() + 60_000).toISOString(), createdAt: now, revokedAt: null,
 };
@@ -39,7 +39,7 @@ describe('MercadoLivreCompanionService', () => {
 
   it('emite credencial própria limitada e nunca a persiste em texto puro', async () => {
     const repo = repository();
-  const result = await new MercadoLivreCompanionService(repo as any, {} as any).pair({ code: 'ABCD-EFGH-JKLM', name: 'Chrome', extensionVersion: '1.2.2', adapterVersion: 5 });
+  const result = await new MercadoLivreCompanionService(repo as any, {} as any).pair({ code: 'ABCD-EFGH-JKLM', name: 'Chrome', extensionVersion: '1.2.3', adapterVersion: 5 });
     expect(result.token).toMatch(/^pc_/u);
     const persisted = (repo.consumePairing as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(persisted.tokenHash).not.toBe(result.token);
@@ -48,7 +48,7 @@ describe('MercadoLivreCompanionService', () => {
 
   it('retoma jobs que exigiam ação quando a sessão volta a READY', async () => {
     const repo = repository();
-  await new MercadoLivreCompanionService(repo as any, {} as any).heartbeat(instance as any, { mercadoLivreStatus: 'READY', extensionVersion: '1.2.2', adapterVersion: 5 });
+  await new MercadoLivreCompanionService(repo as any, {} as any).heartbeat(instance as any, { mercadoLivreStatus: 'READY', extensionVersion: '1.2.3', adapterVersion: 5 });
     expect(repo.resumeUserActionJobs).toHaveBeenCalledWith('user-a');
   });
 
@@ -66,7 +66,7 @@ describe('MercadoLivreCompanionService', () => {
     const repo = repository();
     const result = await new MercadoLivreCompanionService(repo as any, {} as any).status('user-a');
     expect(result.global.adapterVersion).toBe(5);
-  expect(result.required).toMatchObject({ extensionVersion: '1.2.2', adapterVersion: 5 });
+  expect(result.required).toMatchObject({ extensionVersion: '1.2.3', adapterVersion: 5 });
   });
 
   it('impede outra instância de concluir o job', async () => {

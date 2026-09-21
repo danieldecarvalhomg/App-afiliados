@@ -15,7 +15,7 @@ Extensão Chrome/Chromium Manifest V3 para gerar links afiliados do Mercado Livr
 
 Depois de substituir os arquivos da pasta, abra `chrome://extensions` e clique no ícone de recarregar do **AfiliHub Browser Companion**. A extensão mantém o pareamento existente; não é necessário gerar outro código.
 
-Se o popup mostrar uma conexão antiga, atualize para a versão 1.2.2. O botão **Desconectar deste navegador** sempre remove a credencial local, mesmo quando o servidor antigo está indisponível. O **AfiliHub online** é o ambiente padrão; depois da limpeza, use um novo código.
+Na versão 1.2.3, o Companion usa o contexto autenticado da página oficial quando o Mercado Livre recusa chamadas iniciadas pelo service worker. O botão **Desconectar deste navegador** sempre remove a credencial local, mesmo quando o servidor antigo está indisponível, e o **AfiliHub online** é o ambiente padrão.
 
 ## iPhone e Android
 

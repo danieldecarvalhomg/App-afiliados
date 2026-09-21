@@ -1,4 +1,4 @@
-const EXTENSION_VERSION = '1.2.2';
+const EXTENSION_VERSION = '1.2.3';
 const ADAPTER_VERSION = 5;
 export const DEFAULT_BACKEND = 'https://afilihub-production.up.railway.app';
 const PORTAL_URL = 'https://www.mercadolivre.com.br/afiliados/linkbuilder#hub';
@@ -63,18 +63,6 @@ async function waitForTab(tabId, timeoutMs = 30_000) {
   throw new Error('PORTAL_UNAVAILABLE');
 }
 
-function generationError(errorCode, started, step = 'background_api') {
-  return {
-    status: ['AUTH_REQUIRED', 'CAPTCHA_REQUIRED', 'TWO_FACTOR_REQUIRED', 'USER_ACTION_REQUIRED'].includes(errorCode)
-      ? 'NEEDS_USER_ACTION'
-      : 'FAILED',
-    errorCode,
-    step,
-    pageType: 'BACKGROUND_API',
-    durationMs: Date.now() - started,
-  };
-}
-
 function mercadoLivreApiError(status, payload) {
   const raw = `${payload?.code || ''} ${payload?.error || ''} ${payload?.message || ''}`.toUpperCase();
   if (status === 401 || status === 403 || /UNAUTHORIZED|FORBIDDEN|AUTH|LOGIN|SESSION/u.test(raw)) return 'AUTH_REQUIRED';
@@ -135,16 +123,6 @@ async function syncMercadoLivreSession(force = false) {
   lastSessionSyncAt = Date.now();
 }
 
-function normalizedJobUrl(job) {
-  try {
-    const parsed = new URL(job?.sourceUrl);
-    if (parsed.protocol !== 'https:' || !/(^|\.)mercadolivre\.com\.br$/iu.test(parsed.hostname)
-      || !/MLB[-_]?\d{6,}/iu.test(`${parsed.pathname}${parsed.search}`)) return null;
-    parsed.hash = '';
-    return parsed.toString();
-  } catch { return null; }
-}
-
 /**
  * Usa o mesmo endpoint HTTPS usado pelo Gerador oficial, mas diretamente no
  * service worker da extensão. A sessão continua dentro do Chrome e nenhuma aba
@@ -152,10 +130,48 @@ function normalizedJobUrl(job) {
  */
 export async function runMercadoLivreBackgroundGeneration(job, fetcher = fetch) {
   const started = Date.now();
-  const productUrl = normalizedJobUrl(job);
-  if (!productUrl) return generationError('LINK_VALIDATION_FAILED', started, 'validate_source');
+  // Esta funcao precisa ser autocontida: alem do service worker, ela pode ser
+  // serializada pelo chrome.scripting e executada no contexto da pagina do ML.
+  const failure = (errorCode, step = 'background_api') => ({
+    status: ['AUTH_REQUIRED', 'CAPTCHA_REQUIRED', 'TWO_FACTOR_REQUIRED', 'USER_ACTION_REQUIRED'].includes(errorCode)
+      ? 'NEEDS_USER_ACTION' : 'FAILED',
+    errorCode, step, pageType: 'BACKGROUND_API', durationMs: Date.now() - started,
+  });
+  const productUrl = (() => {
+    try {
+      const parsed = new URL(job?.sourceUrl);
+      if (parsed.protocol !== 'https:' || !/(^|\.)mercadolivre\.com\.br$/iu.test(parsed.hostname)
+        || !/MLB[-_]?\d{6,}/iu.test(`${parsed.pathname}${parsed.search}`)) return null;
+      parsed.hash = '';
+      return parsed.toString();
+    } catch { return null; }
+  })();
+  if (!productUrl) return failure('LINK_VALIDATION_FAILED', 'validate_source');
+  const request = async (path, init = {}) => {
+    const response = await fetcher(`https://www.mercadolivre.com.br/affiliate-program/api/v2/affiliates${path}`, {
+      credentials: 'include', cache: 'no-store', ...init,
+      headers: {
+        accept: 'application/json, text/plain, */*',
+        'content-type': 'application/json',
+        ...init.headers,
+      },
+    });
+    const payload = await response.json().catch(() => null);
+    if (!response.ok) {
+      const raw = `${payload?.code || ''} ${payload?.error || ''} ${payload?.message || ''}`.toUpperCase();
+      const code = response.status === 401 || response.status === 403 || /UNAUTHORIZED|FORBIDDEN|AUTH|LOGIN|SESSION/u.test(raw)
+        ? 'AUTH_REQUIRED'
+        : response.status === 429 || /RATE.?LIMIT|TOO MANY/u.test(raw) ? 'RATE_LIMITED'
+          : /CAPTCHA|ROBOT|HUMAN/u.test(raw) ? 'CAPTCHA_REQUIRED'
+            : /TWO.?FACTOR|2FA|VERIFICATION.?CODE/u.test(raw) ? 'TWO_FACTOR_REQUIRED'
+              : /INVALID.?URL|URL.?INVALID/u.test(raw) ? 'LINK_VALIDATION_FAILED'
+                : response.status >= 500 ? 'TEMPORARY_ERROR' : 'GENERATION_FAILED';
+      throw new Error(code);
+    }
+    return payload?.data ?? payload;
+  };
   try {
-    const tagsPayload = await affiliateApi('/getTags', { method: 'GET' }, fetcher);
+    const tagsPayload = await request('/getTags', { method: 'GET' });
     const tags = Array.isArray(tagsPayload) ? tagsPayload
       : Array.isArray(tagsPayload?.tags) ? tagsPayload.tags
         : Array.isArray(tagsPayload?.data) ? tagsPayload.data : [];
@@ -164,25 +180,27 @@ export async function runMercadoLivreBackgroundGeneration(job, fetcher = fetch) 
       || tags.find((item) => item?.in_use === true)?.tag
       || tags.find((item) => typeof item?.tag === 'string')?.tag
       || requested;
-    const generated = await affiliateApi('/createLink', {
+    const generated = await request('/createLink', {
       method: 'POST',
       body: JSON.stringify({ urls: [productUrl], tag }),
-    }, fetcher);
+    });
     const urls = Array.isArray(generated?.urls) ? generated.urls
       : Array.isArray(generated) ? generated : [];
     const result = urls.find((item) => item?.short_url || item?.long_url);
     const affiliateUrl = result?.short_url || result?.long_url || null;
     if (!affiliateUrl) {
-      const code = mercadoLivreApiError(400, result || generated);
-      return generationError(code, started, 'parse_background_result');
+      return failure('GENERATION_FAILED', 'parse_background_result');
     }
     return {
       status: 'SUCCESS', affiliateUrl, step: 'background_api',
       pageType: 'BACKGROUND_API', durationMs: Date.now() - started,
     };
   } catch (cause) {
-    const code = typeof cause?.message === 'string' ? cause.message : 'TEMPORARY_ERROR';
-    return generationError(code, started);
+    const rawCode = typeof cause?.message === 'string' ? cause.message : '';
+    const code = ['AUTH_REQUIRED', 'RATE_LIMITED', 'CAPTCHA_REQUIRED', 'TWO_FACTOR_REQUIRED',
+      'LINK_VALIDATION_FAILED', 'GENERATION_FAILED', 'TEMPORARY_ERROR'].includes(rawCode)
+      ? rawCode : 'TEMPORARY_ERROR';
+    return failure(code);
   }
 }
 
@@ -353,14 +371,27 @@ export async function runMercadoLivreGeneration(job) {
 async function executeJob(job) {
   await api(`/jobs/${encodeURIComponent(job.id)}/processing`, { method: 'POST', body: '{}' });
   let result = await runMercadoLivreBackgroundGeneration(job);
-  // Compatibilidade defensiva: se o endpoint interno mudar, uma aba que o
-  // próprio usuário já deixou aberta ainda pode concluir pela automação DOM.
-  // O Companion nunca abre uma aba só para processar um job.
-  if (result.status === 'FAILED' && ['GENERATION_FAILED', 'TEMPORARY_ERROR'].includes(result.errorCode)) {
+  // Fetches iniciados pelo service worker podem ser recusados por exigirem o
+  // Referer do gerador. Nesse caso, repete a mesma chamada no contexto MAIN da
+  // aba oficial, preservando cookies, Origin e Referer do Mercado Livre.
+  if (result.status !== 'SUCCESS' && ['AUTH_REQUIRED', 'GENERATION_FAILED', 'TEMPORARY_ERROR'].includes(result.errorCode)) {
     const candidates = await chrome.tabs.query({ url: ['https://mercadolivre.com.br/*', 'https://www.mercadolivre.com.br/*'] });
     let current = candidates.find((item) => item.url?.includes('/afiliados/linkbuilder')) || null;
     if (current) {
       await waitForTab(current.id).catch(() => undefined);
+      try {
+        const pageExecution = await chrome.scripting.executeScript({
+          target: { tabId: current.id }, world: 'MAIN',
+          func: runMercadoLivreBackgroundGeneration, args: [job],
+        });
+        const pageResult = pageExecution?.[0]?.result;
+        if (pageResult) result = { ...pageResult, pageType: 'PAGE_API' };
+      } catch { /* a automacao DOM abaixo continua como fallback */ }
+    }
+    // Compatibilidade defensiva: se o endpoint mudar, a aba que o usuario ja
+    // deixou aberta ainda pode concluir pela interface oficial, sem ganhar foco.
+    if (current && result.status !== 'SUCCESS'
+      && ['AUTH_REQUIRED', 'GENERATION_FAILED', 'TEMPORARY_ERROR'].includes(result.errorCode)) {
       for (let attempt = 0; attempt < 3; attempt += 1) {
         try {
           const execution = await chrome.scripting.executeScript({ target: { tabId: current.id }, func: runMercadoLivreGeneration, args: [job] });
