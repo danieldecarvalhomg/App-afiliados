@@ -255,8 +255,18 @@ const affiliateAccountService = affiliateRepository
           await amazonCreatorsApiClient.validate(credentials);
         },
         mercado_livre: async (credentials) => {
-          if (mercadoLivreDirectClient.configured(credentials)) await mercadoLivreDirectClient.validate(credentials);
-          else await mercadoLivreDiscoveryProvider.validate(credentials);
+          try {
+            if (mercadoLivreDirectClient.configured(credentials)) await mercadoLivreDirectClient.validate(credentials);
+            else await mercadoLivreDiscoveryProvider.validate(credentials);
+          } catch (error) {
+            const providerCode = error && typeof error === 'object' && 'code' in error
+              && typeof error.code === 'string' && /^[A-Z][A-Z0-9_]+$/u.test(error.code)
+              ? error.code : 'UNKNOWN_ERROR';
+            const httpStatus = error && typeof error === 'object' && 'httpStatus' in error
+              && Number.isInteger(error.httpStatus) ? Number(error.httpStatus) : null;
+            console.warn('[AfiliHub:MercadoLivre] Validação da sessão capturada falhou.', { providerCode, httpStatus });
+            throw error;
+          }
         },
       },
     )

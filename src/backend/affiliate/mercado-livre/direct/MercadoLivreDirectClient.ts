@@ -8,16 +8,16 @@ function apiError(status: number, payload: unknown): MercadoLivreCompanionError 
   const value = payload && typeof payload === 'object' ? payload as Record<string, unknown> : {};
   const raw = `${value.code ?? ''} ${value.error ?? ''} ${value.message ?? ''}`.toUpperCase();
   if (status === 401 || /UNAUTHORIZED|AUTH|LOGIN|SESSION/u.test(raw)) {
-    return new MercadoLivreCompanionError('AUTH_REQUIRED', 'A sessão do Mercado Livre expirou.');
+    return new MercadoLivreCompanionError('AUTH_REQUIRED', 'A sessão do Mercado Livre expirou.', false, status);
   }
   if (status === 429 || /RATE.?LIMIT|TOO MANY/u.test(raw)) {
-    return new MercadoLivreCompanionError('RATE_LIMITED', 'O Mercado Livre limitou temporariamente as conversões.', true);
+    return new MercadoLivreCompanionError('RATE_LIMITED', 'O Mercado Livre limitou temporariamente as conversões.', true, status);
   }
-  if (/CAPTCHA|ROBOT|HUMAN/u.test(raw)) return new MercadoLivreCompanionError('CAPTCHA_REQUIRED', 'O Mercado Livre solicitou confirmação humana.');
-  if (/TWO.?FACTOR|2FA|VERIFICATION.?CODE/u.test(raw)) return new MercadoLivreCompanionError('TWO_FACTOR_REQUIRED', 'O Mercado Livre solicitou confirmação em duas etapas.');
+  if (/CAPTCHA|ROBOT|HUMAN/u.test(raw)) return new MercadoLivreCompanionError('CAPTCHA_REQUIRED', 'O Mercado Livre solicitou confirmação humana.', false, status);
+  if (/TWO.?FACTOR|2FA|VERIFICATION.?CODE/u.test(raw)) return new MercadoLivreCompanionError('TWO_FACTOR_REQUIRED', 'O Mercado Livre solicitou confirmação em duas etapas.', false, status);
   const transient = status === 403 || status >= 500;
   return new MercadoLivreCompanionError(transient ? 'TEMPORARY_ERROR' : 'GENERATION_FAILED',
-    'O Mercado Livre não concluiu a geração.', transient);
+    'O Mercado Livre não concluiu a geração.', transient, status);
 }
 
 export class MercadoLivreDirectClient {
@@ -82,10 +82,20 @@ export class MercadoLivreDirectClient {
         signal: AbortSignal.timeout(this.timeoutMs),
         headers: {
           accept: 'application/json',
+          'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+          'cache-control': 'no-cache',
           'content-type': 'application/json',
           cookie,
           origin: 'https://www.mercadolivre.com.br',
+          pragma: 'no-cache',
           referer: 'https://www.mercadolivre.com.br/afiliados/hub',
+          'sec-ch-ua': '"Chromium";v="140", "Google Chrome";v="140", "Not=A?Brand";v="24"',
+          'sec-ch-ua-mobile': '?0',
+          'sec-ch-ua-platform': '"Windows"',
+          'sec-fetch-dest': 'empty',
+          'sec-fetch-mode': 'cors',
+          'sec-fetch-site': 'same-origin',
+          'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
           'x-custom-origin': 'https://www.mercadolivre.com.br',
           ...init.headers,
         },

@@ -65,7 +65,10 @@ export function createMercadoLivreCompanionRouter(service: MercadoLivreCompanion
     try {
       const instance = await companion(req, res, service); if (!instance) return;
       res.json({ success: true, data: await service.syncSession(instance, req.body ?? {}) });
-    } catch (error) { failure(res, error); }
+    } catch (error) {
+      console.warn('[AfiliHub:MercadoLivre] Falha ao sincronizar sessão do Companion.', { errorCode: errorCode(error) });
+      failure(res, error);
+    }
   });
   router.post('/extension/disconnect', async (req, res) => {
     try {

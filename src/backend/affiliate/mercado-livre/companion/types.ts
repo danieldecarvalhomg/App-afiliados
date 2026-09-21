@@ -75,6 +75,7 @@ export class MercadoLivreCompanionError extends Error {
     public readonly code: MercadoLivreCompanionErrorCode,
     message: string,
     public readonly transient = false,
+    public readonly httpStatus?: number,
   ) {
     super(message);
   }
