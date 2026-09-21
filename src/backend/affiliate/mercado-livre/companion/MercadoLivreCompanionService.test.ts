@@ -54,7 +54,7 @@ describe('MercadoLivreCompanionService', () => {
 
   it('sincroniza a sessão somente por uma instância autenticada e sem alterar o conteúdo', async () => {
     const sync = vi.fn(async () => undefined);
-    const service = new MercadoLivreCompanionService(repository() as any, {} as any, undefined, null, sync);
+    const service = new MercadoLivreCompanionService(repository() as any, {} as any, undefined, sync);
     const result = await service.syncSession(instance as any, {
       sessionCookie: 'session=abc123; affiliate=xyz789', trackingTag: 'principal',
     });

@@ -126,12 +126,15 @@ export class SupabaseAffiliateRepository implements AffiliateRepository {
         try { credentials = row.encrypted_credentials ? decryptAffiliateCredentials(row.encrypted_credentials) : null; }
         catch { credentials = null; }
         const sessionConfigured = Boolean(credentials?.sessionCookie && credentials?.trackingTag && row.validation_status === 'valid');
-        const companionConfigured = Boolean(mlCompanion);
-        const configured = sessionConfigured || companionConfigured;
+        // O Companion serve apenas para a primeira sincronização da sessão.
+        // Ele não configura uma conta de conversão por si só.
+        const configured = sessionConfigured;
         const catalogApiConfigured = Boolean(credentials?.appId && credentials?.secret && credentials?.accessToken);
-        const provider = sessionConfigured ? 'mercado_livre_unofficial_v1'
-          : companionConfigured ? 'mercado_livre_browser_companion_v1' : row.provider;
-        return { id:row.id,platform:row.platform,configured,configurationStatus:configured?'valid':row.validation_status??'not_configured',provider,lastErrorCode:mlCompanion?.last_error_code??row.validation_error_code??row.last_error_code??null,
+        const provider = 'mercado_livre_unofficial_v1';
+        const configurationStatus = sessionConfigured ? 'valid'
+          : row.validation_status === 'invalid' ? 'invalid'
+            : row.validation_status === 'error' ? 'error' : 'pending_validation';
+        return { id:row.id,platform:row.platform,configured,configurationStatus,provider,lastErrorCode:row.validation_error_code??row.last_error_code??null,
           sessionConfigured, catalogApiConfigured, catalogApiStatus: catalogApiConfigured ? row.validation_status ?? 'pending_validation' : 'not_configured',
           browserCompanion:mlCompanion?{instanceId:mlCompanion.id,name:mlCompanion.name,status:mlCompanion.status,extensionVersion:mlCompanion.extension_version,mercadoLivreStatus:mlCompanion.mercado_livre_status,lastSeenAt:mlCompanion.last_seen_at,lastSuccessAt:mlCompanion.last_success_at,adapterVersion:Number(mlCompanion.adapter_version??1)}:undefined };
       }
@@ -157,17 +160,14 @@ export class SupabaseAffiliateRepository implements AffiliateRepository {
   async getConfiguredAccount(userId: string, platform: AffiliatePlatform) {
     if (!['shopee','amazon','mercado_livre'].includes(platform)) return null;
     if (platform === 'mercado_livre') {
-      const [{data:account,error},{data:instance,error:instanceError}]=await Promise.all([
-        this.db.from('affiliate_accounts').select('id,encrypted_credentials').eq('user_id',userId).eq('platform','mercado_livre').eq('status','configured').eq('validation_status','valid').maybeSingle(),
-        this.db.from('browser_companion_instances').select('id').eq('user_id',userId).is('revoked_at',null).neq('status','REVOKED').gt('token_expires_at',new Date().toISOString()).limit(1).maybeSingle(),
-      ]);
-      if(error)throw error;if(instanceError)throw instanceError;
+      const {data:account,error}=await this.db.from('affiliate_accounts').select('id,encrypted_credentials').eq('user_id',userId).eq('platform','mercado_livre').eq('status','configured').eq('validation_status','valid').maybeSingle();
+      if(error)throw error;
       if (!account) return null;
       if (account.encrypted_credentials) {
         const credentials = decryptAffiliateCredentials(account.encrypted_credentials);
         if (credentials.sessionCookie && credentials.trackingTag) return { id:account.id, credentials };
       }
-      return instance ? {id:account.id,credentials:{appId:'browser-companion',secret:'scoped-extension-token'}} : null;
+      return null;
     }
     const { data, error } = await this.db.from('affiliate_accounts').select('id,encrypted_credentials,status')
       .eq('user_id', userId).eq('platform', platform).eq('status', 'configured').eq('validation_status','valid').maybeSingle();

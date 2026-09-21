@@ -37,10 +37,6 @@ const messages: Record<string, string> = {
   LINK_VALIDATION_FAILED: 'Use a URL direta da página do produto Mercado Livre.',
   JOB_ALREADY_CLAIMED: 'Este job já pertence a outra extensão.',
   CIRCUIT_OPEN: 'A integração foi pausada após detectar mudanças no Portal.',
-  REMOTE_BROWSER_NOT_CONFIGURED: 'Configure o navegador remoto do AfiliHub no servidor.',
-  REMOTE_LOGIN_SESSION_EXPIRED: 'A sessão de login remoto expirou. Inicie novamente.',
-  REMOTE_LOGIN_REQUIRED: 'Conecte sua conta do Mercado Livre ao navegador remoto.',
-  REMOTE_BROWSER_UNAVAILABLE: 'O navegador remoto está temporariamente indisponível.',
 };
 
 function failure(res: Response, error: unknown) {
@@ -112,18 +108,6 @@ export function createMercadoLivreCompanionRouter(service: MercadoLivreCompanion
   });
   router.post('/user/test', async (req, res) => {
     try { const id = await owner(req, res); if (id) res.status(202).json({ success: true, data: await service.createTest(id, req.body?.sourceUrl, req.body?.trackingLabel) }); }
-    catch (error) { failure(res, error); }
-  });
-  router.post('/user/remote/login', async (req, res) => {
-    try { const id = await owner(req, res); if (id) res.status(201).json({ success: true, data: await service.beginRemoteLogin(id, req.body?.mobile === true) }); }
-    catch (error) { failure(res, error); }
-  });
-  router.post('/user/remote/verify', async (req, res) => {
-    try { const id = await owner(req, res); if (id) res.json({ success: true, data: await service.verifyRemoteLogin(id) }); }
-    catch (error) { failure(res, error); }
-  });
-  router.post('/user/remote/test', async (req, res) => {
-    try { const id = await owner(req, res); if (id) res.json({ success: true, data: await service.createRemoteTest(id, req.body?.sourceUrl, req.body?.trackingLabel) }); }
     catch (error) { failure(res, error); }
   });
   router.get('/user/jobs/:id', async (req, res) => {

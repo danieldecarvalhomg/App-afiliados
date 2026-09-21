@@ -261,15 +261,14 @@ const affiliateAccountService = affiliateRepository
       },
     )
   : null;
-const mercadoLivreHybridAdapter = mercadoLivreDirectAdapter || mercadoLivreCompanionAdapter || mercadoLivreRemoteService
-  ? new MercadoLivreHybridAdapter(mercadoLivreDirectAdapter, mercadoLivreRemoteService, mercadoLivreCompanionAdapter)
+const mercadoLivreHybridAdapter = mercadoLivreDirectAdapter
+  ? new MercadoLivreHybridAdapter(mercadoLivreDirectAdapter)
   : null;
 const mercadoLivreCompanionService = mercadoLivreCompanionRepository && mercadoLivreCompanionAdapter
   ? new MercadoLivreCompanionService(
       mercadoLivreCompanionRepository,
       mercadoLivreCompanionAdapter,
       undefined,
-      mercadoLivreRemoteService,
       affiliateAccountService ? async (userId, sessionCookie, trackingTag) => {
         const result = await affiliateAccountService.syncMercadoLivreSession(userId, sessionCookie, trackingTag);
         if (!result.success) throw new Error(result.error.code);

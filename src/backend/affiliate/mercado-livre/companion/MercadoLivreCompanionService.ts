@@ -2,7 +2,6 @@ import { createHash, randomBytes } from 'node:crypto';
 import { extractMercadoLivreItemId, MercadoLivreAffiliateLinkValidator, normalizeMercadoLivreProductUrl } from '../AffiliateLinkValidator';
 import { MercadoLivreBrowserCompanionAdapter } from './MercadoLivreBrowserCompanionAdapter';
 import { MercadoLivreCompanionRepository } from './MercadoLivreCompanionRepository';
-import type { MercadoLivreRemoteBrowserService } from '../remote/MercadoLivreRemoteBrowserService';
 import {
   MERCADO_LIVRE_COMPANION_ADAPTER_VERSION,
   MINIMUM_MERCADO_LIVRE_COMPANION_ADAPTER_VERSION,
@@ -50,7 +49,6 @@ export class MercadoLivreCompanionService {
     private readonly repository: MercadoLivreCompanionRepository,
     private readonly adapter: MercadoLivreBrowserCompanionAdapter,
     private readonly validator = new MercadoLivreAffiliateLinkValidator(),
-    private readonly remote: MercadoLivreRemoteBrowserService | null = null,
     private readonly sessionSync: ((userId: string, sessionCookie: string, trackingTag: string) => Promise<void>) | null = null,
     private readonly directTest: ((userId: string, sourceUrl: string, trackingLabel: string | null) => Promise<{
       affiliateUrl: string; itemId: string | null; trackingLabel: string | null;
@@ -144,39 +142,11 @@ export class MercadoLivreCompanionService {
         lastSuccessAt: active?.lastSuccessAt ?? null,
         lastErrorCode: active?.lastErrorCode ?? null,
       },
-      remote: this.remote ? await this.remote.status(userId) : {
-        configured: false, provider: null, preferredProvider: null, availableProviders: [],
-        status: 'NOT_CONFIGURED', lastCheckedAt: null,
-        lastSuccessAt: null, lastErrorCode: null, loginInProgress: false,
-      },
       metrics,
       required: {
         extensionVersion: PROMOFY_COMPANION_EXTENSION_VERSION,
         adapterVersion: MINIMUM_MERCADO_LIVRE_COMPANION_ADAPTER_VERSION,
       },
-    };
-  }
-
-  async beginRemoteLogin(userId: string, mobile = false) {
-    if (!this.remote) throw new MercadoLivreCompanionError('REMOTE_BROWSER_NOT_CONFIGURED', 'Navegador remoto não configurado.');
-    return this.remote.beginLogin(userId, { mobile });
-  }
-
-  async verifyRemoteLogin(userId: string) {
-    if (!this.remote) throw new MercadoLivreCompanionError('REMOTE_BROWSER_NOT_CONFIGURED', 'Navegador remoto não configurado.');
-    return this.remote.verifyLogin(userId);
-  }
-
-  async createRemoteTest(userId: string, sourceUrl: unknown, trackingLabel?: unknown) {
-    if (!this.remote) throw new MercadoLivreCompanionError('REMOTE_BROWSER_NOT_CONFIGURED', 'Navegador remoto não configurado.');
-    const source = clean(sourceUrl, 2_000);
-    if (!source) throw new Error('SOURCE_URL_REQUIRED');
-    const result = await this.remote.generate(userId, source, clean(trackingLabel, 80) || null);
-    const now = new Date().toISOString();
-    return {
-      id: `remote-${Date.now()}`, status: 'SUCCESS', sourceUrl: source,
-      trackingLabel: result.trackingLabel, resultUrl: result.affiliateUrl,
-      errorCode: null, expiresAt: now, createdAt: now, updatedAt: now,
     };
   }
 
@@ -198,8 +168,7 @@ export class MercadoLivreCompanionService {
         createdAt: now, updatedAt: now,
       };
     }
-    const job = await this.adapter.enqueue(userId, source, label);
-    return this.publicJob(job);
+    throw new MercadoLivreCompanionError('DIRECT_SESSION_REQUIRED', 'Faça a conexão inicial do Mercado Livre para testar o motor backend.');
   }
 
   async getJob(userId: string, jobId: string) {
@@ -210,16 +179,10 @@ export class MercadoLivreCompanionService {
   }
 
   async claim(instance: MercadoLivreCompanionInstance) {
-    if (instance.adapterVersion < MINIMUM_MERCADO_LIVRE_COMPANION_ADAPTER_VERSION) throw new Error('COMPANION_OUTDATED');
-    await this.repository.expireJobs();
-    const health = await this.repository.health();
-    if (health.circuit_state === 'OPEN') throw new Error('CIRCUIT_OPEN');
-    const job = await this.repository.claimJob(instance);
-    return job ? {
-      id: job.id, marketplace: 'mercado_livre', sourceUrl: job.normalizedUrl,
-      trackingLabel: job.trackingLabel, expiresAt: job.expiresAt,
-      adapterVersion: job.adapterVersion,
-    } : null;
+    // O Companion não converte mais links. Ele permanece ativo apenas para
+    // sincronizar a sessão inicial e enviar heartbeat de conectividade.
+    void instance;
+    return null;
   }
 
   async processing(instance: MercadoLivreCompanionInstance, jobId: string): Promise<void> {

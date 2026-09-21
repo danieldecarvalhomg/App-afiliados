@@ -17,14 +17,6 @@ export interface MercadoLivreAffiliateStatus {
   companion:BrowserCompanionInstanceSummary|null;
   instances:BrowserCompanionInstanceSummary[];
   mercadoLivre:{status:MercadoLivreBrowserSessionStatus;lastSuccessAt:string|null;lastErrorCode:string|null};
-  remote:{
-    configured:boolean;
-    provider:'browserbase'|'hyperbrowser'|null;
-    preferredProvider:'browserbase'|'hyperbrowser'|null;
-    availableProviders:Array<'browserbase'|'hyperbrowser'>;
-    status:'NOT_CONFIGURED'|'NEEDS_LOGIN'|'CONNECTING'|'READY'|'ERROR'|'REVOKED';
-    lastCheckedAt:string|null;lastSuccessAt:string|null;lastErrorCode:string|null;loginInProgress:boolean;
-  };
   global:{status:MercadoLivreAffiliateHealthStatus;circuitState:'CLOSED'|'OPEN'|'HALF_OPEN';lastCheckAt:string|null;lastSuccessAt:string|null;lastErrorCode:string|null;adapterVersion:number};
   metrics:{generationCount:number;successCount:number;failureCount:number;successRate:number;averageLatency:number;p95Latency:number;portalChangedCount:number;userActionCount:number;offlineCount:number;expiredJobs:number;failuresByCategory:Record<string,number>};
   required:{extensionVersion:string;adapterVersion:number};
@@ -36,7 +28,4 @@ export const mercadoLivreAffiliateApi={
   revoke:(instanceId:string)=>request<void>(`/instances/${encodeURIComponent(instanceId)}`,{method:'DELETE'}),
   test:(sourceUrl:string,trackingLabel?:string)=>request<BrowserCompanionJobSummary>('/test',{method:'POST',body:JSON.stringify({sourceUrl,trackingLabel})}),
   job:(jobId:string)=>request<BrowserCompanionJobSummary>(`/jobs/${encodeURIComponent(jobId)}`),
-  beginRemoteLogin:(mobile = false)=>request<{liveUrl:string;expiresAt:string}>('/remote/login',{method:'POST',body:JSON.stringify({mobile})}),
-  verifyRemoteLogin:()=>request<{ready:boolean;status:string}>('/remote/verify',{method:'POST'}),
-  testRemote:(sourceUrl:string,trackingLabel?:string)=>request<BrowserCompanionJobSummary>('/remote/test',{method:'POST',body:JSON.stringify({sourceUrl,trackingLabel})}),
 };
