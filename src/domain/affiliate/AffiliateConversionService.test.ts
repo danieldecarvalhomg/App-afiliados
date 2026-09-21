@@ -194,8 +194,10 @@ describe('AffiliateConversionService', () => {
     expect(repository.rows[0]).toMatchObject({ status: 'converted', resolvedUrl: productUrl });
   });
 
-  it('converte meli.la do monitor sem passar pelo resolvedor público', async () => {
+  it('resolve meli.la do monitor para o produto antes da conversão', async () => {
     const shortUrl = 'https://meli.la/2FdaeDB';
+    const socialUrl = 'https://www.mercadolivre.com.br/social/danielguimaraes?ref=abc';
+    const productUrl = 'https://www.mercadolivre.com.br/produto/up/MLBU1981759952';
     const repository = new MemoryRepository(conversion({ originalUrl: shortUrl, sourceType: 'whatsapp' }));
     repository.getDeclaredMarketplace.mockResolvedValue('mercado_livre');
     repository.accounts.set('user-a:mercado_livre', { id: 'account-ml', credentials: { appId: 'app', secret: 'secret' } });
@@ -203,13 +205,18 @@ describe('AffiliateConversionService', () => {
       platform: 'mercado_livre', providerName: 'mercado-livre-test',
       convert: vi.fn(async () => ({ success: true, convertedUrl: 'https://meli.la/converted123', provider: 'mercado-livre-test' })),
     };
-    const runtime = service(repository, mlProvider);
+    const resolver = {
+      resolve: vi.fn(async () => ({ originalUrl:shortUrl, resolvedUrl:socialUrl, resolvedAt:new Date().toISOString(), redirectCount:1 })),
+      fetchDocument: vi.fn(async () => ({ status:200, contentType:'text/html', body:`<a href="${productUrl}">Produto</a>` })),
+    };
+    const runtime = new AffiliateConversionService(repository as unknown as AffiliateRepository, resolver as any,
+      new AffiliateLinkService([mlProvider]), new MercadoLivreLinkRecoveryService(resolver));
 
-    await runtime.service.drain();
+    await runtime.drain();
 
-    expect(runtime.resolver.resolve).not.toHaveBeenCalled();
-    expect(mlProvider.convert).toHaveBeenCalledWith(expect.objectContaining({ url: shortUrl }));
-    expect(repository.rows[0]).toMatchObject({ status: 'converted', resolvedUrl: shortUrl });
+    expect(resolver.resolve).toHaveBeenCalledWith(shortUrl);
+    expect(mlProvider.convert).toHaveBeenCalledWith(expect.objectContaining({ url: productUrl, trackingLabel:'promofy_monitor' }));
+    expect(repository.rows[0]).toMatchObject({ status: 'converted', resolvedUrl: productUrl });
   });
 
   it('permite tentar novamente quando a conversão ficou aguardando a extensão', async () => {

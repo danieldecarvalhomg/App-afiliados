@@ -222,6 +222,11 @@ const mercadoLivreRemoteRepository = supabaseAdmin
 const mercadoLivreRemoteService = mercadoLivreRemoteRepository
   ? new MercadoLivreRemoteBrowserService(mercadoLivreRemoteRepository)
   : null;
+const affiliateUrlResolver = new UrlResolverService();
+const mercadoLivreLinkRecovery = new MercadoLivreLinkRecoveryService(
+  affiliateUrlResolver,
+  mercadoLivreRemoteService ?? undefined,
+);
 const mercadoLivreDirectClient = new MercadoLivreDirectClient();
 const mercadoLivreDirectAdapter = mercadoLivreRemoteRepository
   ? new MercadoLivreDirectAdapter(
@@ -272,7 +277,7 @@ const affiliateAccountService = affiliateRepository
     )
   : null;
 const mercadoLivreHybridAdapter = mercadoLivreDirectAdapter
-  ? new MercadoLivreHybridAdapter(mercadoLivreDirectAdapter)
+  ? new MercadoLivreHybridAdapter(mercadoLivreDirectAdapter, mercadoLivreLinkRecovery)
   : null;
 const mercadoLivreCompanionService = mercadoLivreCompanionRepository && mercadoLivreCompanionAdapter
   ? new MercadoLivreCompanionService(
@@ -283,10 +288,10 @@ const mercadoLivreCompanionService = mercadoLivreCompanionRepository && mercadoL
         const result = await affiliateAccountService.syncMercadoLivreSession(userId, sessionCookie, trackingTag);
         if (!result.success) throw new Error(result.error.code);
       } : null,
-      affiliateRepository && mercadoLivreDirectAdapter ? async (userId, sourceUrl, trackingLabel) => {
+      affiliateRepository && mercadoLivreHybridAdapter && mercadoLivreDirectAdapter ? async (userId, sourceUrl, trackingLabel) => {
         const account = await affiliateRepository.getConfiguredAccount(userId, 'mercado_livre');
         if (!account || !mercadoLivreDirectAdapter.configured(account.credentials)) return null;
-        return mercadoLivreDirectAdapter.generate(userId, account.id, sourceUrl, account.credentials, trackingLabel);
+        return mercadoLivreHybridAdapter.generate(userId, account.id, sourceUrl, account.credentials, trackingLabel);
       } : null,
       affiliateRepository && mercadoLivreDirectAdapter ? async (userId) => {
         const account = await affiliateRepository.getConfiguredAccount(userId, 'mercado_livre');
@@ -311,12 +316,7 @@ const affiliateLinks = new AffiliateLinkService([
     ? [new MercadoLivreAffiliateProvider(mercadoLivreHybridAdapter)]
     : []),
 ]);
-const affiliateUrlResolver = new UrlResolverService();
 const usageQuota = supabaseAdmin ? new SupabaseUsageQuotaService(supabaseAdmin) : null;
-const mercadoLivreLinkRecovery = new MercadoLivreLinkRecoveryService(
-  affiliateUrlResolver,
-  mercadoLivreRemoteService ?? undefined,
-);
 const affiliateConversionService = affiliateRepository
   ? new AffiliateConversionService(
       affiliateRepository,

@@ -42,4 +42,13 @@ describe('MercadoLivreDirectClient', () => {
     await expect(new MercadoLivreDirectClient(fetcher as typeof fetch).validate(credentials))
       .rejects.toMatchObject({ code: 'TEMPORARY_ERROR', transient: true });
   });
+
+  it('trata 403 do createLink como rejeição do produto sem abrir circuito da conta', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ tags:[{ tag:'principal', in_use:true }] }), { status:200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ message:'Forbidden' }), { status:403 }));
+    await expect(new MercadoLivreDirectClient(fetcher as typeof fetch).createAffiliateLinks(credentials, [
+      'https://produto.mercadolivre.com.br/MLB-1234567890-produto-_JM',
+    ])).rejects.toMatchObject({ code:'GENERATION_FAILED', transient:false, httpStatus:403 });
+  });
 });

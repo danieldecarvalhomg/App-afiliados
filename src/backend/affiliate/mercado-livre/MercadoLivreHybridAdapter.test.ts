@@ -9,9 +9,22 @@ describe('MercadoLivreHybridAdapter', () => {
     const directResult = { ...result, provider:'mercado_livre_unofficial_v1' };
     const direct = { configured:()=>true, generate:vi.fn(async()=>directResult) };
     await expect(new MercadoLivreHybridAdapter(direct as any).generate(
-      'u','account','https://produto.mercadolivre.com.br/MLB-123',
+      'u','account','https://produto.mercadolivre.com.br/MLB-1234567',
       { ...credentials, sessionCookie:'session=abc123', trackingTag:'principal' },
     )).resolves.toEqual(directResult);
+  });
+
+  it('recupera meli.la antes de chamar o motor próprio', async () => {
+    const directResult = { ...result, provider:'mercado_livre_unofficial_v1' };
+    const direct = { configured:()=>true, generate:vi.fn(async()=>directResult) };
+    const recoveredUrl = 'https://produto.mercadolivre.com.br/MLB-1234567-produto';
+    const recovery = { recover:vi.fn(async()=>({ productUrl:recoveredUrl, candidates:[recoveredUrl] })) };
+    await expect(new MercadoLivreHybridAdapter(direct as any, recovery as any).generate(
+      'u','account','https://meli.la/2FdaeDB',
+      { ...credentials, sessionCookie:'session=abc123', trackingTag:'principal' },
+    )).resolves.toEqual(directResult);
+    expect(recovery.recover).toHaveBeenCalledWith('https://meli.la/2FdaeDB','u');
+    expect(direct.generate).toHaveBeenCalledWith('u','account',recoveredUrl,expect.any(Object),undefined);
   });
 
   it('recusa a conversão quando não existe sessão direta, mesmo com navegador remoto configurado', async () => {

@@ -13,6 +13,21 @@ export type ResolverLookup = (hostname: string) => Promise<ResolverAddress[]>;
 export type ResolverRequest = (url: URL, address: ResolverAddress, timeoutMs: number) => Promise<{ status: number; location?: string }>;
 export type ResolverDocumentRequest = (url: URL, address: ResolverAddress, timeoutMs: number, maxBytes: number) => Promise<{ status: number; contentType?: string; body: string }>;
 
+const BROWSER_NAVIGATION_HEADERS = {
+  accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+  'accept-language': 'pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7',
+  'cache-control': 'no-cache',
+  'sec-ch-ua': '"Chromium";v="140", "Google Chrome";v="140", "Not=A?Brand";v="24"',
+  'sec-ch-ua-mobile': '?0',
+  'sec-ch-ua-platform': '"Windows"',
+  'sec-fetch-dest': 'document',
+  'sec-fetch-mode': 'navigate',
+  'sec-fetch-site': 'none',
+  'sec-fetch-user': '?1',
+  'upgrade-insecure-requests': '1',
+  'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36',
+} as const;
+
 function blockedIpv4(address: string): boolean {
   const p = address.split('.').map(Number);
   if (p.length !== 4 || p.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return true;
@@ -59,7 +74,7 @@ const realRequest: ResolverRequest = (url, target, timeoutMs) => new Promise((re
   const transport = url.protocol === 'https:' ? https : http;
   const req = transport.request({
     protocol: url.protocol, hostname: url.hostname, port: url.port || undefined,
-    path: `${url.pathname}${url.search}`, method: 'GET', headers: { 'user-agent': 'AfiliHub-UrlResolver/1.0', accept: '*/*' },
+    path: `${url.pathname}${url.search}`, method: 'GET', headers: BROWSER_NAVIGATION_HEADERS,
     // Node 20+ pode solicitar lookup com `all: true`. Respeitar o formato
     // evita uma nova resolução DNS e mantém o endereço já validado/pinado.
     lookup: ((_hostname: string, options: { all?: boolean }, callback: (...args: any[]) => void) => {
@@ -80,7 +95,7 @@ const realDocumentRequest: ResolverDocumentRequest = (url, target, timeoutMs, ma
   const req = transport.request({
     protocol: url.protocol, hostname: url.hostname, port: url.port || undefined,
     path: `${url.pathname}${url.search}`, method: 'GET',
-    headers: { 'user-agent': 'AfiliHub-UrlResolver/1.0', accept: 'text/html,application/xhtml+xml' },
+    headers: BROWSER_NAVIGATION_HEADERS,
     lookup: ((_hostname: string, options: { all?: boolean }, callback: (...args: any[]) => void) => {
       if (options?.all) callback(null, [{ address: target.address, family: target.family }]);
       else callback(null, target.address, target.family as 4 | 6);

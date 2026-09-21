@@ -105,7 +105,18 @@ export class MercadoLivreDirectAdapter {
       try {
         const results = await this.generateBatch(chunk);
         chunk.forEach((item, index) => item.resolve(results[index]));
-      } catch (error) { chunk.forEach((item) => item.reject(error)); }
+      } catch (error) {
+        const failure = error instanceof MercadoLivreCompanionError ? error : null;
+        if (chunk.length > 1 && failure?.code === 'GENERATION_FAILED') {
+          // Um produto inválido não pode derrubar todo o lote do Monitor. O
+          // retry individual preserva as conversões válidas e rejeita somente
+          // o item que o Mercado Livre não conseguiu gerar.
+          for (const item of chunk) {
+            try { item.resolve((await this.generateBatch([item]))[0]); }
+            catch (singleError) { item.reject(singleError); }
+          }
+        } else chunk.forEach((item) => item.reject(error));
+      }
     }
   }
 

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { MercadoLivreDirectAdapter } from './MercadoLivreDirectAdapter';
+import { MercadoLivreCompanionError } from '../companion/types';
 
 const first = 'https://produto.mercadolivre.com.br/MLB-1234567890-produto-_JM';
 const second = 'https://produto.mercadolivre.com.br/MLB-9876543210-produto-_JM';
@@ -39,20 +40,25 @@ describe('MercadoLivreDirectAdapter', () => {
     expect(client.createAffiliateLinks).not.toHaveBeenCalled();
   });
 
-  it('envia links meli.la do monitor diretamente ao backend', async () => {
-    const shortUrl = 'https://meli.la/2FdaeDB';
+  it('isola um produto inválido sem derrubar os demais itens do lote', async () => {
     const client = {
       configured: () => true,
-      createAffiliateLinks: vi.fn(async (_credentials, urls: string[]) => ({
-        trackingTag: 'principal', urls: urls.map(() => 'https://meli.la/novo123'),
-      })),
+      createAffiliateLinks: vi.fn(async (_credentials, urls: string[]) => {
+        if (urls.length > 1 || urls[0] === second) {
+          throw new MercadoLivreCompanionError('GENERATION_FAILED', 'Produto rejeitado.');
+        }
+        return { trackingTag:'principal', urls:['https://meli.la/novo123'] };
+      }),
     };
     const verifier = { verify: vi.fn(async (_source: string, candidate: string) => candidate) };
     const adapter = new MercadoLivreDirectAdapter(client as any, null, verifier as any);
 
-    await expect(adapter.generate('user-a', 'account-a', shortUrl, credentials)).resolves.toMatchObject({
-      affiliateUrl: 'https://meli.la/novo123', itemId: null,
-    });
-    expect(client.createAffiliateLinks).toHaveBeenCalledWith(credentials, [shortUrl], 'principal');
+    const settled = await Promise.allSettled([
+      adapter.generate('user-a','account-a',first,credentials),
+      adapter.generate('user-a','account-a',second,credentials),
+    ]);
+    expect(settled[0]).toMatchObject({ status:'fulfilled', value:{ affiliateUrl:'https://meli.la/novo123' } });
+    expect(settled[1]).toMatchObject({ status:'rejected', reason:{ code:'GENERATION_FAILED' } });
+    expect(client.createAffiliateLinks).toHaveBeenCalledTimes(3);
   });
 });

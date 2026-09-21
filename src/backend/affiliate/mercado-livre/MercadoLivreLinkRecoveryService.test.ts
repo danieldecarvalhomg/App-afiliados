@@ -39,6 +39,17 @@ describe('MercadoLivreLinkRecoveryService', () => {
     expect(resolver.fetchDocument).not.toHaveBeenCalled();
     expect(remote.recoverProductUrl).toHaveBeenCalledWith('user-1', 'https://meli.la/13eXLrm');
   });
+  it('resolve meli.la por HTTP e extrai o produto da página social sem navegador remoto', async () => {
+    const social = 'https://www.mercadolivre.com.br/social/danielguimaraes?ref=abc';
+    const resolver = {
+      resolve: vi.fn(async () => ({ originalUrl:'https://meli.la/13eXLrm', resolvedUrl:social, redirectCount:1, resolvedAt:new Date().toISOString() })),
+      fetchDocument: vi.fn(async () => ({ status:200, contentType:'text/html', body:`<a href="${featured}">Produto</a>` })),
+    };
+    await expect(new MercadoLivreLinkRecoveryService(resolver).recover('https://meli.la/13eXLrm','user-1'))
+      .resolves.toEqual({ productUrl:featured, candidates:[featured] });
+    expect(resolver.resolve).toHaveBeenCalledWith('https://meli.la/13eXLrm');
+    expect(resolver.fetchDocument).toHaveBeenCalledWith(social);
+  });
   it('falha fechada quando o navegador remoto não encontra produto', async () => {
     const resolver = { fetchDocument: async () => ({ status: 403, contentType: 'text/html', body: '' }) };
     const remote = { recoverProductUrl: async () => null };

@@ -68,11 +68,7 @@ export class AffiliateConversionService {
         ? { originalUrl: conversion.originalUrl, resolvedUrl: conversion.originalUrl, resolvedAt: new Date().toISOString(), redirectCount: 0 }
         : await this.resolver.resolve(conversion.originalUrl);
       let platform = resolvePlatform(resolved.resolvedUrl);
-      const unresolvedMercadoLivreShortLink = platform === 'mercado_livre'
-        && !isMercadoLivreProductUrl(resolved.resolvedUrl)
-        && originalIsMercadoLivreShortLink
-        && resolved.resolvedUrl === conversion.originalUrl;
-      if (platform === 'mercado_livre' && !isMercadoLivreProductUrl(resolved.resolvedUrl) && !unresolvedMercadoLivreShortLink) {
+      if (platform === 'mercado_livre' && !isMercadoLivreProductUrl(resolved.resolvedUrl)) {
         const recovered = await this.recovery.recover(resolved.resolvedUrl, conversion.userId);
         if (recovered) {
           await this.safeEvent(conversion.userId, 'affiliate.link_recovered', {
@@ -83,6 +79,11 @@ export class AffiliateConversionService {
           resolved = { ...resolved, resolvedUrl: recovered.productUrl };
           platform = 'mercado_livre';
         }
+      }
+      if (platform === 'mercado_livre' && !isMercadoLivreProductUrl(resolved.resolvedUrl)) {
+        await this.repository.updateClaim({ conversion, status: 'invalid_url', resolvedUrl: resolved.resolvedUrl,
+          detectedPlatform: platform, convertedUrl: null, errorCode: 'LINK_VALIDATION_FAILED' });
+        return;
       }
       if (!await this.repository.updateClaim({ conversion, status: 'resolved', resolvedUrl: resolved.resolvedUrl,
         detectedPlatform: platform, resolvedAt: resolved.resolvedAt })) return;

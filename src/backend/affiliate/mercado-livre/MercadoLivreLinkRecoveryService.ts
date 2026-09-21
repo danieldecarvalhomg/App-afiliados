@@ -37,16 +37,31 @@ export function extractMercadoLivreProductUrls(html: string): string[] {
 
 export class MercadoLivreLinkRecoveryService {
   constructor(
-    private readonly resolver: Pick<UrlResolverService, 'fetchDocument'>,
+    private readonly resolver: Pick<UrlResolverService, 'fetchDocument'> & Partial<Pick<UrlResolverService, 'resolve'>>,
     private readonly remote?: MercadoLivreRemoteProductResolver,
   ) {}
 
   async recover(resolvedUrl: string, userId?: string): Promise<{ productUrl: string; candidates: string[] } | null> {
     let parsed: URL;
     try { parsed = new URL(resolvedUrl); } catch { return null; }
-    const socialProfile = SOCIAL_PROFILE_ROUTE.test(parsed.pathname);
+    let socialProfile = SOCIAL_PROFILE_ROUTE.test(parsed.pathname);
     const shortLink = parsed.hostname.toLowerCase() === MERCADO_LIVRE_SHORT_HOST;
     if (resolvePlatform(parsed.toString()) !== 'mercado_livre' || (!socialProfile && !shortLink)) return null;
+    if (shortLink && this.resolver.resolve) {
+      try {
+        const redirected = await this.resolver.resolve(parsed.toString());
+        if (isMercadoLivreProductUrl(redirected.resolvedUrl)) {
+          const productUrl = normalizeMercadoLivreProductUrl(redirected.resolvedUrl);
+          return { productUrl, candidates: [productUrl] };
+        }
+        parsed = new URL(redirected.resolvedUrl);
+        socialProfile = resolvePlatform(parsed.toString()) === 'mercado_livre'
+          && SOCIAL_PROFILE_ROUTE.test(parsed.pathname);
+      } catch {
+        // O fallback remoto abaixo continua disponível quando o CDN não
+        // entrega o redirecionamento ao cliente HTTP.
+      }
+    }
     if (socialProfile) {
       try {
         const document = await this.resolver.fetchDocument(parsed.toString());

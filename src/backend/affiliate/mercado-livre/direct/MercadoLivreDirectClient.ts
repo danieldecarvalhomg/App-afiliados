@@ -52,22 +52,32 @@ export class MercadoLivreDirectClient {
     if (!trackingTag) throw new MercadoLivreCompanionError('DIRECT_SESSION_INVALID', 'Nenhuma etiqueta de afiliado está disponível.');
     const generated = await this.create(credentials, productUrls, trackingTag);
     if (generated.length === productUrls.length) return { urls: generated, trackingTag };
-    if (productUrls.length === 1) throw new MercadoLivreCompanionError('GENERATION_FAILED', 'O Mercado Livre retornou uma resposta incompleta.', true);
+    if (productUrls.length === 1) throw new MercadoLivreCompanionError('GENERATION_FAILED', 'O Mercado Livre retornou uma resposta incompleta.');
     const urls: string[] = [];
     for (const productUrl of productUrls) {
       const single = await this.create(credentials, [productUrl], trackingTag);
-      if (!single[0]) throw new MercadoLivreCompanionError('GENERATION_FAILED', 'O Mercado Livre não gerou um dos links.', true);
+      if (!single[0]) throw new MercadoLivreCompanionError('GENERATION_FAILED', 'O Mercado Livre não gerou um dos links.');
       urls.push(single[0]);
     }
     return { urls, trackingTag };
   }
 
   private async create(credentials: AffiliateProviderCredentials, productUrls: string[], tag: string): Promise<string[]> {
-    const payload = await this.request('/createLink', {
-      method: 'POST',
-      body: JSON.stringify({ urls: productUrls, tag }),
-    }, credentials);
-    return extractMercadoLivreGeneratedUrls(payload);
+    try {
+      const payload = await this.request('/createLink', {
+        method: 'POST',
+        body: JSON.stringify({ urls: productUrls, tag }),
+      }, credentials);
+      return extractMercadoLivreGeneratedUrls(payload);
+    } catch (error) {
+      // No createLink, o Portal usa 403 também para URL de produto recusada.
+      // A sessão já foi validada no getTags imediatamente anterior; portanto
+      // esta resposta pertence ao item/lote e não deve abrir o circuito da conta.
+      if (error instanceof MercadoLivreCompanionError && error.httpStatus === 403) {
+        throw new MercadoLivreCompanionError('GENERATION_FAILED', 'O Mercado Livre recusou um dos produtos deste lote.', false, 403);
+      }
+      throw error;
+    }
   }
 
   private async request(path: string, init: RequestInit, credentials: AffiliateProviderCredentials): Promise<unknown> {
