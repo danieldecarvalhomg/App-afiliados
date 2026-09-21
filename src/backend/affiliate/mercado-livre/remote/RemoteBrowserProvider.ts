@@ -187,5 +187,9 @@ export function createRemoteBrowserProviders(): RemoteBrowserProvider[] {
   const hyperbrowser = new HyperbrowserProvider();
   const browserbase = new BrowserbaseProvider();
   const preferred = process.env.MERCADO_LIVRE_REMOTE_BROWSER_PROVIDER?.trim().toLowerCase();
-  return preferred === 'browserbase' ? [browserbase, hyperbrowser] : [hyperbrowser, browserbase];
+  // Uma escolha explícita é exclusiva. Isso impede que uma indisponibilidade
+  // troque silenciosamente o usuário para um fornecedor que ele não autorizou.
+  if (preferred === 'browserbase') return [browserbase];
+  if (preferred === 'hyperbrowser') return [hyperbrowser];
+  return [hyperbrowser, browserbase];
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import {
   BrowserbaseProvider,
+  createRemoteBrowserProviders,
   HyperbrowserProvider,
   decodeRemoteProfile,
   encodeRemoteProfile,
@@ -58,5 +59,16 @@ describe('RemoteBrowserProvider', () => {
     const fetcher = vi.fn().mockResolvedValue(response({ error: 'payment required' }, 402));
     const provider = new HyperbrowserProvider('hb-key', fetcher as typeof fetch);
     await expect(provider.createProfile('usuario-1')).rejects.toThrow('REMOTE_BROWSER_HTTP_402');
+  });
+
+  it('não usa Browserbase como fallback quando outro provedor foi escolhido', () => {
+    const previous = process.env.MERCADO_LIVRE_REMOTE_BROWSER_PROVIDER;
+    process.env.MERCADO_LIVRE_REMOTE_BROWSER_PROVIDER = 'hyperbrowser';
+    try {
+      expect(createRemoteBrowserProviders().map((provider) => provider.id)).toEqual(['hyperbrowser']);
+    } finally {
+      if (previous === undefined) delete process.env.MERCADO_LIVRE_REMOTE_BROWSER_PROVIDER;
+      else process.env.MERCADO_LIVRE_REMOTE_BROWSER_PROVIDER = previous;
+    }
   });
 });
